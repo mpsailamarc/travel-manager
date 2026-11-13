@@ -1,0 +1,180 @@
+import { useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '../db'
+import type { ChecklistCategory, ChecklistItem } from '../types'
+import { CHECKLIST_CATEGORIES } from '../types'
+import { CATEGORY_LABELS, refreshChecklist } from '../lib/checklist'
+import { daysBetween, formatDate, today } from '../lib/dates'
+import { uid } from '../lib/ids'
+import { Empty, Modal, Progress, toast } from '../components/ui'
+import { useTripCtx } from './TripLayout'
+
+export default function ChecklistPage() {
+  const { trip, settings } = useTripCtx()
+  const list = useLiveQuery(() => db.checklist.where('tripId').equals(trip.id).toArray(), [trip.id])
+  const [hideDone, setHideDone] = useState(false)
+  const [editing, setEditing] = useState<Partial<ChecklistItem> | null>(null)
+  if (!list) return null
+
+  const done = list.filter((c) => c.done).length
+  const now = today()
+
+  async function generate() {
+    const { added, removed } = await refreshChecklist(trip.id, settings)
+    toast(added || removed ? `${added} added${removed ? `, ${removed} no longer needed` : ''}` : 'Checklist is up to date')
+  }
+
+  const byCat = CHECKLIST_CATEGORIES.map((cat) => ({
+    cat,
+    rows: list
+      .filter((c) => c.category === cat && (!hideDone || !c.done))
+      .sort((a, b) => Number(a.done) - Number(b.done) || (a.dueDate ?? '9').localeCompare(b.dueDate ?? '9') || a.order - b.order),
+  })).filter((g) => g.rows.length)
+
+  return (
+    <div className="stack-lg" style={{ maxWidth: 820 }}>
+      <div className="card stack">
+        <div className="row between wrap">
+          <div>
+            <h2>Before you go</h2>
+            <p className="small muted">
+              {done} of {list.length} done
+              {trip.startDate > now && ` · ${daysBetween(now, trip.startDate)} days to go`}
+            </p>
+          </div>
+          <div className="row wrap">
+            <button onClick={generate}>🔄 Suggest items</button>
+            <button className="btn-primary" onClick={() => setEditing({ category: 'other' })}>
+              + Add
+            </button>
+          </div>
+        </div>
+        <Progress value={done} max={list.length} />
+        <label className="inline small">
+          <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> Hide done
+        </label>
+        {!settings.nationality && <div className="notice">Set your nationality in Settings to get visa, plug and roaming advice that fits you.</div>}
+      </div>
+
+      {list.length === 0 && (
+        <div className="card">
+          <Empty emoji="✅" title="No checklist yet">
+            <p style={{ marginBottom: 12 }}>Generate one from your destinations, travellers and itinerary — it updates as your plan changes.</p>
+            <button className="btn-primary" onClick={generate}>
+              Generate my checklist
+            </button>
+          </Empty>
+        </div>
+      )}
+
+      {byCat.map(({ cat, rows }) => (
+        <section key={cat} className="card">
+          <div className="card-title">
+            <h3>
+              {CATEGORY_LABELS[cat].emoji} {CATEGORY_LABELS[cat].label}
+            </h3>
+            <span className="small muted">
+              {rows.filter((r) => r.done).length}/{rows.length}
+            </span>
+          </div>
+          {rows.map((c) => {
+            const overdue = !c.done && c.dueDate && c.dueDate < now
+            return (
+              <div key={c.id} className={`check ${c.done ? 'done' : ''}`}>
+                <input type="checkbox" checked={c.done} onChange={() => db.checklist.update(c.id, { done: !c.done })} aria-label={c.title} />
+                <div className="grow clickable" onClick={() => setEditing(c)}>
+                  <div className="check-title">{c.title}</div>
+                  {c.notes && <div className="small muted">{c.notes}</div>}
+                  <div className="row wrap" style={{ gap: 6, marginTop: 2 }}>
+                    {c.dueDate && <span className={`badge ${overdue ? 'danger' : ''}`}>{overdue ? 'Overdue · ' : 'By '}{formatDate(c.dueDate)}</span>}
+                    {c.link && (
+                      <a className="small" href={c.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                        More info ↗
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </section>
+      ))}
+
+      {editing && <ChecklistEditor tripId={trip.id} item={editing} onClose={() => setEditing(null)} />}
+    </div>
+  )
+}
+
+function ChecklistEditor({ tripId, item, onClose }: { tripId: string; item: Partial<ChecklistItem>; onClose: () => void }) {
+  const [c, setC] = useState(item)
+  async function save() {
+    if (!c.title?.trim()) return
+    await db.checklist.put({
+      id: c.id ?? uid(),
+      tripId,
+      title: c.title.trim(),
+      category: (c.category ?? 'other') as ChecklistCategory,
+      done: c.done ?? false,
+      dueDate: c.dueDate || undefined,
+      notes: c.notes || undefined,
+      link: c.link || undefined,
+      ruleId: c.ruleId,
+      order: c.order ?? Date.now(),
+    })
+    onClose()
+  }
+  async function remove() {
+    if (c.id) await db.checklist.delete(c.id)
+    onClose()
+  }
+  return (
+    <Modal title={c.id ? 'Edit item' : 'New checklist item'} onClose={onClose}>
+      <div className="stack">
+        <label>
+          What needs doing?
+          <input autoFocus value={c.title ?? ''} onChange={(e) => setC({ ...c, title: e.target.value })} />
+        </label>
+        <div className="form-grid">
+          <label>
+            Category
+            <select value={c.category} onChange={(e) => setC({ ...c, category: e.target.value as ChecklistCategory })}>
+              {CHECKLIST_CATEGORIES.map((k) => (
+                <option key={k} value={k}>
+                  {CATEGORY_LABELS[k].emoji} {CATEGORY_LABELS[k].label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Do by
+            <input type="date" value={c.dueDate ?? ''} onChange={(e) => setC({ ...c, dueDate: e.target.value })} />
+          </label>
+          <label className="full">
+            Link
+            <input value={c.link ?? ''} onChange={(e) => setC({ ...c, link: e.target.value })} />
+          </label>
+          <label className="full">
+            Notes
+            <textarea style={{ minHeight: 70 }} value={c.notes ?? ''} onChange={(e) => setC({ ...c, notes: e.target.value })} />
+          </label>
+        </div>
+        {c.ruleId && <p className="tiny muted">Suggested automatically. If you delete it, “Suggest items” will add it back.</p>}
+        <div className="row between">
+          {c.id ? (
+            <button className="btn-ghost btn-danger" onClick={remove}>
+              Delete
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="row">
+            <button onClick={onClose}>Cancel</button>
+            <button className="btn-primary" onClick={save}>
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}

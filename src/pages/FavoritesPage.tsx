@@ -1,0 +1,466 @@
+import { useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '../db'
+import type { Favorite, Place } from '../types'
+import { fetchPois, type Poi } from '../lib/apis'
+import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
+import { applyCityPlan, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
+import { daysBetween, formatDate, formatDuration, today } from '../lib/dates'
+import { distance, plural } from '../lib/format'
+import { haversineM, type LatLon } from '../lib/geo'
+import { useAsync, useOnline } from '../lib/hooks'
+import { uid } from '../lib/ids'
+import { PlaceSearch } from '../components/PlaceSearch'
+import { Empty, Progress, toast } from '../components/ui'
+import LazyMap, { type MapMarker } from '../components/LazyMap'
+import { PromptBox } from './IdeasPage'
+import { PoiDetail } from './WalkPage'
+import { useTripCtx } from './TripLayout'
+
+type Source = 'sights' | 'ai' | 'own'
+
+export default function FavoritesPage() {
+  const { trip, days, items, settings } = useTripCtx()
+  const [params, setParams] = useSearchParams()
+  const online = useOnline()
+  const favs = useLiveQuery(() => db.favorites.where('tripId').equals(trip.id).toArray(), [trip.id])
+
+  // Cities of the trip, in order, with the first coordinates known for each.
+  const cities = useMemo(() => {
+    const out: { name: string; lat?: number; lon?: number }[] = []
+    for (const d of days) {
+      if (!d.city) continue
+      const c = out.find((x) => sameCity(x.name, d.city))
+      if (!c) out.push({ name: d.city, lat: d.lat, lon: d.lon })
+      else if (c.lat == null && d.lat != null) Object.assign(c, { lat: d.lat, lon: d.lon })
+    }
+    return out
+  }, [days])
+
+  const todayCity = days.find((d) => d.date === today())?.city
+  const [other, setOther] = useState<Place>()
+  const city = params.get('city') ?? todayCity ?? cities[0]?.name ?? other?.name
+  const cityInfo = cities.find((c) => sameCity(c.name, city)) ?? (other && sameCity(other.name, city) ? other : undefined)
+  const center: LatLon | undefined = cityInfo?.lat != null && cityInfo.lon != null ? { lat: cityInfo.lat, lon: cityInfo.lon } : undefined
+  const dates = city ? cityDates(days, city) : []
+
+  const [source, setSource] = useState<Source>('sights')
+  const [detail, setDetail] = useState<Poi>()
+  const [busy, setBusy] = useState(false)
+
+  const cityFavs = (favs ?? []).filter((f) => sameCity(f.city, city))
+  const findFav = (name: string, wikidata?: string) => cityFavs.find((f) => (wikidata && f.wikidata === wikidata) || f.name.toLowerCase() === name.toLowerCase())
+
+  async function rebuild(changed: (string | undefined)[]) {
+    if (!city) return
+    const ds = [...new Set(changed.filter((d): d is string => !!d && dates.includes(d)))]
+    if (ds.length) await applyCityPlan(trip, city, ds, settings)
+  }
+
+  async function addFav(f: Omit<Favorite, 'id' | 'tripId' | 'city' | 'addedAt'>) {
+    if (!city) return
+    await db.favorites.add({ ...f, id: uid(), tripId: trip.id, city, addedAt: Date.now() })
+    toast(`⭐ ${f.name}`)
+  }
+
+  async function removeFav(f: Favorite) {
+    await db.favorites.delete(f.id)
+    if (f.itemId) await db.items.delete(f.itemId)
+    await rebuild([f.date])
+  }
+
+  async function toggleSight(p: Poi) {
+    const existing = findFav(p.name, p.wikidata)
+    if (existing) return removeFav(existing)
+    await addFav({ name: p.name, lat: p.lat, lon: p.lon, category: p.category, visitMin: p.visitMin, source: 'sight', wikipedia: p.wikipedia, wikidata: p.wikidata })
+  }
+
+  async function move(f: Favorite, date: string | undefined) {
+    await db.favorites.update(f.id, { date, pinned: !!date, itemId: undefined })
+    if (f.itemId) await db.items.delete(f.itemId)
+    await rebuild([f.date, date])
+  }
+
+  // Once the trip has started, only today and later days are (re)planned; past days stay as they were.
+  const plannable = dates.filter((d) => d >= today())
+
+  async function planMyDays() {
+    if (!city || !plannable.length) return
+    setBusy(true)
+    try {
+      const capacity = new Map(plannable.map((d) => [d, dayCapacity(trip, items, d)]))
+      const past = cityFavs.filter((f) => f.date && f.date < today())
+      const { assign } = planDays(cityFavs.filter((f) => !past.includes(f)), plannable, capacity)
+      await db.favorites.bulkUpdate([...assign].map(([key, date]) => ({ key, changes: { date } })))
+      await applyCityPlan(trip, city, plannable, settings)
+      const backups = [...assign.values()].filter((d) => !d).length
+      const used = new Set([...assign.values()].filter(Boolean)).size
+      toast(`Spread over ${plural(used, 'day')}${backups ? ` · ${backups} kept as backup ideas (days are full)` : ''}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const dayNo = (d: string) => daysBetween(trip.startDate, d) + 1
+  const isScheduled = (f: Favorite) => !!f.date && (dates.includes(f.date) || !!f.itemId)
+  const backups = cityFavs.filter((f) => !isScheduled(f))
+
+  const sights = useAsync(() => (center && source === 'sights' ? fetchPois(center, 2500) : Promise.resolve([] as Poi[])), [center?.lat, center?.lon, source])
+
+  const markers = useMemo((): MapMarker[] => {
+    const m: MapMarker[] = []
+    if (source === 'sights')
+      for (const p of sights.data ?? []) {
+        if (findFav(p.name, p.wikidata)) continue
+        m.push({ id: p.id, lat: p.lat, lon: p.lon, label: categoryMeta(p.category).emoji, variant: 'dim', title: p.name, onClick: () => setDetail(p) })
+      }
+    for (const f of cityFavs) {
+      if (f.lat == null || f.lon == null) continue
+      m.push({ id: f.id, lat: f.lat, lon: f.lon, label: isScheduled(f) ? String(dayNo(f.date!)) : '★', variant: isScheduled(f) ? 'on' : 'start', title: f.name })
+    }
+    return m
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sights.data, favs, source, city])
+
+  // Re-fit when the city, the sights or the day plan change — not on every star, which would jump while browsing.
+  const fitKey = `${city}-${source}-${sights.data?.length ?? 0}-${cityFavs.filter((f) => f.date).map((f) => f.id + f.date).join()}`
+
+  return (
+    <div className="stack">
+      <div className="card tight stack" style={{ gap: 8 }}>
+        <div className="chips">
+          {cities.map((c) => (
+            <button key={c.name} className={`chip ${sameCity(c.name, city) ? 'on' : ''}`} onClick={() => setParams({ city: c.name })}>
+              {c.name}
+              {(favs ?? []).filter((f) => sameCity(f.city, c.name)).length > 0 && ` ⭐${(favs ?? []).filter((f) => sameCity(f.city, c.name)).length}`}
+            </button>
+          ))}
+        </div>
+        <PlaceSearch
+          label="Another city"
+          value={other}
+          onChange={(p) => {
+            setOther(p)
+            if (p?.lat != null) setParams({ city: p.name })
+          }}
+          placeholder="e.g. Sintra"
+        />
+      </div>
+
+      {!city && (
+        <div className="card">
+          <Empty emoji="🏙️" title="Pick a city">
+            Set cities on your days (Plan tab), or search for one above.
+          </Empty>
+        </div>
+      )}
+
+      {city && (
+        <div className="grid-2">
+          <div className="stack">
+            {center && <LazyMap markers={markers} center={center} zoom={13} fitKey={fitKey} className="tall" locate />}
+            {detail && (
+              <PoiDetail
+                poi={detail}
+                selected={!!findFav(detail.name, detail.wikidata)}
+                onToggle={() => toggleSight(detail)}
+                onClose={() => setDetail(undefined)}
+                addLabel="⭐ Add to favourites"
+                removeLabel="Remove from favourites"
+              />
+            )}
+            <div className="card stack">
+              <div className="chips">
+                <button className={`chip ${source === 'sights' ? 'on' : ''}`} onClick={() => setSource('sights')}>
+                  🏛️ Sights
+                </button>
+                <button className={`chip ${source === 'ai' ? 'on' : ''}`} onClick={() => setSource('ai')}>
+                  ✨ AI ideas
+                </button>
+                <button className={`chip ${source === 'own' ? 'on' : ''}`} onClick={() => setSource('own')}>
+                  ✏️ Add your own
+                </button>
+              </div>
+              {source === 'sights' && (
+                <SightList
+                  pois={sights.data}
+                  loading={sights.loading}
+                  error={sights.error ? (online ? 'The free sights services are busy — try again in a minute.' : 'You are offline — sights load when you are back online.') : undefined}
+                  noCenter={!center}
+                  isFav={(p) => !!findFav(p.name, p.wikidata)}
+                  onToggle={toggleSight}
+                  onOpen={setDetail}
+                  center={center}
+                />
+              )}
+              {source === 'ai' && <AiIdeas city={city} isFav={(i) => !!findFav(i.name)} onToggle={(i) => {
+                const existing = findFav(i.name)
+                if (existing) return removeFav(existing)
+                const cat = CATEGORY_META[i.category] ? i.category : 'attraction'
+                return addFav({ name: i.name, lat: i.lat, lon: i.lon, category: cat, visitMin: i.visitMin ?? categoryMeta(cat).visitMin, indoor: i.indoor, source: 'ai', notes: i.notes })
+              }} />}
+              {source === 'own' && <OwnIdea city={city} onAdd={addFav} />}
+            </div>
+          </div>
+
+          <div className="stack">
+            <div className="card stack">
+              <div className="row between wrap">
+                <h3>⭐ Favourites in {city}</h3>
+                <span className="small muted">{cityFavs.length}</span>
+              </div>
+              {dates.length > 0 ? (
+                <>
+                  <p className="small muted">
+                    You have {plural(dates.length, 'day')} here ({dates.map((d) => `day ${dayNo(d)}`).join(', ')}). “Plan my days” groups favourites by area, fits them to your
+                    pace and what's already planned, and builds a walking tour for each day. Days you pick yourself are kept.
+                  </p>
+                  <div className="row wrap">
+                    <button className="btn-primary" disabled={!cityFavs.length || busy || !plannable.length} onClick={planMyDays}>
+                      {busy ? 'Planning…' : '✨ Plan my days'}
+                    </button>
+                    <Link className="btn btn-ghost" to="../plan">
+                      See the plan →
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <div className="notice info">No day of the trip is in {city} yet. Set the city on a day (Plan tab) to spread favourites over it — until then they're backup ideas.</div>
+              )}
+              {cityFavs.length === 0 && <p className="small muted">Tap ⭐ on sights or ideas to collect them here.</p>}
+            </div>
+
+            {dates.map((d) => {
+              const list = cityFavs.filter((f) => f.date === d)
+              const cap = dayCapacity(trip, items, d)
+              const used = list.filter((f) => !f.itemId).reduce((s, f) => s + favMinutes(f), 0)
+              return (
+                <div key={d} className="card stack" style={{ gap: 6 }}>
+                  <div className="row between">
+                    <b>
+                      Day {dayNo(d)} · {formatDate(d)}
+                    </b>
+                    <span className={`small ${used > cap ? '' : 'muted'}`} style={used > cap ? { color: 'var(--danger)' } : undefined}>
+                      {d < today() ? 'past' : cap === 0 ? 'already full' : `${formatDuration(used * 60)} of ${formatDuration(cap * 60)} free`}
+                    </span>
+                  </div>
+                  <Progress value={used} max={cap || 1} over={used > cap} />
+                  {list.length === 0 && <span className="small muted">Nothing from favourites yet.</span>}
+                  {list.map((f) => (
+                    <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
+                  ))}
+                </div>
+              )
+            })}
+
+            {backups.length > 0 && (
+              <div className="card stack" style={{ gap: 6 }}>
+                <div className="row between">
+                  <b>🧺 Backup ideas</b>
+                  <span className="small muted">not on a day · shown on Today when plans change</span>
+                </div>
+                {backups.map((f) => (
+                  <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FavRow({ fav: f, dates, dayNo, onMove, onRemove }: { fav: Favorite; dates: string[]; dayNo: (d: string) => number; onMove: (d: string | undefined) => void; onRemove: () => void }) {
+  const meta = categoryMeta(f.category)
+  return (
+    <div className="row" style={{ alignItems: 'center' }}>
+      <span style={{ fontSize: '1.2rem' }}>{meta.emoji}</span>
+      <div className="grow">
+        <div className="small strong">{f.name}</div>
+        <div className="tiny muted">
+          ~{formatDuration(f.visitMin * 60)}
+          {isIndoor(f) && ' · indoor'}
+          {f.lat == null && ' · no location'}
+          {f.pinned && ' · 📌 your choice'}
+          {f.itemId && ' · added on the day'}
+          {f.notes && ` · ${f.notes}`}
+        </div>
+      </div>
+      <select className="btn-sm" style={{ width: 'auto', minHeight: 30, padding: '2px 6px' }} value={f.date && dates.includes(f.date) ? f.date : ''} onChange={(e) => onMove(e.target.value || undefined)} aria-label="Day">
+        <option value="">Backup</option>
+        {dates.map((d) => (
+          <option key={d} value={d}>
+            Day {dayNo(d)}
+          </option>
+        ))}
+      </select>
+      <button className="icon-btn" onClick={onRemove} aria-label="Remove">
+        ✕
+      </button>
+    </div>
+  )
+}
+
+function SightList(p: {
+  pois?: Poi[]
+  loading: boolean
+  error?: string
+  noCenter: boolean
+  center?: LatLon
+  isFav: (p: Poi) => boolean
+  onToggle: (p: Poi) => void
+  onOpen: (p: Poi) => void
+}) {
+  const [cat, setCat] = useState<string>()
+  if (p.noCenter) return <p className="small muted">This city has no coordinates yet — tap “Find” on the day's city (Plan tab) or search above.</p>
+  const list = (p.pois ?? []).filter((x) => !cat || x.category === cat)
+  const cats = [...new Set((p.pois ?? []).map((x) => x.category))]
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {cats.length > 1 && (
+        <div className="chips">
+          <button className={`chip ${!cat ? 'on' : ''}`} onClick={() => setCat(undefined)}>
+            All
+          </button>
+          {cats.map((c) => (
+            <button key={c} className={`chip ${cat === c ? 'on' : ''}`} onClick={() => setCat(c)}>
+              {categoryMeta(c).emoji} {categoryMeta(c).label}
+            </button>
+          ))}
+        </div>
+      )}
+      {p.loading && <p className="small muted">Loading sights…</p>}
+      {p.error && <div className="notice error">{p.error}</div>}
+      <div className="poi-list">
+        {list.map((x) => (
+          <div key={x.id} className={`poi ${p.isFav(x) ? 'on' : ''}`} onClick={() => p.onOpen(x)}>
+            <span style={{ fontSize: '1.3rem' }}>{categoryMeta(x.category).emoji}</span>
+            <div className="grow">
+              <div className="strong small">{x.name}</div>
+              <div className="tiny muted">
+                {categoryMeta(x.category).label}
+                {p.center && ` · ${distance(haversineM(p.center, x))} from centre`} · ~{x.visitMin} min
+              </div>
+            </div>
+            <button
+              className={`btn-sm ${p.isFav(x) ? 'btn-primary' : ''}`}
+              aria-label="Favourite"
+              onClick={(e) => {
+                e.stopPropagation()
+                p.onToggle(x)
+              }}
+            >
+              {p.isFav(x) ? '★' : '☆'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AiIdeas({ city, isFav, onToggle }: { city: string; isFav: (i: CityIdea) => boolean; onToggle: (i: CityIdea) => void }) {
+  const { trip, settings } = useTripCtx()
+  const key = `tm-cityideas:${trip.id}:${city.toLowerCase()}`
+  const [answer, setAnswer] = useState(() => localStorage.getItem(key) ?? '')
+  const parsed = useMemo(() => {
+    if (!answer.trim()) return {}
+    try {
+      return { ideas: parseCityIdeas(answer) }
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  }, [answer])
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <p className="small muted">Restaurants, experiences, day trips and kid-friendly places that map data misses. Copy the prompt into a free chatbot and paste its answer.</p>
+      <PromptBox prompt={cityIdeasPrompt(trip, settings, city)} />
+      <textarea
+        className="code"
+        style={{ minHeight: 80 }}
+        value={answer}
+        placeholder='{"ideas": [ … ]}'
+        onChange={(e) => {
+          setAnswer(e.target.value)
+          localStorage.setItem(key, e.target.value)
+        }}
+      />
+      {parsed.error && <div className="notice error">{parsed.error}</div>}
+      <div className="poi-list">
+        {parsed.ideas?.map((i) => (
+          <div key={i.name} className={`poi ${isFav(i) ? 'on' : ''}`} onClick={() => onToggle(i)}>
+            <span style={{ fontSize: '1.3rem' }}>{categoryMeta(i.category).emoji}</span>
+            <div className="grow">
+              <div className="strong small">{i.name}</div>
+              <div className="tiny muted">
+                {categoryMeta(i.category).label}
+                {i.visitMin && ` · ~${formatDuration(i.visitMin * 60)}`}
+                {i.indoor && ' · indoor'}
+                {i.notes && ` · ${i.notes}`}
+              </div>
+            </div>
+            <button className={`btn-sm ${isFav(i) ? 'btn-primary' : ''}`} aria-label="Favourite">
+              {isFav(i) ? '★' : '☆'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function OwnIdea({ city, onAdd }: { city: string; onAdd: (f: Omit<Favorite, 'id' | 'tripId' | 'city' | 'addedAt'>) => Promise<void> }) {
+  const [place, setPlace] = useState<Place>()
+  const [category, setCategory] = useState('attraction')
+  const [minutes, setMinutes] = useState(60)
+  const [indoor, setIndoor] = useState(false)
+  const [notes, setNotes] = useState('')
+  async function add() {
+    if (!place?.name) return
+    await onAdd({ name: place.name, lat: place.lat, lon: place.lon, category, visitMin: minutes, indoor, source: 'manual', notes: notes || undefined })
+    setPlace(undefined)
+    setNotes('')
+  }
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <PlaceSearch label="Place or idea" value={place} onChange={setPlace} near={city} placeholder="e.g. the bakery my friend recommended" />
+      <div className="form-grid">
+        <label>
+          Type
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {Object.entries(CATEGORY_META).map(([k, c]) => (
+              <option key={k} value={k}>
+                {c.emoji} {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Time there
+          <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+            {[15, 30, 45, 60, 90, 120, 180, 240, 420].map((m) => (
+              <option key={m} value={m}>
+                {formatDuration(m * 60)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inline" style={{ alignSelf: 'end' }}>
+          <input type="checkbox" checked={indoor} onChange={(e) => setIndoor(e.target.checked)} /> Indoor
+        </label>
+        <label className="full">
+          Notes
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </label>
+      </div>
+      <p className="tiny muted">Tap “Find” to attach a location so it can join a walking tour.</p>
+      <div>
+        <button className="btn-primary" disabled={!place?.name} onClick={add}>
+          ⭐ Add to favourites
+        </button>
+      </div>
+    </div>
+  )
+}

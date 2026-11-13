@@ -1,0 +1,439 @@
+// Zero-cost AI: the app writes a prompt, you paste it into any free chatbot (Claude.ai, Gemini, ChatGPT),
+// then paste the JSON answer back. Responses are validated before anything is saved.
+
+import { z } from 'zod'
+import { db, touchTrip } from '../db'
+import type { BudgetCategory, Day, Item, ItemKind, Settings, Trip } from '../types'
+import { BUDGET_CATEGORIES, CHECKLIST_CATEGORIES } from '../types'
+import { addDays, daysBetween, formatDate } from './dates'
+import { country } from './countries'
+import { uid } from './ids'
+import { CATEGORY_META } from './favorites'
+
+export const CHATBOTS = [
+  { name: 'Claude', url: 'https://claude.ai/new' },
+  { name: 'Gemini', url: 'https://gemini.google.com/app' },
+  { name: 'ChatGPT', url: 'https://chatgpt.com/' },
+]
+
+const KINDS = ['flight', 'train', 'bus', 'car', 'ferry', 'taxi', 'stay', 'activity', 'meal', 'walk', 'note'] as const
+
+const num = z.number().optional().catch(undefined)
+const str = z.string().optional().catch(undefined)
+
+/** Keeps the valid elements and drops broken ones (e.g. the last, cut-off element of a truncated answer). */
+function lenientArray<T extends z.ZodType>(schema: T) {
+  return z
+    .array(z.unknown())
+    .catch([])
+    .transform((arr) => arr.flatMap((x) => {
+      const r = schema.safeParse(x)
+      return r.success ? [r.data as z.output<T>] : []
+    }))
+}
+
+const AiItem = z.object({
+  kind: z.enum(KINDS).catch('activity'),
+  title: z.string(),
+  time: str,
+  endTime: str,
+  place: str,
+  lat: num,
+  lon: num,
+  from: str,
+  to: str,
+  nights: num,
+  estCost: num,
+  bookAhead: z.boolean().optional().catch(undefined),
+  notes: str,
+})
+type AiItem = z.infer<typeof AiItem>
+
+const AiDay = z.object({
+  day: z.number(),
+  city: str,
+  lat: num,
+  lon: num,
+  title: str,
+  highlights: z.array(z.string()).catch([]), // outline answers
+  items: lenientArray(AiItem), // detailed answers
+})
+type AiDay = z.infer<typeof AiDay>
+const ChecklistSuggestion = z.object({ title: z.string(), category: z.enum(CHECKLIST_CATEGORIES).catch('other') })
+
+const AiOption = z.object({
+  title: z.string(),
+  summary: z.string().catch(''),
+  route: z.array(z.string()).catch([]),
+  days: lenientArray(AiDay),
+  budget: z.record(z.string(), z.number()).catch({}),
+  checklist: lenientArray(ChecklistSuggestion),
+  tips: z.array(z.string()).catch([]),
+})
+export type AiOption = z.infer<typeof AiOption>
+
+const PlanResponse = z.object({ options: lenientArray(AiOption).refine((o) => o.some((x) => x.days.length), 'no complete option') })
+const DetailResponse = z.object({ days: lenientArray(AiDay), checklist: lenientArray(ChecklistSuggestion) })
+const DayResponse = z.object({ items: lenientArray(AiItem) })
+const BookingResponse = z.object({ items: lenientArray(AiItem.extend({ date: z.string() })) })
+
+/* ------------------------------- Prompts ---------------------------------- */
+
+function tripBrief(trip: Trip, settings: Settings) {
+  const nights = daysBetween(trip.startDate, trip.endDate)
+  const kids = trip.travellers.filter((t) => t.type === 'child')
+  const adults = trip.travellers.length - kids.length
+  const lines = [
+    `Destination(s): ${trip.countryCodes.map((c) => country(c)?.name ?? c).join(', ') || 'open to suggestions'}`,
+    trip.cities.length ? `Places I have in mind: ${trip.cities.join(', ')}` : '',
+    `Dates: ${trip.startDate} to ${trip.endDate} (${nights + 1} days, ${nights} nights)`,
+    `Travellers: ${adults} adult(s)${kids.length ? ` and ${kids.length} child(ren) aged ${kids.map((k) => k.age ?? '?').join(', ')}` : ''}`,
+    `Pace: ${trip.style}`,
+    `Budget level: ${trip.budgetLevel}`,
+    trip.interests.length ? `Interests: ${trip.interests.join(', ')}` : '',
+    settings.nationality ? `Nationality: ${country(settings.nationality)?.name ?? settings.nationality}` : '',
+    settings.homeAirport ? `Departing from: ${settings.homeAirport}` : '',
+    `Currency for costs: ${settings.homeCurrency}`,
+    trip.notes ? `Other wishes: ${trip.notes}` : '',
+  ]
+  return lines.filter(Boolean).join('\n')
+}
+
+const ITEM_SCHEMA = `{ "kind": one of ${KINDS.map((k) => `"${k}"`).join('|')},
+  "title": string, "time": "HH:MM" (optional), "endTime": "HH:MM" (optional),
+  "place": string (optional), "lat": number, "lon": number (coordinates of the place, when known),
+  "from": string, "to": string (transport only), "nights": number (stays only),
+  "estCost": number (total for the group, in the trip currency), "bookAhead": boolean, "notes": string }`
+
+const CHECKLIST_SCHEMA = `{ "title": string, "category": one of ${CHECKLIST_CATEGORIES.map((c) => `"${c}"`).join('|')} }`
+
+/** Step 1: three short outlines. Kept small on purpose — free chatbots cut off long replies. */
+export function outlinePrompt(trip: Trip, settings: Settings) {
+  return `You are an experienced travel planner. Suggest 3 different itinerary options for this trip, as short outlines.
+
+${tripBrief(trip, settings)}
+
+Guidelines:
+- Make the 3 options genuinely different (e.g. route, rhythm, focus).
+- Respect the pace and the children's ages.
+- Keep it short: per day only the city, a title and 2–4 highlights of a few words each.
+- Budget totals are for the whole group in ${settings.homeCurrency}, using categories: ${BUDGET_CATEGORIES.join(', ')}.
+
+Reply with ONLY a JSON code block, no other text, using exactly this shape:
+{
+  "options": [
+    {
+      "title": string,
+      "summary": string (2 sentences),
+      "route": [city names in order],
+      "days": [ { "day": 1, "city": string, "title": string, "highlights": [string, ...] } ],
+      "budget": { "flights": number, "transport": number, "stays": number, "food": number, "activities": number, "other": number },
+      "tips": [up to 3 strings]
+    }
+  ]
+}`
+}
+
+/** Step 2: the full plan for the chosen option — or, when continuing, only the days still missing. */
+export function detailPrompt(trip: Trip, settings: Settings, option: AiOption, days: number[], continuing: boolean) {
+  const outline = option.days
+    .filter((d) => days.includes(d.day))
+    .map((d) => `Day ${d.day} (${addDays(trip.startDate, d.day - 1)}) — ${d.city ?? ''}: ${d.title ?? ''}${d.highlights.length ? ` [${d.highlights.join('; ')}]` : ''}`)
+    .join('\n')
+  const range = days.length > 1 ? `days ${days[0]} to ${days[days.length - 1]}` : `day ${days[0]}`
+  const intro = continuing
+    ? `Continue the detailed plan for "${option.title}" with ${range} only, in exactly the same JSON format.`
+    : `Turn the itinerary option "${option.title}" into a detailed day-by-day plan.
+
+${tripBrief(trip, settings)}
+
+Route: ${option.route.join(' → ')}`
+  return `${intro}
+
+Outline:
+${outline}
+
+Guidelines:
+- Include transport between places (typical duration in notes), one "stay" item on each arrival day with "nights", and 2–5 activities or meals per day with times.
+- Give real coordinates (lat/lon) for each day's city and for places whenever you can.
+- Keep "notes" under 15 words.${continuing ? '' : `
+- Checklist: things to do before leaving that are specific to this plan (visas, vaccinations, bookings to make early…).`}
+- If the reply would be too long, stop after a complete day and close the JSON properly — I will ask for the rest.
+
+Reply with ONLY a JSON code block, no other text:
+{
+  "days": [ { "day": number, "city": string, "lat": number, "lon": number, "title": string, "items": [ITEM, ...] } ]${continuing ? '' : `,
+  "checklist": [ ${CHECKLIST_SCHEMA} ]`}
+}
+where ITEM is:
+${ITEM_SCHEMA}`
+}
+
+/** Things to do in one city, for the favourites board. */
+export function cityIdeasPrompt(trip: Trip, settings: Settings, city: string) {
+  return `Suggest 20 things to do in ${city} for this trip — a mix of sights, food, experiences, kid-friendly places (if children are coming) and 1–2 day trips.
+
+${tripBrief(trip, settings)}
+
+Keep "notes" under 15 words. Give real coordinates when the place is a fixed location.
+Reply with ONLY a JSON code block, no other text:
+{ "ideas": [ { "name": string, "category": one of ${Object.keys(CATEGORY_META).map((c) => `"${c}"`).join('|')},
+  "lat": number, "lon": number, "visitMin": number (typical time spent), "indoor": boolean, "estCost": number (group total, ${settings.homeCurrency}), "notes": string } ] }`
+}
+
+export function replanPrompt(trip: Trip, settings: Settings, day: Day, items: Item[], reason: string, fromTime: string) {
+  const list = items
+    .map((i) => `- ${i.startTime ?? '--:--'} [${i.kind}] ${i.title}${i.location?.name ? ` @ ${i.location.name}` : ''}${i.status === 'booked' ? ' (BOOKED – keep)' : ''}${i.status === 'done' ? ' (done)' : ''}`)
+    .join('\n')
+  return `I'm travelling and need to adjust today's plan.
+
+${tripBrief(trip, settings)}
+
+Today: ${formatDate(day.date, { weekday: 'long', day: 'numeric', month: 'long' })}${day.city ? ` in ${day.city}` : ''}. It's now ${fromTime}.
+What changed: ${reason}
+
+Current plan for today:
+${list || '(nothing planned)'}
+
+Suggest a revised plan for the rest of today (from ${fromTime}). Keep booked items at their times, drop or move what no longer fits, and add alternatives if useful.
+Reply with ONLY a JSON code block: { "items": [ITEM, ...] } where ITEM is:
+${ITEM_SCHEMA}`
+}
+
+export function bookingPrompt(trip: Trip, settings: Settings, text: string) {
+  return `Extract the travel bookings from the confirmation(s) below into structured items for my trip (${trip.startDate} to ${trip.endDate}).
+Use one item per flight leg / train / stay / rental / ticket. Put the booking reference, seat, terminal etc. in "notes" and the price in "estCost" (in ${settings.homeCurrency} if stated, otherwise the original amount and say the currency in notes).
+
+Reply with ONLY a JSON code block: { "items": [ITEM, ...] } where ITEM is:
+${ITEM_SCHEMA.replace('{ "kind"', '{ "date": "YYYY-MM-DD", "kind"').replace('"notes": string }', '"notes": string, "bookingRef": string, "provider": string }')}
+
+Confirmation(s):
+"""
+${text.trim()}
+"""`
+}
+
+/* ------------------------------- Parsing ---------------------------------- */
+
+/**
+ * Finds the JSON object in a chatbot reply. If the reply was cut off (free chatbots limit reply length),
+ * it is closed after the last complete element so everything before the cut can still be used.
+ */
+function extractJSON(text: string): { value: unknown; truncated: boolean } {
+  const fence = text.search(/```(?:json)?/)
+  const start = text.indexOf('{', fence >= 0 ? fence : 0)
+  if (start < 0) throw new Error('No JSON found in the pasted text.')
+  const body = text.slice(start)
+
+  const closers: string[] = []
+  let inString = false
+  let escaped = false
+  let cut = -1
+  let cutClosers: string[] = []
+  let complete = false
+  for (let i = 0; i < body.length && !complete; i++) {
+    const c = body[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (c === '\\') escaped = true
+      else if (c === '"') inString = false
+      continue
+    }
+    if (c === '"') inString = true
+    else if (c === '{' || c === '[') closers.push(c === '{' ? '}' : ']')
+    else if (c === '}' || c === ']') {
+      closers.pop()
+      cut = i + 1
+      cutClosers = [...closers]
+      complete = closers.length === 0
+    } else if (c === ',') {
+      // Everything before a comma at this level is a complete value.
+      cut = i
+      cutClosers = [...closers]
+    }
+  }
+  if (cut < 0) throw new Error('The answer stops before any complete part — try asking the chatbot again.')
+  const json = body.slice(0, cut) + cutClosers.reverse().join('')
+  try {
+    return { value: JSON.parse(json), truncated: !complete }
+  } catch (e) {
+    throw new Error(`The JSON could not be read (${(e as Error).message}). Ask the chatbot to "reply with valid JSON only".`)
+  }
+}
+
+function friendly<T>(schema: z.ZodType<T>, text: string): { data: T; truncated: boolean } {
+  const { value, truncated } = extractJSON(text)
+  const parsed = schema.safeParse(value)
+  if (!parsed.success) {
+    const first = parsed.error.issues[0]
+    throw new Error(
+      truncated
+        ? 'The answer was cut off before anything usable. Ask the chatbot to continue, or to keep it shorter.'
+        : `The answer doesn't have the expected shape (${first.path.join('.') || 'root'}: ${first.message}).`,
+    )
+  }
+  return { data: parsed.data, truncated }
+}
+
+export function parsePlan(text: string) {
+  const { data, truncated } = friendly(PlanResponse, text)
+  return { options: data.options.filter((o) => o.days.length), truncated }
+}
+const CityIdea = z.object({
+  name: z.string(),
+  category: z.string().catch('attraction'),
+  lat: num,
+  lon: num,
+  visitMin: num,
+  indoor: z.boolean().optional().catch(undefined),
+  estCost: num,
+  notes: str,
+})
+export type CityIdea = z.infer<typeof CityIdea>
+export const parseCityIdeas = (text: string) => friendly(z.object({ ideas: lenientArray(CityIdea) }), text).data.ideas
+
+export function parseDetail(text: string) {
+  const { data, truncated } = friendly(DetailResponse, text)
+  // In a cut-off reply the last day may be half-written: drop it so the follow-up asks for it again.
+  const days = truncated ? data.days.slice(0, -1) : data.days
+  return { ...data, days, truncated }
+}
+export const parseDayItems = (text: string) => friendly(DayResponse, text).data.items
+export const parseBookings = (text: string) =>
+  friendly(BookingResponse, text).data.items as (AiItem & { date: string; bookingRef?: string; provider?: string })[]
+
+/** Combines the outline with detailed days from one or more replies; days without detail keep their highlights. */
+export function mergeDetail(option: AiOption, replies: { days: AiDay[]; checklist: AiOption['checklist'] }[]): AiOption {
+  const detailed = new Map<number, AiDay>()
+  for (const r of replies) for (const d of r.days) if (d.items.length) detailed.set(d.day, d)
+  const seen = new Set<string>()
+  const checklist = [...option.checklist, ...replies.flatMap((r) => r.checklist)].filter((c) => !seen.has(c.title) && !!seen.add(c.title))
+  const days = option.days.map((d) => {
+    const x = detailed.get(d.day)
+    return x ? { ...x, city: x.city ?? d.city, title: x.title ?? d.title, highlights: d.highlights } : d
+  })
+  // Extra days the detailed answer added beyond the outline.
+  for (const [n, d] of detailed) if (!option.days.some((o) => o.day === n)) days.push(d)
+  return { ...option, days: days.sort((a, b) => a.day - b.day), checklist }
+}
+
+/* -------------------------------- Apply ----------------------------------- */
+
+function toItem(a: AiItem & { bookingRef?: string; provider?: string }, tripId: string, date: string, order: number, currency: string, status: Item['status'] = 'planned'): Item {
+  const kind = a.kind as ItemKind
+  const isTransport = ['flight', 'train', 'bus', 'car', 'ferry', 'taxi'].includes(kind)
+  return {
+    id: uid(),
+    tripId,
+    date,
+    kind,
+    title: a.title,
+    startTime: /^\d{1,2}:\d{2}$/.test(a.time ?? '') ? a.time!.padStart(5, '0') : undefined,
+    endTime: /^\d{1,2}:\d{2}$/.test(a.endTime ?? '') ? a.endTime!.padStart(5, '0') : undefined,
+    from: isTransport && a.from ? { name: a.from } : undefined,
+    to: isTransport && a.to ? { name: a.to, lat: a.lat, lon: a.lon } : undefined,
+    location: !isTransport && (a.place || a.lat != null) ? { name: a.place ?? a.title, lat: a.lat, lon: a.lon } : undefined,
+    nights: kind === 'stay' ? a.nights ?? 1 : undefined,
+    cost: a.estCost ? { amount: a.estCost, currency } : undefined,
+    bookingRef: a.bookingRef,
+    provider: a.provider,
+    status,
+    notes: [a.notes, a.bookAhead ? 'Book ahead.' : ''].filter(Boolean).join(' ') || undefined,
+    order,
+  }
+}
+
+export async function applyPlan(trip: Trip, option: AiOption, currency: string, replace: boolean) {
+  const maxDay = Math.max(...option.days.map((d) => d.day), 1)
+  const endDate = addDays(trip.startDate, maxDay - 1)
+  await db.transaction('rw', [db.trips, db.days, db.items, db.checklist], async () => {
+    if (replace) {
+      await db.items.where('tripId').equals(trip.id).delete()
+      await db.days.where('tripId').equals(trip.id).delete()
+    }
+    const budget: Partial<Record<BudgetCategory, number>> = { ...trip.budget }
+    for (const c of BUDGET_CATEGORIES) if (typeof option.budget[c] === 'number') budget[c] = option.budget[c]
+    await db.trips.update(trip.id, {
+      endDate: endDate > trip.endDate ? endDate : trip.endDate,
+      cities: option.route.length ? option.route : trip.cities,
+      budget,
+      notes: [trip.notes, option.tips.length ? `Tips from "${option.title}":\n• ${option.tips.join('\n• ')}` : ''].filter(Boolean).join('\n\n') || undefined,
+    })
+    for (const d of option.days) {
+      const date = addDays(trip.startDate, d.day - 1)
+      await db.days.put({ id: `${trip.id}:${date}`, tripId: trip.id, date, city: d.city, lat: d.lat, lon: d.lon, title: d.title })
+      const items = d.items.length ? d.items.map((a, i) => toItem(a, trip.id, date, i, currency)) : d.highlights.map((h, i) => base(trip.id, date, 'activity', h, i, 'idea'))
+      await db.items.bulkAdd(items)
+    }
+    // Days the answer skipped (or gave no coordinates for) carry on from the previous day's city.
+    const last = addDays(trip.startDate, Math.max(maxDay, daysBetween(trip.startDate, trip.endDate) + 1) - 1)
+    let prev: Day | undefined
+    for (let date = trip.startDate; date <= last; date = addDays(date, 1)) {
+      const cur = await db.days.get(`${trip.id}:${date}`)
+      if (prev?.city && (!cur?.city || (cur.city === prev.city && cur.lat == null))) {
+        await db.days.put({ ...(cur ?? { id: `${trip.id}:${date}`, tripId: trip.id, date }), city: cur?.city ?? prev.city, lat: prev.lat, lon: prev.lon })
+      }
+      prev = (await db.days.get(`${trip.id}:${date}`)) ?? prev
+    }
+    // Keyed by title so applying (or re-applying) a plan never duplicates the chatbot's suggestions.
+    const have = new Set((await db.checklist.where('tripId').equals(trip.id).toArray()).map((c) => c.ruleId))
+    let order = 1000
+    await db.checklist.bulkPut(
+      option.checklist
+        .map((c) => ({ ...c, ruleId: `ai:${c.title.toLowerCase().trim()}` }))
+        .filter((c) => !have.has(c.ruleId))
+        .map((c) => ({ id: uid(), tripId: trip.id, title: c.title, category: c.category, ruleId: c.ruleId, done: false, order: order++ })),
+    )
+  })
+  await touchTrip(trip.id)
+}
+
+export async function applyDayReplan(trip: Trip, date: string, keep: Item[], items: AiItem[], currency: string) {
+  await db.transaction('rw', db.items, async () => {
+    const existing = await db.items.where({ tripId: trip.id, date }).toArray()
+    const keepIds = new Set(keep.map((k) => k.id))
+    await db.items.bulkDelete(existing.filter((e) => !keepIds.has(e.id)).map((e) => e.id))
+    await db.items.bulkAdd(items.map((a, i) => toItem(a, trip.id, date, keep.length + i, currency, 'planned')))
+  })
+  await touchTrip(trip.id)
+}
+
+export async function applyBookings(trip: Trip, items: ReturnType<typeof parseBookings>, currency: string) {
+  await db.items.bulkAdd(items.map((a, i) => toItem(a, trip.id, a.date, 100 + i, currency, 'booked')))
+  await touchTrip(trip.id)
+}
+
+/** No-AI fallback: spread days across the chosen cities with travel days between them. */
+export async function applyTemplate(trip: Trip) {
+  const cities = trip.cities.length ? trip.cities : trip.countryCodes.map((c) => country(c)?.capital.name ?? c)
+  const days = daysBetween(trip.startDate, trip.endDate) + 1
+  const per = Math.max(1, Math.floor(days / cities.length))
+  const rows: Item[] = []
+  const dayRows: Day[] = []
+  for (let d = 0; d < days; d++) {
+    const ci = Math.min(cities.length - 1, Math.floor(d / per))
+    const city = cities[ci]
+    const date = addDays(trip.startDate, d)
+    const cap = trip.countryCodes.map((c) => country(c)).find((c) => c?.capital.name === city)?.capital
+    dayRows.push({ id: `${trip.id}:${date}`, tripId: trip.id, date, city, lat: cap?.lat, lon: cap?.lon })
+    const firstDayInCity = d === 0 || Math.min(cities.length - 1, Math.floor((d - 1) / per)) !== ci
+    let o = 0
+    if (d === 0) rows.push(base(trip.id, date, 'flight', `Flight to ${city}`, o++, 'idea'))
+    else if (firstDayInCity) rows.push(base(trip.id, date, 'train', `${cities[ci - 1]} → ${city}`, o++, 'idea'))
+    if (firstDayInCity) {
+      const nights = Math.min(per, days - 1 - d) || 1
+      rows.push({ ...base(trip.id, date, 'stay', `Stay in ${city}`, o++, 'idea'), nights })
+    }
+    if (d === days - 1) rows.push(base(trip.id, date, 'flight', `Flight home`, o++, 'idea'))
+    else rows.push(base(trip.id, date, 'activity', `Explore ${city}`, o++, 'idea'))
+  }
+  await db.transaction('rw', [db.days, db.items], async () => {
+    await db.days.bulkPut(dayRows)
+    await db.items.bulkAdd(rows)
+  })
+  await touchTrip(trip.id)
+}
+
+function base(tripId: string, date: string, kind: ItemKind, title: string, order: number, status: Item['status']): Item {
+  return { id: uid(), tripId, date, kind, title, status, order }
+}

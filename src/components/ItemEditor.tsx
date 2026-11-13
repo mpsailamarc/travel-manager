@@ -1,0 +1,223 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { db, touchTrip } from '../db'
+import type { Item, ItemKind, ItemStatus, Trip } from '../types'
+import { dateRange, formatDate } from '../lib/dates'
+import { CURRENCIES } from '../lib/countries'
+import { uid } from '../lib/ids'
+import { KIND_META, STATUS_LABEL, isTransport } from './kinds'
+import { Modal, toast } from './ui'
+import { PlaceSearch } from './PlaceSearch'
+import { useSettings } from '../lib/hooks'
+
+interface Props {
+  trip: Trip
+  item: Partial<Item> & { date: string }
+  city?: string
+  onClose: () => void
+}
+
+export function ItemEditor({ trip, item, city, onClose }: Props) {
+  const settings = useSettings()
+  const navigate = useNavigate()
+  const isNew = !item.id
+  const [it, setIt] = useState<Partial<Item> & { date: string }>({ kind: 'activity', status: 'planned', ...item })
+  const set = <K extends keyof Item>(k: K, v: Item[K] | undefined) => setIt((s) => ({ ...s, [k]: v }))
+  const kind = (it.kind ?? 'activity') as ItemKind
+  const dates = dateRange(trip.startDate, trip.endDate)
+
+  async function save() {
+    if (!it.title?.trim()) {
+      toast('Give it a title first')
+      return
+    }
+    let order = it.order
+    if (order == null) {
+      const sameDay = await db.items.where({ tripId: trip.id, date: it.date }).toArray()
+      order = sameDay.reduce((m, x) => Math.max(m, x.order), -1) + 1
+    }
+    const full: Item = {
+      id: it.id ?? uid(),
+      tripId: trip.id,
+      date: it.date,
+      kind,
+      title: it.title.trim(),
+      status: (it.status ?? 'planned') as ItemStatus,
+      order,
+      startTime: it.startTime || undefined,
+      endTime: it.endTime || undefined,
+      from: isTransport(kind) ? it.from : undefined,
+      to: isTransport(kind) ? it.to : undefined,
+      location: isTransport(kind) ? undefined : it.location,
+      nights: kind === 'stay' ? it.nights ?? 1 : undefined,
+      bookingRef: it.bookingRef || undefined,
+      provider: it.provider || undefined,
+      url: it.url || undefined,
+      cost: it.cost?.amount ? it.cost : undefined,
+      notes: it.notes || undefined,
+      walk: it.walk,
+    }
+    await db.items.put(full)
+    await touchTrip(trip.id)
+    toast(isNew ? 'Added' : 'Saved')
+    onClose()
+  }
+
+  async function remove() {
+    if (!it.id || !confirm(`Delete "${it.title}"?`)) return
+    await db.items.delete(it.id)
+    // A favourite added on the day goes back to the backup list.
+    const fav = await db.favorites.where('tripId').equals(trip.id).filter((f) => f.itemId === it.id).first()
+    if (fav) await db.favorites.update(fav.id, { date: undefined, pinned: false, itemId: undefined })
+    await touchTrip(trip.id)
+    onClose()
+  }
+
+  return (
+    <Modal title={isNew ? 'Add to the plan' : 'Edit'} onClose={onClose}>
+      <div className="stack">
+        <div className="chips">
+          {(Object.keys(KIND_META) as ItemKind[]).map((k) => (
+            <button key={k} type="button" className={`chip ${kind === k ? 'on' : ''}`} onClick={() => set('kind', k)}>
+              {KIND_META[k].emoji} {KIND_META[k].label}
+            </button>
+          ))}
+        </div>
+
+        <label>
+          Title
+          <input autoFocus={isNew} value={it.title ?? ''} onChange={(e) => set('title', e.target.value)} placeholder={placeholderFor(kind)} />
+        </label>
+
+        <div className="form-grid">
+          <label>
+            Day
+            <select value={it.date} onChange={(e) => set('date', e.target.value)}>
+              {dates.map((d, i) => (
+                <option key={d} value={d}>
+                  Day {i + 1} · {formatDate(d)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {isTransport(kind) ? 'Departs' : kind === 'stay' ? 'Check-in' : 'Starts'}
+            <input type="time" value={it.startTime ?? ''} onChange={(e) => set('startTime', e.target.value)} />
+          </label>
+          <label>
+            {isTransport(kind) ? 'Arrives' : 'Ends'}
+            <input type="time" value={it.endTime ?? ''} onChange={(e) => set('endTime', e.target.value)} />
+          </label>
+          <label>
+            Status
+            <select value={it.status} onChange={(e) => set('status', e.target.value as ItemStatus)}>
+              {(Object.keys(STATUS_LABEL) as ItemStatus[]).map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABEL[s]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {isTransport(kind) ? (
+          <div className="form-grid">
+            <PlaceSearch label="From" value={it.from} onChange={(p) => set('from', p)} placeholder="Station, airport…" />
+            <PlaceSearch label="To" value={it.to} onChange={(p) => set('to', p)} placeholder="Station, airport…" />
+          </div>
+        ) : (
+          kind !== 'note' && (
+            <PlaceSearch label="Where" value={it.location} onChange={(p) => set('location', p)} placeholder="Name or address" near={city} />
+          )
+        )}
+
+        <div className="form-grid">
+          {kind === 'stay' && (
+            <label>
+              Nights
+              <input type="number" min={1} value={it.nights ?? 1} onChange={(e) => set('nights', Number(e.target.value))} />
+            </label>
+          )}
+          {kind !== 'note' && (
+            <>
+              <label>
+                Booking ref
+                <input value={it.bookingRef ?? ''} onChange={(e) => set('bookingRef', e.target.value)} />
+              </label>
+              <label>
+                Cost
+                <div className="row">
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={it.cost?.amount ?? ''}
+                    onChange={(e) => set('cost', { amount: Number(e.target.value), currency: it.cost?.currency ?? settings.homeCurrency })}
+                  />
+                  <select
+                    style={{ width: 90 }}
+                    value={it.cost?.currency ?? settings.homeCurrency}
+                    onChange={(e) => set('cost', { amount: it.cost?.amount ?? 0, currency: e.target.value })}
+                  >
+                    {CURRENCIES.map((c) => (
+                      <option key={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              </label>
+            </>
+          )}
+          <label className="full">
+            Link
+            <input type="url" value={it.url ?? ''} onChange={(e) => set('url', e.target.value)} placeholder="https://…" />
+          </label>
+          <label className="full">
+            Notes
+            <textarea style={{ minHeight: 70 }} value={it.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
+          </label>
+        </div>
+
+        {kind === 'walk' && it.id && (
+          <button type="button" onClick={() => navigate(`/trip/${trip.id}/walk?item=${it.id}`)}>
+            🗺️ Open in the walk builder
+          </button>
+        )}
+
+        <div className="row between">
+          {!isNew ? (
+            <button type="button" className="btn-danger btn-ghost" onClick={remove}>
+              Delete
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="row">
+            <button type="button" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" onClick={save}>
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function placeholderFor(kind: ItemKind) {
+  switch (kind) {
+    case 'flight':
+      return 'e.g. Flight to Rome (AZ 123)'
+    case 'train':
+      return 'e.g. Train Florence → Venice'
+    case 'stay':
+      return 'e.g. Hotel near the Duomo'
+    case 'meal':
+      return 'e.g. Lunch at the market'
+    case 'walk':
+      return 'e.g. Old town walk'
+    default:
+      return 'e.g. Visit the cathedral'
+  }
+}

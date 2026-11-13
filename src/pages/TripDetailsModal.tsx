@@ -1,0 +1,46 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { db, deleteTrip } from '../db'
+import type { Trip } from '../types'
+import { Modal, toast } from '../components/ui'
+import { TripFields } from './TripFields'
+
+export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+  const [draft, setDraft] = useState<Trip>(trip)
+  const navigate = useNavigate()
+
+  async function save() {
+    if (draft.endDate < draft.startDate) {
+      toast('The end date is before the start date')
+      return
+    }
+    await db.trips.put({ ...draft, updatedAt: Date.now() })
+    toast('Trip saved')
+    onClose()
+  }
+
+  async function remove() {
+    if (!confirm(`Delete "${trip.name}" and everything in it (plan, checklist, expenses, documents)? This can't be undone.`)) return
+    await deleteTrip(trip.id)
+    navigate('/')
+  }
+
+  return (
+    <Modal title="Trip details" onClose={onClose} wide>
+      <div className="stack">
+        <TripFields value={draft} onChange={setDraft} />
+        <div className="row between">
+          <button className="btn-ghost btn-danger" onClick={remove}>
+            Delete trip
+          </button>
+          <div className="row">
+            <button onClick={onClose}>Cancel</button>
+            <button className="btn-primary" onClick={save}>
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
