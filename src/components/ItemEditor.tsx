@@ -14,10 +14,31 @@ import { PlaceInfo } from './PlaceInfo'
 import { localWiki } from '../lib/apis'
 import { planRipple } from '../lib/ripple'
 import { journeyNote } from '../lib/dayview'
-import { itemZones, offsetMin, transportSpan, tzCity, tzLabel } from '../lib/tz'
+import { itemZones, offsetMin, transportSpan, tzAt, tzCity, tzLabel, zonedToUtc } from '../lib/tz'
+import { CITIES } from '../lib/cities'
 import { useSettings } from '../lib/hooks'
 
-const TIME_ZONES: string[] = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? []
+
+/** Zone choices: "Automatic" (what the places say) or any zone a well-known city lives in, sorted west to east. */
+function ZoneSelect({ label, auto, value, date, onChange }: { label: string; auto?: string; value?: string; date: string; onChange: (z?: string) => void }) {
+  const at = zonedToUtc(date, '12:00', 'UTC')
+  const zones = [...new Set([...CITIES.map((c) => tzAt(c.lat, c.lon)!), ...(value ? [value] : []), ...(auto ? [auto] : [])])]
+    .map((z) => ({ z, off: offsetMin(z, at) }))
+    .sort((a, b) => a.off - b.off || a.z.localeCompare(b.z))
+  return (
+    <label>
+      {label}
+      <select value={value ?? ''} onChange={(e) => onChange(e.target.value || undefined)}>
+        <option value="">Automatic{auto ? ` · ${tzLabel(auto, at)}` : ''}</option>
+        {zones.map(({ z }) => (
+          <option key={z} value={z}>
+            {tzLabel(z, at)}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
 
 /** "3 h behind" / "2 h ahead of": how far one zone is from another at that moment. */
 function tzOffsetDiff(a: string, b: string, utcMs: number) {
@@ -177,29 +198,10 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
           </p>
         )}
         {isTransport(kind) && (
-          <details className="card tight">
-            <summary className="small strong" style={{ cursor: 'pointer' }}>
-              🕒 Time zones{zones.from && zones.to && zones.from !== zones.to ? ` · ${tzLabel(zones.from)} → ${tzLabel(zones.to)}` : ''}
-            </summary>
-            <div className="form-grid" style={{ marginTop: 8 }}>
-              <label>
-                Departure zone
-                <input list="tz-list" value={it.fromTz ?? ''} placeholder={zones.auto.from ? `Auto: ${tzLabel(zones.auto.from)}` : 'Auto'} onChange={(e) => set('fromTz', e.target.value || undefined)} />
-              </label>
-              <label>
-                Arrival zone
-                <input list="tz-list" value={it.toTz ?? ''} placeholder={zones.auto.to ? `Auto: ${tzLabel(zones.auto.to)}` : 'Auto'} onChange={(e) => set('toTz', e.target.value || undefined)} />
-              </label>
-            </div>
-            <p className="tiny muted" style={{ marginTop: 6 }}>
-              Zones are worked out from the places and the day's city. Type a city or region such as “Asia/Tokyo” only to override them. Leave empty for automatic.
-            </p>
-            <datalist id="tz-list">
-              {TIME_ZONES.map((z) => (
-                <option key={z} value={z} />
-              ))}
-            </datalist>
-          </details>
+          <div className="form-grid">
+            <ZoneSelect label="Departure time zone" auto={zones.auto.from} value={it.fromTz} date={it.date} onChange={(z) => set('fromTz', z)} />
+            <ZoneSelect label="Arrival time zone" auto={zones.auto.to} value={it.toTz} date={it.date} onChange={(z) => set('toTz', z)} />
+          </div>
         )}
 
         {(ripple.moves.length > 0 || ripple.blockedBy) && (

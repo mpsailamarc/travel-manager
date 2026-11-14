@@ -6,6 +6,8 @@ import tzlookup from 'tz-lookup'
 import type { Day, HHMM, Item, ISODate, Trip } from '../types'
 import { addDays, hhmmToMin } from './dates'
 import { country } from './countries'
+import { cityIn } from './cities'
+import type { Place } from '../types'
 
 export function tzAt(lat?: number, lon?: number): string | undefined {
   if (lat == null || lon == null) return undefined
@@ -14,6 +16,13 @@ export function tzAt(lat?: number, lon?: number): string | undefined {
   } catch {
     return undefined
   }
+}
+
+/** A place's zone: from its coordinates, else from a well-known city or airport code in its name ("Sydney Airport"). */
+export function tzOfPlace(p?: Pick<Place, 'name' | 'lat' | 'lon'>): string | undefined {
+  if (!p) return undefined
+  const c = p.lat == null ? cityIn(p.name) : undefined
+  return tzAt(p.lat, p.lon) ?? tzAt(c?.lat, c?.lon)
 }
 
 const formats = new Map<string, Intl.DateTimeFormat>()
@@ -92,10 +101,10 @@ export interface ItemZones {
 export function itemZones(it: Pick<Item, 'kind' | 'date' | 'from' | 'to' | 'fromTz' | 'toTz'>, ctx: ZoneCtx): ItemZones {
   const here = zoneOfDate(it.date, ctx)
   if (!isTransportKind(it.kind)) return { from: here, to: here, auto: { from: here, to: here } }
-  const autoTo = tzAt(it.to?.lat, it.to?.lon) ?? here
+  const autoTo = tzOfPlace(it.to) ?? here
   const prev = [...ctx.days].filter((d) => d.date < it.date && dayZone(d)).sort((a, b) => b.date.localeCompare(a.date))[0]
   const start = ctx.trip.startPlace
-  const autoFrom = tzAt(it.from?.lat, it.from?.lon) ?? (prev ? dayZone(prev) : it.date <= ctx.trip.startDate ? tzAt(start?.lat, start?.lon) : undefined) ?? autoTo
+  const autoFrom = tzOfPlace(it.from) ?? (prev ? dayZone(prev) : it.date <= ctx.trip.startDate ? tzAt(start?.lat, start?.lon) : undefined) ?? autoTo
   return { from: it.fromTz ?? autoFrom, to: it.toTz ?? autoTo, auto: { from: autoFrom, to: autoTo } }
 }
 
