@@ -16,6 +16,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   back just enough, keeping their durations. Booked items are never moved.
 - **Self-drive vs car rental**: driving yourselves is its own type (🚙, nothing to book); only renting, picking up or returning a car (🚗) gets a
   "Book:" entry. Existing "car" items are sorted by their title.
+- **Road routes on the Plan map**: legs you drive (arriving on a day within your car period) follow the real roads, with distance and driving time
+  under the map; flights and other legs stay dashed straight lines. Routes: FOSSGIS OSRM (free), saved for offline.
 - **Plan**: day-by-day itinerary with a map. Add or edit flights, trains, buses, stays, activities, meals, walks and notes. You can also print it.
 - **Checklist**: generated from your destinations, nationality, travellers and itinerary. It covers passports, visas/ETAs/ESTA, insurance, EHIC,
   vaccines, unbooked transport, nights with no accommodation, online check-in, cash, eSIM, plug adapters, kids' items and packing.
@@ -84,7 +86,7 @@ Open each day (and each walk map) once while online so maps and weather are cach
 |---|---|---|
 | Map tiles | OpenFreeMap (OpenStreetMap data) | attribution shown on the map |
 | Sights | Overpass API (OSM) + Wikipedia geosearch | queried in parallel, cached 14 days |
-| Walking routes | FOSSGIS OSRM (`routing.openstreetmap.de`) | falls back to a straight-line estimate |
+| Walking and driving routes | FOSSGIS OSRM (`routing.openstreetmap.de`) | falls back to a straight line |
 | Place search | Nominatim | explicit "Find" button only (no autocomplete, per its policy) |
 | Descriptions & photos | Wikipedia / Wikidata | CC BY-SA |
 | Weather | Open-Meteo | free for non-commercial use |

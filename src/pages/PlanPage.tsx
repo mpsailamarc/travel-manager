@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { db } from '../db'
 import type { Day, Item, Place } from '../types'
-import { dateRange, formatDate, today } from '../lib/dates'
-import { money } from '../lib/format'
-import { locatePlace } from '../lib/apis'
+import { dateRange, formatDate, formatDuration, today } from '../lib/dates'
+import { distance, money } from '../lib/format'
+import { drivingRoute, locatePlace } from '../lib/apis'
 import { ItemRow } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
 import { Empty, Modal } from '../components/ui'
 import { PlaceSearch } from '../components/PlaceSearch'
 import LazyMap, { type MapMarker } from '../components/LazyMap'
-import { useMapSize, useMediaQuery } from '../lib/hooks'
+import { useAsync, useMapSize, useMediaQuery } from '../lib/hooks'
 import { useTripCtx } from './TripLayout'
 
 export default function PlanPage() {
@@ -37,7 +37,7 @@ export default function PlanPage() {
     }
   }, [trip.id, trip.startPlace?.name, trip.startPlace?.lat, trip.endPlace?.name, trip.endPlace?.lat])
 
-  const { markers, line } = useMemo(() => {
+  const { markers } = useMemo(() => {
     const markers: MapMarker[] = []
     const line: [number, number][] = []
     dates.forEach((date, i) => {
@@ -73,6 +73,43 @@ export default function PlanPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace])
 
+  // The trip as a chain of places: start → each city (when it changes) → return. A leg is "by car" when you arrive on a day
+  // within the period you have a car (first to last car or drive item); those legs follow the roads, the rest stay straight.
+  const carDates = items.filter((i) => (i.kind === 'car' || i.kind === 'drive') && i.status !== 'skipped').map((i) => i.date).sort()
+  const carFrom = carDates[0]
+  const carTo = carDates[carDates.length - 1]
+  const stops = useMemo(() => {
+    const out: { name: string; lat: number; lon: number; arrive: string }[] = []
+    const push = (name: string, lat: number | undefined, lon: number | undefined, arrive: string) => {
+      if (lat == null || lon == null) return
+      const last = out[out.length - 1]
+      if (!last || last.lat !== lat || last.lon !== lon) out.push({ name, lat, lon, arrive })
+    }
+    push(trip.startPlace?.name ?? '', trip.startPlace?.lat, trip.startPlace?.lon, trip.startDate)
+    for (const date of dateRange(trip.startDate, trip.endDate)) {
+      const d = days.find((x) => x.date === date)
+      push(d?.city ?? 'Stop', d?.lat, d?.lon, date)
+    }
+    const endP = trip.endPlace?.name ? trip.endPlace : trip.startPlace
+    push(endP?.name ?? '', endP?.lat, endP?.lon, trip.endDate)
+    return out
+  }, [days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace])
+  const legs = stops.slice(1).map((to, i) => ({ from: stops[i], to, byCar: !!carFrom && to.arrive >= carFrom && to.arrive <= carTo }))
+  const carLegKey = legs.filter((l) => l.byCar).map((l) => `${l.from.lat},${l.from.lon}>${l.to.lat},${l.to.lon}`).join('|')
+  const roads = useAsync(
+    () => Promise.all(legs.filter((l) => l.byCar).map((l) => drivingRoute(l.from, l.to).catch(() => undefined))),
+    [carLegKey],
+  )
+  let carIdx = 0
+  const drawn = legs.map((l) => {
+    const route = l.byCar ? roads.data?.[carIdx++] : undefined
+    return { ...l, route }
+  })
+  const segments = drawn.map((l) => ({
+    coords: l.route ? l.route.geometry : ([[l.from.lon, l.from.lat], [l.to.lon, l.to.lat]] as [number, number][]),
+    dashed: !l.route,
+  }))
+
   const estimated = items.reduce((s, i) => s + (i.cost?.amount ?? 0), 0)
   const currency = items.find((i) => i.cost)?.cost?.currency
 
@@ -89,13 +126,37 @@ export default function PlanPage() {
         </div>
       </div>
       {mapSize !== 'hidden' && (
-        <LazyMap key={mapSize} markers={markers} line={line} dashed fitKey={`${markers.length}-${trip.startPlace?.lat}-${trip.endPlace?.lat}`} className={mapSize === 'large' ? 'tall' : 'short'} />
+        <>
+          <LazyMap
+            key={mapSize}
+            markers={markers}
+            segments={segments}
+            fitKey={`${markers.length}-${segments.length}-${roads.data?.filter(Boolean).length ?? 0}-${trip.startPlace?.lat}-${trip.endPlace?.lat}`}
+            className={mapSize === 'large' ? 'tall' : 'short'}
+          />
+          {drawn.some((l) => l.byCar) && (
+            <div className="stack" style={{ gap: 2 }}>
+              {drawn
+                .filter((l) => l.byCar)
+                .map((l, i) => (
+                  <div key={i} className="small">
+                    🚗 {l.from.name || 'Start'} → {l.to.name || 'End'}
+                    {l.route ? ` · ${distance(l.route.distanceM)} · ${formatDuration(l.route.durationS)} driving` : roads.loading ? ' · finding the road…' : ' · straight line (no road route available)'}
+                  </div>
+                ))}
+            </div>
+          )}
+          <p className="tiny muted">
+            {trip.startPlace?.lat != null && (
+              <>
+                🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} ·{' '}
+              </>
+            )}
+            Numbers = the first day you are in each place · solid line = by car (road route), dashed = flights and other legs · grey dots = activities
+            {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
+          </p>
+        </>
       )}
-      {mapSize !== 'hidden' && <p className="tiny muted">
-        {trip.startPlace?.lat != null && <>🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} · </>}
-        Numbers = the first day you are in each place · small grey dots = individual activities
-        {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
-      </p>}
     </div>
   )
 

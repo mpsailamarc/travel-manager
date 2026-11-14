@@ -23,6 +23,8 @@ interface Props {
   markers: MapMarker[]
   line?: [number, number][]
   dashed?: boolean
+  /** Several pieces with their own style: road routes solid, flights and other straight legs dashed. */
+  segments?: { coords: [number, number][]; dashed: boolean }[]
   className?: string
   /** Change this to re-fit the view to the markers. */
   fitKey?: string
@@ -32,12 +34,14 @@ interface Props {
   locate?: boolean
 }
 
-export default function MapView({ markers, line, dashed, className = '', fitKey, center, zoom = 13, onMoveEnd, locate }: Props) {
+export default function MapView({ markers, line, dashed, segments, className = '', fitKey, center, zoom = 13, onMoveEnd, locate }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const markerRefs = useRef<maplibregl.Marker[]>([])
   const ready = useRef(false)
   const pendingLine = useRef<Props['line']>(undefined)
+  const segRef = useRef(segments)
+  segRef.current = segments
   const moveCb = useRef(onMoveEnd)
   moveCb.current = onMoveEnd
 
@@ -63,6 +67,16 @@ export default function MapView({ markers, line, dashed, className = '', fitKey,
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#0f766e', 'line-width': 5, 'line-opacity': 0.85, ...(dashed ? { 'line-dasharray': [1.5, 1.5] } : {}) },
       })
+      for (const dash of [true, false]) {
+        m.addSource(dash ? 'seg-dashed' : 'seg-solid', { type: 'geojson', data: segData(segRef.current, dash) })
+        m.addLayer({
+          id: dash ? 'seg-dashed' : 'seg-solid',
+          type: 'line',
+          source: dash ? 'seg-dashed' : 'seg-solid',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#0f766e', 'line-width': dash ? 4 : 5, 'line-opacity': 0.85, ...(dash ? { 'line-dasharray': [1.5, 1.5] } : {}) },
+        })
+      }
     })
     m.on('moveend', () => {
       const c = m.getCenter()
@@ -110,11 +124,19 @@ export default function MapView({ markers, line, dashed, className = '', fitKey,
     m.setPaintProperty('route', 'line-dasharray', dashed ? [1.5, 1.5] : undefined)
   }, [line, dashed])
 
+  // Segments (road routes and straight legs)
+  useEffect(() => {
+    const m = map.current
+    if (!m || !ready.current) return
+    ;(m.getSource('seg-dashed') as maplibregl.GeoJSONSource | undefined)?.setData(segData(segments, true))
+    ;(m.getSource('seg-solid') as maplibregl.GeoJSONSource | undefined)?.setData(segData(segments, false))
+  }, [segments])
+
   // Fit to markers
   useEffect(() => {
     const m = map.current
     if (!m) return
-    const pts: [number, number][] = [...markers.map((x) => [x.lon, x.lat] as [number, number]), ...(line ?? [])]
+    const pts: [number, number][] = [...markers.map((x) => [x.lon, x.lat] as [number, number]), ...(line ?? []), ...(segments ?? []).flatMap((s) => s.coords)]
     if (pts.length === 0) return
     if (pts.length === 1) {
       m.easeTo({ center: pts[0], zoom: Math.max(m.getZoom(), 14) })
@@ -132,6 +154,11 @@ export default function MapView({ markers, line, dashed, className = '', fitKey,
   }, [center?.lat, center?.lon])
 
   return <div ref={el} className={`map ${className}`} />
+}
+
+function segData(segments: Props['segments'], dashed: boolean) {
+  const lines = (segments ?? []).filter((s) => s.dashed === dashed && s.coords.length > 1).map((s) => s.coords)
+  return { type: 'Feature' as const, properties: {}, geometry: { type: 'MultiLineString' as const, coordinates: lines } }
 }
 
 function lineData(line?: [number, number][]) {

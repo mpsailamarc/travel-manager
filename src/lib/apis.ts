@@ -271,6 +271,30 @@ export async function walkingRoute(points: LatLon[]): Promise<RouteResult> {
   return out
 }
 
+export interface DriveResult {
+  geometry: [number, number][]
+  distanceM: number
+  durationS: number
+}
+
+/** The road route between two places by car (free OSRM service by FOSSGIS); the line is thinned to keep it light to save. */
+export async function drivingRoute(from: LatLon, to: LatLon): Promise<DriveResult> {
+  const coords = `${from.lon.toFixed(5)},${from.lat.toFixed(5)};${to.lon.toFixed(5)},${to.lat.toFixed(5)}`
+  const key = 'drive:' + coords
+  const cached = cacheGet<DriveResult>(key, 90 * 864e5)
+  if (cached) return cached
+  type R = { code: string; routes: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }[] }
+  const r = await getJSON<R>(`https://routing.openstreetmap.de/routed-car/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`, undefined, 20000)
+  if (r.code !== 'Ok' || !r.routes[0]) throw new Error('No road route found')
+  const route = r.routes[0]
+  const all = route.geometry.coordinates
+  const step = Math.max(1, Math.ceil(all.length / 500))
+  const geometry = all.filter((_, i) => i % step === 0 || i === all.length - 1).map(([x, y]) => [Math.round(x * 1e5) / 1e5, Math.round(y * 1e5) / 1e5] as [number, number])
+  const out = { geometry, distanceM: route.distance, durationS: route.duration }
+  cacheSet(key, out)
+  return out
+}
+
 /* -------------------------------- Wikipedia ------------------------------- */
 
 export interface WikiSummary {
