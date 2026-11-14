@@ -24,8 +24,8 @@ export function tripPhase(trip: Trip, on = today()) {
 
 // `mobile` is the tab's place in the scrolling bottom bar (every tab is in it); the top tabs on a big screen use the list order.
 const TABS = [
-  { to: 'today', label: 'Today', emoji: '📍', mobile: 1 },
-  { to: 'plan', label: 'Plan', emoji: '🗓️', mobile: 2 },
+  { to: 'plan', label: 'Plan', emoji: '🗓️', mobile: 1 },
+  { to: 'today', label: 'Day by day', emoji: '📍', mobile: 2 },
   { to: 'ideas', label: 'Ideas (AI)', emoji: '✨', mobile: 6 },
   { to: 'favorites', label: 'Favourites', emoji: '⭐', mobile: 3 },
   { to: 'checklist', label: 'Checklist', emoji: '✅', mobile: 4 },

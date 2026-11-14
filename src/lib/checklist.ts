@@ -270,7 +270,7 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
       add({ ruleId: 'kids-carseat', title: 'Child car seat / booster (reserve with the rental or bring)', category: 'kids', dueDate: before(14) })
     }
   }
-  add({ ruleId: 'pack', title: 'Pack (check the weather on the Today tab a few days before)', category: 'packing', dueDate: before(1) })
+  add({ ruleId: 'pack', title: 'Pack (check the weather on the Day by day tab a few days before)', category: 'packing', dueDate: before(1) })
 
   const seen = new Set<string>()
   return out.filter((d) => !seen.has(d.ruleId) && !!seen.add(d.ruleId))

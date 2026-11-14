@@ -20,6 +20,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   under the map; flights and other legs stay dashed straight lines. Routes: FOSSGIS OSRM (free), saved for offline.
 - **No double entries**: an imported booking fills in the matching planned item (flight, camper van pickup…) instead of being added next to it,
   importing twice changes nothing, and the Plan warns if the same thing appears twice, with a one-tap merge.
+- **Day timeline**: the day laid out on an hour scale, each block as tall as the activity is long (overlaps side by side, a "now" line), with a bar
+  showing how the day divides between travel, activities and meals. Switch to the plain list any time.
 - **Plan**: day-by-day itinerary with a map. Add or edit flights, trains, buses, stays, activities, meals, walks and notes. You can also print it.
 - **Checklist**: generated from your destinations, nationality, travellers and itinerary. It covers passports, visas/ETAs/ESTA, insurance, EHIC,
   vaccines, unbooked transport, nights with no accommodation, online check-in, cash, eSIM, plug adapters, kids' items and packing.
@@ -32,7 +34,7 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   and what's left per day.
 
 **During the trip**
-- **Today**: what's happening now or next, with a countdown, today's travel with booking refs, tonight's accommodation and the weather.
+- **Day by day** (the old Today): what's happening now or next, with a countdown, today's travel with booking refs, tonight's accommodation and the weather.
   Tick, skip, reorder or push an item to the next day, and get directions.
 - **Replan**: "it's raining" / "kids are tired" → a prompt for a free chatbot → paste back a new plan for the rest of the day
   (keeps what's booked or done).

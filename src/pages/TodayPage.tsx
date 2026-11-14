@@ -9,6 +9,7 @@ import { sortItems } from '../lib/hooks'
 import { applyDayReplan, CHATBOTS, parseDayItems, replanPrompt } from '../lib/ai'
 import { ItemRow, itemSubtitle } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
+import { DayProportions, DayTimeline } from '../components/DayTimeline'
 import { KIND_META, isTransport, needsBooking } from '../components/kinds'
 import { copyText, Empty, Modal, toast } from '../components/ui'
 import LazyMap from '../components/LazyMap'
@@ -26,6 +27,11 @@ export default function TodayPage() {
   const nowStr = nowHHMM()
   const day = days.find((d) => d.date === date)
   const dayItems = useMemo(() => sortItems(items.filter((i) => i.date === date)), [items, date])
+  const [view, setViewState] = useState<'timeline' | 'list'>(() => (localStorage.getItem('tm-day-view') === 'list' ? 'list' : 'timeline'))
+  const setView = (v: 'timeline' | 'list') => {
+    setViewState(v)
+    localStorage.setItem('tm-day-view', v)
+  }
   const [editing, setEditing] = useState<(Partial<Item> & { date: string }) | null>(null)
   const [replan, setReplan] = useState(false)
   const dayNo = daysBetween(trip.startDate, date) + 1
@@ -157,11 +163,30 @@ export default function TodayPage() {
           <div className="card">
             <div className="card-title">
               <h3>Plan for the day</h3>
-              <span className="small muted">
-                {dayItems.filter((i) => i.status === 'done').length}/{dayItems.length} done
-              </span>
+              <div className="row wrap" style={{ gap: 8 }}>
+                <span className="small muted nowrap">
+                  {dayItems.filter((i) => i.status === 'done').length}/{dayItems.length} done
+                </span>
+                {dayItems.length > 0 && (
+                  <div className="chips" style={{ flexWrap: 'nowrap' }}>
+                    <button className={`chip ${view === 'timeline' ? 'on' : ''}`} onClick={() => setView('timeline')}>
+                      🕒 Timeline
+                    </button>
+                    <button className={`chip ${view === 'list' ? 'on' : ''}`} onClick={() => setView('list')}>
+                      ☰ List
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
             {dayItems.length === 0 && <Empty emoji="☕" title="Free day">Add something, build a walk, or just wander.</Empty>}
+            {dayItems.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <DayProportions items={dayItems} />
+              </div>
+            )}
+            {view === 'timeline' && dayItems.length > 0 && <DayTimeline items={dayItems} now={isToday ? now : undefined} onOpen={(it) => setEditing(it)} />}
+            {view === 'list' && (
             <div className="items">
               {dayItems.map((it, i) => (
                 <div key={it.id}>
@@ -203,6 +228,7 @@ export default function TodayPage() {
                 </div>
               ))}
             </div>
+            )}
           </div>
         </div>
 

@@ -224,6 +224,7 @@ p {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
 }
@@ -1303,4 +1304,139 @@ hr {
 .budget-table tr.budget-line-name td {
   border-bottom: none;
   padding-bottom: 0;
+}
+
+/* Day timeline: a block is as tall as the activity is long. */
+.prop-bar {
+  display: flex;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--soft);
+}
+
+.prop-bar > div {
+  min-width: 4px;
+}
+
+.prop-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.tl {
+  position: relative;
+  margin: 8px 0 4px;
+}
+
+.tl-hour {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--line);
+}
+
+.tl-hour span {
+  position: absolute;
+  top: -8px;
+  left: 0;
+  width: 40px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  background: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-block {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 1px;
+  padding: 3px 7px;
+  min-height: 0;
+  overflow: hidden;
+  text-align: left;
+  border: 1px solid transparent;
+  border-left-width: 4px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  background: #f5f5f4;
+  border-color: #a8a29e;
+}
+
+.tl-block b {
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-block span {
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.tl-block.transport {
+  background: #dbeafe;
+  border-color: #60a5fa;
+}
+
+.tl-block.stay {
+  background: #f3e8ff;
+  border-color: #c084fc;
+}
+
+.tl-block.walk {
+  background: #ccfbf1;
+  border-color: #2dd4bf;
+}
+
+.tl-block.meal {
+  background: #ffedd5;
+  border-color: #fb923c;
+}
+
+.tl-block.activity {
+  background: #ccfbf1;
+  border-color: #2dd4bf;
+}
+
+.tl-block.is-done {
+  opacity: 0.55;
+}
+
+.tl-block.is-done b {
+  text-decoration: line-through;
+}
+
+.tl-block.is-estimated {
+  border-style: dashed;
+  border-left-style: solid;
+}
+
+.tl-now {
+  position: absolute;
+  left: 40px;
+  right: 0;
+  border-top: 2px solid var(--danger);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.tl-now span {
+  position: absolute;
+  right: 0;
+  top: -9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 0 5px;
+  border-radius: 6px;
 }

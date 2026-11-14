@@ -49,7 +49,7 @@ export default function HomePage() {
               <div className="small muted">You're travelling · day {tripPhase(t).dayNo}</div>
               <h2>{t.name}</h2>
             </div>
-            <span className="btn">Open today →</span>
+            <span className="btn">Open day by day →</span>
           </div>
         </Link>
       ))}
