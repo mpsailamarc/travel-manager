@@ -1227,3 +1227,41 @@ hr {
 .section-body {
   margin-top: 12px;
 }
+
+/* Budget table: fixed columns so long names and number inputs can't push it wider than the screen. */
+.budget-table {
+  table-layout: fixed;
+}
+
+.budget-table th:nth-child(2) {
+  width: 92px;
+}
+
+.budget-table th:nth-child(3) {
+  width: 84px;
+}
+
+.budget-table th:nth-child(4) {
+  width: 64px;
+}
+
+.budget-table td,
+.budget-table th {
+  padding-left: 3px;
+  padding-right: 3px;
+}
+
+.budget-table .icon-btn {
+  min-width: 26px;
+  padding: 2px;
+}
+
+.budget-table textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.budget-table tr.budget-line-name td {
+  border-bottom: none;
+  padding-bottom: 0;
+}

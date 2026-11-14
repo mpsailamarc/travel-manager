@@ -36,7 +36,8 @@ export function planRipple(
   if (edited.startTime && hhmmToMin(edited.startTime) > end) return none
   const anchor = edited.startTime ?? original?.endTime
   if (!anchor) return none
-  const from = hhmmToMin(anchor)
+  // From the earlier of the old and new start: an item moved later now overlaps what used to come after it.
+  const from = Math.min(hhmmToMin(anchor), original?.startTime ? hhmmToMin(original.startTime) : Infinity)
 
   const later = dayItems
     .filter((i) => i.id !== edited.id && i.startTime && hhmmToMin(i.startTime) >= from && i.status !== 'done' && i.status !== 'skipped')

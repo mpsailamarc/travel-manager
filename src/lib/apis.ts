@@ -74,6 +74,17 @@ export async function searchPlaces(q: string): Promise<GeoResult[]> {
   return out
 }
 
+/** A place typed by name gets its coordinates and country from the first search result (one lookup, cached). */
+export async function locatePlace<T extends { name: string; lat?: number; lon?: number; country?: string }>(place: T | undefined): Promise<T | undefined> {
+  if (!place?.name.trim() || place.lat != null) return place
+  try {
+    const hit = (await searchPlaces(place.name.trim()))[0]
+    return hit ? { ...place, lat: hit.lat, lon: hit.lon, country: place.country ?? hit.countryCode } : place
+  } catch {
+    return place // offline or the service is busy: keep the name, try again later
+  }
+}
+
 /* --------------------------- Points of interest --------------------------- */
 
 export interface Poi extends WalkStop {

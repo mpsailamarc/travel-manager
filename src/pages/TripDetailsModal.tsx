@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { db, deleteTrip } from '../db'
 import type { Trip } from '../types'
 import { Modal, toast } from '../components/ui'
+import { locatePlace } from '../lib/apis'
 import { TripFields } from './TripFields'
 
 export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
@@ -14,7 +15,10 @@ export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () =>
       toast('The end date is before the start date')
       return
     }
-    await db.trips.put({ ...draft, updatedAt: Date.now() })
+    // A start/return typed without tapping "Find" still gets located, so it shows on the map.
+    const startPlace = await locatePlace(draft.startPlace)
+    const endPlace = draft.endPlace?.name ? await locatePlace(draft.endPlace) : undefined
+    await db.trips.put({ ...draft, startPlace, endPlace, updatedAt: Date.now() })
     toast('Trip saved')
     onClose()
   }

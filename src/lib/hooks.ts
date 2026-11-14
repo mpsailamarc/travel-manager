@@ -69,3 +69,28 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): { data?: T; 
   }, deps)
   return state
 }
+
+export type MapSize = 'small' | 'large' | 'hidden'
+
+/** Small / large / hidden map, remembered per screen on this device. */
+export function useMapSize(storageKey: string, initial: MapSize = 'small') {
+  const [size, setSize] = useState<MapSize>(() => (localStorage.getItem(storageKey) as MapSize) || initial)
+  return [
+    size,
+    (v: MapSize) => {
+      setSize(v)
+      localStorage.setItem(storageKey, v)
+    },
+  ] as const
+}
+
+export function useMediaQuery(query: string) {
+  const [match, setMatch] = useState(() => matchMedia(query).matches)
+  useEffect(() => {
+    const m = matchMedia(query)
+    const on = () => setMatch(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [query])
+  return match
+}

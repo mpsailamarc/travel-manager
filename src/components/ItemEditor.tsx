@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
 import { db, touchTrip } from '../db'
 import type { Item, ItemKind, ItemStatus, Trip } from '../types'
-import { dateRange, formatDate } from '../lib/dates'
+import { dateRange, formatDate, hhmmToMin, minToHHMM } from '../lib/dates'
 import { country, CURRENCIES } from '../lib/countries'
 import { uid } from '../lib/ids'
 import { KIND_META, STATUS_LABEL, isTransport, needsBooking } from './kinds'
@@ -30,6 +30,15 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
   const [it, setIt] = useState<Partial<Item> & { date: string }>({ kind: 'activity', status: 'planned', ...item })
   const set = <K extends keyof Item>(k: K, v: Item[K] | undefined) => setIt((s) => ({ ...s, [k]: v }))
   const kind = (it.kind ?? 'activity') as ItemKind
+
+  /** Changing the start moves the whole item: the end follows, so the duration stays (an overnight flight too). */
+  function setStart(v: string) {
+    setIt((s) => {
+      if (!v || !s.startTime || !s.endTime) return { ...s, startTime: v }
+      const duration = (hhmmToMin(s.endTime) - hhmmToMin(s.startTime) + 1440) % 1440
+      return { ...s, startTime: v, endTime: minToHHMM(hhmmToMin(v) + duration) }
+    })
+  }
 
   // A later end time can push the rest of the day back: work out what would move, and let the user decide.
   const dayItems = useLiveQuery(() => db.items.where({ tripId: trip.id, date: it.date }).toArray(), [trip.id, it.date])
@@ -117,7 +126,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
           </label>
           <label>
             {isTransport(kind) ? 'Departs' : kind === 'stay' ? 'Check-in' : 'Starts'}
-            <input type="time" value={it.startTime ?? ''} onChange={(e) => set('startTime', e.target.value)} />
+            <input type="time" value={it.startTime ?? ''} onChange={(e) => setStart(e.target.value)} />
           </label>
           <label>
             {isTransport(kind) ? 'Arrives' : 'Ends'}

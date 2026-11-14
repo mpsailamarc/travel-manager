@@ -18,9 +18,10 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Checklist**: generated from your destinations, nationality, travellers and itinerary. It covers passports, visas/ETAs/ESTA, insurance, EHIC,
   vaccines, unbooked transport, nights with no accommodation, online check-in, cash, eSIM, plug adapters, kids' items and packing.
   "Suggest items" updates it as the plan changes and never touches what you ticked.
-- **Start and return place** (e.g. San Francisco → Yosemite → San Francisco): shown on the Plan map and as a route line, and sent to the AI.
-- **Budget estimate as a breakdown**: lines like "Accommodation · 3 nights × 1 room" sit under each category; edit, remove or add (＋) and the category totals follow.
-  No flights when the trip starts in the destination's country.
+- **Start and return place** (e.g. San Francisco → Yosemite → San Francisco): shown on the Plan map and as a route line, and sent to the AI. A start typed without "Find" is located automatically; the map can be small, large or hidden.
+- **Budget estimate with assumptions**: lines sit under each category (fold or unfold each one), and every line can carry an assumption —
+  quantity × price, e.g. 4 days of car rental × A$121, 600 km × A$0.23. Change the quantity or price and the totals follow. A car in the plan adds
+  rental and fuel lines. No flights when the trip starts in the destination's country.
 - **Budget**: log spends in any currency (the date defaults to today on your device), tap one to edit it; per-category budget (with a rough automatic estimate), costs in the plan, money spent (bookings paid ahead + logged expenses)
   and what's left per day.
 

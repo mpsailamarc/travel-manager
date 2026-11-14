@@ -34,7 +34,10 @@ export interface BudgetLine {
   id: string
   category: BudgetCategory
   label: string
-  amount: number // home currency
+  amount: number // home currency; qty × price when both are set
+  qty?: number // the assumption behind the amount, e.g. 4 (days)…
+  unit?: string // …"days", "km", "nights"…
+  price?: number // …and the price per unit in home currency
 }
 
 export interface Trip {

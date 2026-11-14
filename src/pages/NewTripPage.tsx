@@ -5,6 +5,7 @@ import type { Trip } from '../types'
 import { addDays, dateRange, formatDate, today } from '../lib/dates'
 import { country, countryLabel, flag } from '../lib/countries'
 import { uid } from '../lib/ids'
+import { locatePlace } from '../lib/apis'
 import { plural } from '../lib/format'
 import { useSettings } from '../lib/hooks'
 import { BUDGET_LEVELS, ChipToggle, ChoiceGrid, CitiesInput, CountryPicker, INTERESTS, StartEndFields, STYLES, TravellersEditor } from './TripFields'
@@ -50,6 +51,8 @@ export default function NewTripPage() {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
+    trip.startPlace = await locatePlace(t.startPlace)
+    trip.endPlace = t.endPlace?.name ? await locatePlace(t.endPlace) : undefined
     const cap = t.countryCodes.length === 1 && !t.cities.length ? country(t.countryCodes[0])?.capital : undefined
     await db.transaction('rw', [db.trips, db.days], async () => {
       await db.trips.add(trip)

@@ -1,25 +1,41 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { db } from '../db'
 import type { Day, Item, Place } from '../types'
 import { dateRange, formatDate, today } from '../lib/dates'
 import { money } from '../lib/format'
+import { locatePlace } from '../lib/apis'
 import { ItemRow } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
 import { Empty, Modal } from '../components/ui'
 import { PlaceSearch } from '../components/PlaceSearch'
 import LazyMap, { type MapMarker } from '../components/LazyMap'
+import { useMapSize, useMediaQuery } from '../lib/hooks'
 import { useTripCtx } from './TripLayout'
 
 export default function PlanPage() {
   const { trip, items, days } = useTripCtx()
   const [editing, setEditing] = useState<(Partial<Item> & { date: string }) | null>(null)
   const [dayEdit, setDayEdit] = useState<Day | null>(null)
-  const [showMap, setShowMap] = useState(false)
+  const [mapSize, setMapSize] = useMapSize('tm-plan-map')
+  const wide = useMediaQuery('(min-width: 721px)')
   const dates = dateRange(trip.startDate, trip.endDate)
   const dayByDate = new Map(days.map((d) => [d.date, d]))
   const outside = items.filter((i) => i.date < trip.startDate || i.date > trip.endDate)
   const now = today()
+
+  // A start/return that has a name but no coordinates yet (typed without "Find") is located once, so the map can draw it.
+  useEffect(() => {
+    const needs = (p?: Place) => !!p?.name.trim() && p.lat == null
+    if (!needs(trip.startPlace) && !needs(trip.endPlace)) return
+    let alive = true
+    Promise.all([locatePlace(trip.startPlace), trip.endPlace?.name ? locatePlace(trip.endPlace) : Promise.resolve(undefined)]).then(([startPlace, endPlace]) => {
+      if (alive && (startPlace?.lat != null || endPlace?.lat != null)) db.trips.update(trip.id, { startPlace, endPlace })
+    })
+    return () => {
+      alive = false
+    }
+  }, [trip.id, trip.startPlace?.name, trip.startPlace?.lat, trip.endPlace?.name, trip.endPlace?.lat])
 
   const { markers, line } = useMemo(() => {
     const markers: MapMarker[] = []
@@ -61,13 +77,25 @@ export default function PlanPage() {
   const currency = items.find((i) => i.cost)?.cost?.currency
 
   const map = markers.length > 0 && (
-    <div className="stack" style={{ gap: 6 }}>
-      <LazyMap markers={markers} line={line} dashed fitKey={`${markers.length}-${trip.startPlace?.lat}-${trip.endPlace?.lat}`} className="tall" />
-      <p className="tiny muted">
+    <div className="card stack" style={{ gap: 8 }}>
+      <div className="row between">
+        <b>🗺️ Map</b>
+        <div className="chips">
+          {(['small', 'large', 'hidden'] as const).map((v) => (
+            <button key={v} className={`chip ${mapSize === v ? 'on' : ''}`} onClick={() => setMapSize(v)}>
+              {v === 'small' ? 'Small' : v === 'large' ? 'Large' : 'Hide'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {mapSize !== 'hidden' && (
+        <LazyMap key={mapSize} markers={markers} line={line} dashed fitKey={`${markers.length}-${trip.startPlace?.lat}-${trip.endPlace?.lat}`} className={mapSize === 'large' ? 'tall' : 'short'} />
+      )}
+      {mapSize !== 'hidden' && <p className="tiny muted">
         {trip.startPlace?.lat != null && <>🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} · </>}
         Numbers = the first day you are in each place · small grey dots = individual activities
         {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
-      </p>
+      </p>}
     </div>
   )
 
@@ -85,16 +113,13 @@ export default function PlanPage() {
             {estimated > 0 && currency && ` · est. ${money(estimated, currency)}`}
           </div>
           <div className="row">
-            {markers.length > 0 && (
-              <button className="btn-sm hide-desktop" onClick={() => setShowMap((s) => !s)}>
-                🗺️ {showMap ? 'Hide map' : 'Map'}
-              </button>
-            )}
             <button className="btn-sm" onClick={() => window.print()}>
               🖨️ Print
             </button>
           </div>
         </div>
+
+        {!trip.startPlace?.name && <StartCard tripId={trip.id} />}
 
         {routeLine.length > 1 && (
           <div className="card tight small">
@@ -102,7 +127,7 @@ export default function PlanPage() {
           </div>
         )}
 
-        {showMap && <div className="hide-desktop">{map}</div>}
+        {!wide && map}
 
         {items.length === 0 && (
           <div className="card">
@@ -167,10 +192,35 @@ export default function PlanPage() {
         )}
       </div>
 
-      <div className="sticky-side hide-mobile stack">{map}</div>
+      {wide && <div className="sticky-side stack">{map}</div>}
 
       {editing && <ItemEditor trip={trip} item={editing} city={dayByDate.get(editing.date)?.city} area={dayByDate.get(editing.date)} onClose={() => setEditing(null)} />}
       {dayEdit && <DayEditor day={dayEdit} onClose={() => setDayEdit(null)} />}
+    </div>
+  )
+}
+
+/** Quick way to say where the trip starts and finishes, so the map and the budget know. */
+function StartCard({ tripId }: { tripId: string }) {
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function save() {
+    if (!name.trim()) return
+    setBusy(true)
+    const place = await locatePlace({ name: name.trim() })
+    await db.trips.update(tripId, { startPlace: place })
+    setBusy(false)
+  }
+  return (
+    <div className="card tight stack" style={{ gap: 6 }}>
+      <b className="small">📍 Where does the trip start (and end)?</b>
+      <div className="row">
+        <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} placeholder="e.g. San Francisco" />
+        <button className="btn-primary" disabled={busy || !name.trim()} onClick={save}>
+          {busy ? '…' : 'Set'}
+        </button>
+      </div>
+      <span className="tiny muted">It's drawn on the map and used by the budget estimate. If you finish somewhere else, change it in Trip details.</span>
     </div>
   )
 }
