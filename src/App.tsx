@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { createHashRouter, Link, Navigate, Outlet, RouterProvider } from 'react-router-dom'
 import { Toaster } from './components/ui'
 import { useOnline } from './lib/hooks'
@@ -22,9 +23,20 @@ import EssentialsPage from './pages/EssentialsPage'
 function Shell() {
   const online = useOnline()
   const sync = useSyncStatus()
+  const headerRef = useRef<HTMLElement>(null)
+  // Pages can stick things (the day selector) right under the header, whatever its height on this device.
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const set = () => document.documentElement.style.setProperty('--app-header-h', `${el.offsetHeight}px`)
+    set()
+    const ro = new ResizeObserver(set)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   return (
     <>
-      <header className="app-header">
+      <header className="app-header" ref={headerRef}>
         <div className="app-header-inner">
           <Link to="/" className="brand">
             <img src="./icon-192.png" alt="" />

@@ -1440,3 +1440,15 @@ hr {
   padding: 0 5px;
   border-radius: 6px;
 }
+
+/* Day by day: the day selector stays in view under the header while you scroll the page. */
+.day-strip {
+  position: sticky;
+  top: var(--app-header-h, 56px);
+  z-index: 15;
+  margin: 0 -16px;
+  padding: 8px 16px;
+  background: rgb(246 245 241 / 0.95);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}

@@ -20,6 +20,7 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   under the map; flights and other legs stay dashed straight lines. Routes: FOSSGIS OSRM (free), saved for offline.
 - **No double entries**: an imported booking fills in the matching planned item (flight, camper van pickup…) instead of being added next to it,
   importing twice changes nothing, and the Plan warns if the same thing appears twice, with a one-tap merge.
+- **Pinned day selector**: the row of day buttons stays under the header while you scroll a day; picking another day starts it from its top.
 - **Day timeline**: the day laid out on an hour scale, each block as tall as the activity is long (overlaps side by side, a "now" line), with a bar
   showing how the day divides between travel, activities and meals. Switch to the plain list any time.
 - **Switching itinerary idea is a clean swap**: the previous idea's items, to-dos (ticked ones stay), budget figures, tips and favourite-to-day links go;

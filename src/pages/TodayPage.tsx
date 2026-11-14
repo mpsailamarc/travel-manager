@@ -72,7 +72,17 @@ export default function TodayPage() {
     toast(`Moved to ${formatDate(tomorrow)}`)
   }
 
-  const goto = (d: string) => setParams(d === realToday ? {} : { date: d })
+  const goto = (d: string) => {
+    setParams(d === realToday ? {} : { date: d })
+    // Switching day from far down the page: start the new day from its top, just under the pinned day selector.
+    setTimeout(() => {
+      const hero = document.querySelector('.hero')
+      const strip = document.querySelector('.day-strip')
+      if (!hero || !strip) return
+      const y = hero.getBoundingClientRect().top + window.scrollY - strip.getBoundingClientRect().bottom - 8
+      if (window.scrollY > y) window.scrollTo({ top: Math.max(0, y) })
+    }, 60)
+  }
 
   return (
     <div className="stack-lg">
@@ -84,7 +94,7 @@ export default function TodayPage() {
         </div>
       )}
 
-      <div className="weather-strip" ref={chipsRef}>
+      <div className="weather-strip day-strip" ref={chipsRef}>
         {dates.map((d, i) => (
           <button key={d} className={`chip ${d === date ? 'on' : ''}`} onClick={() => goto(d)} style={{ flex: 'none' }}>
             {d === realToday ? 'Today' : `Day ${i + 1}`} · {formatDate(d, { weekday: 'short', day: 'numeric' })}
