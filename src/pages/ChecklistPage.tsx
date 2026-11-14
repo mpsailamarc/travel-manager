@@ -7,6 +7,7 @@ import { CATEGORY_LABELS, refreshChecklist } from '../lib/checklist'
 import { daysBetween, formatDate, today } from '../lib/dates'
 import { uid } from '../lib/ids'
 import { KIND_META, isTransport } from '../components/kinds'
+import { linkLabel } from '../components/PlaceInfo'
 import { Empty, Modal, Progress, toast } from '../components/ui'
 import { useTripCtx } from './TripLayout'
 
@@ -183,7 +184,7 @@ function CheckRow({ c, icon, now, onToggle, onEdit }: { c: ChecklistItem; icon?:
           )}
           {c.link && (
             <a className="small" href={c.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-              {c.link.includes('booking.com/searchresults') ? '🔎 Find a place on Booking.com ↗' : 'More info ↗'}
+              {c.link.includes('booking.com/searchresults') ? '🔎 Find a place on Booking.com ↗' : `${linkLabel(c.link)} ↗`}
             </a>
           )}
         </div>
@@ -206,8 +207,13 @@ function ChecklistEditor({ tripId, item, onClose }: { tripId: string; item: Part
       notes: c.notes || undefined,
       link: c.link || undefined,
       ruleId: c.ruleId,
+      // Anything you change on a suggested entry is yours: the refresh must not put the generated text/link back.
+      locked: c.locked || (!!c.ruleId && (['title', 'notes', 'link', 'dueDate'] as const).some((k) => (c[k] || undefined) !== (item[k] || undefined))) || undefined,
       order: c.order ?? Date.now(),
     })
+    // A link pasted on "Book: <hotel/train…>" also goes on that plan item, where it shows as a button.
+    const planItemId = c.ruleId?.startsWith('book:') ? c.ruleId.slice(5) : undefined
+    if (planItemId && c.link && c.link !== item.link) await db.items.update(planItemId, { url: c.link })
     onClose()
   }
   async function remove() {

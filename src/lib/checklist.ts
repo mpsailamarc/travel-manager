@@ -314,7 +314,7 @@ export async function refreshChecklist(tripId: string, settings: Settings) {
   // Keep open suggestions in step with the plan (a stay moved to another date, a renamed train…).
   const byRule = new Map(drafts.map((d) => [d.ruleId, d]))
   const changed = existing.filter((e) => {
-    const d = e.ruleId && !e.done && !e.dismissed ? byRule.get(e.ruleId) : undefined
+    const d = e.ruleId && !e.done && !e.dismissed && !e.locked ? byRule.get(e.ruleId) : undefined
     return d && (d.title !== e.title || d.notes !== e.notes || d.link !== e.link || d.dueDate !== e.dueDate)
   })
   await db.checklist.bulkUpdate(
