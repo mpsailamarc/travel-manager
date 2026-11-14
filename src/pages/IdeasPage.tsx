@@ -8,6 +8,7 @@ import { money } from '../lib/format'
 import { countryLabel } from '../lib/countries'
 import { KIND_META } from '../components/kinds'
 import { copyText, toast } from '../components/ui'
+import { aiReady, askAI, useAiConfig } from '../lib/openai'
 import { BUDGET_LEVELS, STYLES } from './TripFields'
 import { useTripCtx } from './TripLayout'
 
@@ -36,37 +37,75 @@ export default function IdeasPage() {
 }
 
 function Steps() {
+  const api = aiReady(useAiConfig())
+  const steps = api ? ['Press “Ask ChatGPT”', 'It fills in the answer for you', 'Check it and use it'] : ['Copy the prompt', 'Paste it in a free chatbot', 'Paste its answer back here']
   return (
     <div className="info-grid">
-      <div className="info-tile">
-        <div className="k">Step 1</div>
-        <div className="v">Copy the prompt</div>
-      </div>
-      <div className="info-tile">
-        <div className="k">Step 2</div>
-        <div className="v">Paste it in a free chatbot</div>
-      </div>
-      <div className="info-tile">
-        <div className="k">Step 3</div>
-        <div className="v">Paste its answer back here</div>
-      </div>
+      {steps.map((v, i) => (
+        <div key={i} className="info-tile">
+          <div className="k">Step {i + 1}</div>
+          <div className="v">{v}</div>
+        </div>
+      ))}
     </div>
   )
 }
 
-export function PromptBox({ prompt }: { prompt: string }) {
+export function PromptBox({ prompt, history, onAnswer }: { prompt: string; history?: { prompt: string; reply: string }[]; onAnswer?: (text: string) => void }) {
+  const cfg = useAiConfig()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const api = aiReady(cfg) && !!onAnswer
+
+  async function ask() {
+    setBusy(true)
+    setError(undefined)
+    try {
+      // Follow-up prompts ("same chat") need the earlier questions and answers, as a chat window would keep them.
+      const messages = [...(history ?? []).flatMap((h) => [{ role: 'user' as const, content: h.prompt }, { role: 'assistant' as const, content: h.reply }]), { role: 'user' as const, content: prompt }]
+      onAnswer!(await askAI(messages))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const copyRow = (
+    <div className="row wrap">
+      <button className={api ? '' : 'btn-primary'} onClick={() => copyText(prompt)}>
+        📋 Copy the prompt
+      </button>
+      {CHATBOTS.map((c) => (
+        <a key={c.name} className="btn" href={c.url} target="_blank" rel="noreferrer">
+          Open {c.name} ↗
+        </a>
+      ))}
+    </div>
+  )
+
+  if (api)
+    return (
+      <div className="stack" style={{ gap: 8 }}>
+        <div className="row wrap">
+          <button className="btn-primary" disabled={busy} onClick={ask}>
+            {busy ? '⏳ Asking ChatGPT… (can take a minute)' : '✨ Ask ChatGPT'}
+          </button>
+          <span className="tiny muted">uses your API key · {cfg.model}</span>
+        </div>
+        {error && <div className="notice error">{error}</div>}
+        <details>
+          <summary className="small muted">Or copy the prompt / see it</summary>
+          <div className="stack" style={{ gap: 8, marginTop: 8 }}>
+            {copyRow}
+            <pre className="prompt">{prompt}</pre>
+          </div>
+        </details>
+      </div>
+    )
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <div className="row wrap">
-        <button className="btn-primary" onClick={() => copyText(prompt)}>
-          📋 Copy the prompt
-        </button>
-        {CHATBOTS.map((c) => (
-          <a key={c.name} className="btn" href={c.url} target="_blank" rel="noreferrer">
-            Open {c.name} ↗
-          </a>
-        ))}
-      </div>
+      {copyRow}
       <details>
         <summary className="small muted">See the prompt</summary>
         <pre className="prompt">{prompt}</pre>
@@ -201,7 +240,7 @@ function ItineraryIdeas() {
                 <b>Option {r.n} ·</b> copy this follow-up into the <b>same chat</b> and paste the answer below — or skip it and pick from the options you have.
               </div>
             )}
-            <PromptBox prompt={r.prompt} />
+            <PromptBox prompt={r.prompt} history={rounds.slice(0, i).map((x) => ({ prompt: x.prompt, reply: x.text }))} onAnswer={(t) => setReply(i, t)} />
             <label>
               {i === 0 ? "Paste the chatbot's answer" : `Answer for option ${r.n}`}
               <textarea className="code" style={{ minHeight: 90 }} value={r.text} onChange={(e) => setReply(i, e.target.value)} placeholder='```json&#10;{ "option": { … } }&#10;```' />
@@ -395,7 +434,7 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
                 <b>same chat</b> and paste the answer below.
               </div>
             )}
-            <PromptBox prompt={r.prompt} />
+            <PromptBox prompt={r.prompt} history={rounds.slice(0, i).map((x) => ({ prompt: x.prompt, reply: x.text }))} onAnswer={(t) => setReply(i, t)} />
             <label>
               {i === 0 ? "Paste the chatbot's answer" : `Answer ${i + 1}`}
               <textarea className="code" value={r.text} onChange={(e) => setReply(i, e.target.value)} placeholder='{"days": [ … ]}' />
@@ -474,7 +513,7 @@ function BookingImport() {
         1 · Confirmation text
         <textarea value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Paste one or more confirmation emails…" />
       </label>
-      {email.trim() && <PromptBox prompt={bookingPrompt(trip, settings, email)} />}
+      {email.trim() && <PromptBox prompt={bookingPrompt(trip, settings, email)} onAnswer={setAnswer} />}
       <label>
         2 · Paste the chatbot's answer
         <textarea className="code" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder='{"items": [ … ]}' />

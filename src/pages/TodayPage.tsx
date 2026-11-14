@@ -6,7 +6,7 @@ import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin,
 import { forecast, weatherEmoji } from '../lib/apis'
 import { useAsync, useNow } from '../lib/hooks'
 import { sortItems } from '../lib/hooks'
-import { applyDayReplan, CHATBOTS, parseDayItems, replanPrompt } from '../lib/ai'
+import { applyDayReplan, parseDayItems, replanPrompt } from '../lib/ai'
 import { ItemRow, itemSubtitle } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
 import { DayProportions, DayTimeline } from '../components/DayTimeline'
@@ -14,10 +14,11 @@ import { buildDayView, journeyNote } from '../lib/dayview'
 import { durationMin } from '../lib/tz'
 import { planRipple } from '../lib/ripple'
 import { KIND_META, isTransport, needsBooking } from '../components/kinds'
-import { copyText, Empty, Modal, toast } from '../components/ui'
+import { Empty, Modal, toast } from '../components/ui'
 import LazyMap from '../components/LazyMap'
 import { BackupIdeas } from '../components/BackupIdeas'
 import { tripPhase, useTripCtx } from './TripLayout'
+import { PromptBox } from './IdeasPage'
 
 export default function TodayPage() {
   const { trip, items, days } = useTripCtx()
@@ -423,20 +424,7 @@ function ReplanModal({ date, dayItems, onClose }: { date: string; dayItems: Item
             <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
           </label>
         </div>
-        <div className="row wrap">
-          <button className="btn-primary" onClick={() => copyText(prompt)}>
-            1 · Copy the prompt
-          </button>
-          {CHATBOTS.map((c) => (
-            <a key={c.name} className="btn btn-sm" href={c.url} target="_blank" rel="noreferrer">
-              Open {c.name} ↗
-            </a>
-          ))}
-        </div>
-        <details>
-          <summary className="small muted">See the prompt</summary>
-          <pre className="prompt">{prompt}</pre>
-        </details>
+        <PromptBox prompt={prompt} onAnswer={setAnswer} />
         <label>
           2 · Paste the answer here
           <textarea className="code" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder='{"items": [ ... ]}' />

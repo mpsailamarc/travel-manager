@@ -625,7 +625,13 @@ function AiIdeas({ city, isFav, onToggle, onOpen }: { city: string; isFav: (i: C
   return (
     <div className="stack" style={{ gap: 8 }}>
       <p className="small muted">Restaurants, experiences, day trips and kid-friendly places that map data misses. Copy the prompt into a free chatbot and paste its answer.</p>
-      <PromptBox prompt={cityIdeasPrompt(trip, settings, city)} />
+      <PromptBox
+        prompt={cityIdeasPrompt(trip, settings, city)}
+        onAnswer={(t) => {
+          setAnswer(t)
+          localStorage.setItem(key, t)
+        }}
+      />
       <textarea
         className="code"
         style={{ minHeight: 80 }}

@@ -10,6 +10,10 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Ideas (AI, free)**: the app writes a prompt. Paste it into any free chatbot (Claude, Gemini, ChatGPT) and paste the answer back.
   Options come one per reply (free chatbots cut off long replies), then the full day-by-day detail of the one you pick, with
   follow-up prompts for anything that was cut off. Answers are validated before anything is saved.
+- **Optional: ask ChatGPT from inside the app**: in Settings → AI assistant, switch from copy and paste to your own OpenAI API key. Every AI step
+  (ideas, day detail, replan, booking import, city ideas) then gets an "✨ Ask ChatGPT" button that sends the prompt and fills in the answer, with
+  copy and paste still one tap away. The key stays on that device only (not synced, not in backups or shared files); calls go straight to
+  api.openai.com. The API is billed by OpenAI separately from a ChatGPT subscription, so set a spending limit; the app shows rough token use.
 - **Import booking emails**: paste confirmation emails and get booked flights, trains and stays in the plan (same copy-paste trick).
 - **Quick template**: a skeleton plan with no AI, fully offline.
 - **Push-back on time changes**: when you make an item end later (a landing at 06:28), the editor offers to push the overlapping items after it

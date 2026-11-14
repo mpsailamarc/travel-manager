@@ -7,6 +7,7 @@ import { useAsync, useSettings } from '../lib/hooks'
 import { bytes } from '../lib/format'
 import { toast } from '../components/ui'
 import { SyncCard } from '../components/SyncCard'
+import { AiCard } from '../components/AiCard'
 import { getConfig } from '../lib/sync'
 
 /** Drops the saved copy of the app (not your data) and reloads, so the newest version is fetched. */
@@ -79,6 +80,8 @@ export default function SettingsPage() {
       </div>
 
       <SyncCard />
+
+      <AiCard />
 
       <div className="card stack">
         <h3>Your data</h3>
