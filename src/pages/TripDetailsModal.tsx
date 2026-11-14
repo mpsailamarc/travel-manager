@@ -8,6 +8,7 @@ import { TripFields } from './TripFields'
 
 export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const [draft, setDraft] = useState<Trip>(trip)
+  const [saving, setSaving] = useState(false)
   const navigate = useNavigate()
 
   async function save() {
@@ -15,6 +16,8 @@ export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () =>
       toast('The end date is before the start date')
       return
     }
+    if (saving) return
+    setSaving(true)
     // A start/return typed without tapping "Find" still gets located, so it shows on the map.
     const startPlace = await locatePlace(draft.startPlace)
     const endPlace = draft.endPlace?.name ? await locatePlace(draft.endPlace) : undefined
@@ -39,8 +42,8 @@ export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () =>
           </button>
           <div className="row">
             <button onClick={onClose}>Cancel</button>
-            <button className="btn-primary" onClick={save}>
-              Save
+            <button className="btn-primary" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>

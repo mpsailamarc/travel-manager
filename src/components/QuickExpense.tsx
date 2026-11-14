@@ -17,10 +17,12 @@ export function QuickExpense({ tripId, home, local }: { tripId: string; home: st
   const [currency, setCurrency] = useState(local)
   const [category, setCategory] = useState<BudgetCategory>('food')
   const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
 
   async function add() {
     const value = Number(amount.replace(',', '.'))
-    if (!value) return
+    if (!value || busy) return
+    setBusy(true) // the exchange-rate lookup can take a moment: a second tap must not log it twice
     const rate = await fxRate(currency, home)
     if (rate == null) toast(`No ${currency}→${home} rate available offline; saved without conversion`)
     await db.expenses.add({
@@ -36,6 +38,7 @@ export function QuickExpense({ tripId, home, local }: { tripId: string; home: st
     })
     setAmount('')
     setNote('')
+    setBusy(false)
     toast(`Logged ${money(value, currency, 2)}`)
   }
 
@@ -60,7 +63,7 @@ export function QuickExpense({ tripId, home, local }: { tripId: string; home: st
       <div className="row">
         <input type="date" value={date} onChange={(e) => setDate(e.target.value || today())} style={{ maxWidth: 160 }} aria-label="Date" />
         <input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-        <button className="btn-primary" onClick={add} disabled={!amount}>
+        <button className="btn-primary" onClick={add} disabled={!amount || busy}>
           Add
         </button>
       </div>

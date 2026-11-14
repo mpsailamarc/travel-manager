@@ -54,6 +54,7 @@ export interface Trip {
   notes?: string
   budget: Partial<Record<BudgetCategory, number>> // in home currency
   budgetLines?: BudgetLine[] // the estimate's breakdown; per-category totals in `budget` follow these
+  budgetBasis?: string[] // plain-words notes on how the estimate was made
   startPlace?: Place // where the trip starts (e.g. home city or airport)
   endPlace?: Place // where it ends; the start place when not set
   coverEmoji: string

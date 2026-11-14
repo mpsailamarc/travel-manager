@@ -171,8 +171,19 @@ const minDist = (p: LatLon, seeds: LatLon[]) => Math.min(...seeds.map((s) => hav
 
 /* ------------------------------ Write to plan ------------------------------ */
 
-/** Rebuilds the favourite-based items of the given days: one walking tour per day, plus items without coordinates. */
-export async function applyCityPlan(trip: Trip, city: string, dates: string[], settings: Settings) {
+let rebuilding: Promise<unknown> = Promise.resolve()
+
+/**
+ * Rebuilds the favourite-based items of the given days: one walking tour per day, plus items without coordinates.
+ * Rebuilds queue up one after another: two at the same time (two quick moves) would each add a tour.
+ */
+export function applyCityPlan(trip: Trip, city: string, dates: string[], settings: Settings): Promise<void> {
+  const run = rebuilding.then(() => rebuildCityPlan(trip, city, dates, settings))
+  rebuilding = run.catch(() => undefined)
+  return run
+}
+
+async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settings: Settings) {
   const tag = plannerTag(city)
   const favs = (await db.favorites.where('tripId').equals(trip.id).toArray()).filter((f) => sameCity(f.city, city))
   const items = await db.items.where('tripId').equals(trip.id).toArray()

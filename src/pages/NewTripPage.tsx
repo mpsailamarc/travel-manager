@@ -17,6 +17,7 @@ export default function NewTripPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [days, setDays] = useState(7)
+  const [creating, setCreating] = useState(false)
   const [t, setT] = useState<Trip>(() => ({
     id: uid(),
     name: '',
@@ -42,6 +43,8 @@ export default function NewTripPage() {
   }
 
   async function create() {
+    if (creating) return // looking up the start place can take a moment: a second tap must not create a second trip
+    setCreating(true)
     const endDate = addDays(t.startDate, days - 1)
     const trip: Trip = {
       ...t,
@@ -182,8 +185,8 @@ export default function NewTripPage() {
               Next →
             </button>
           ) : (
-            <button className="btn-primary" onClick={create}>
-              Create trip ✨
+            <button className="btn-primary" onClick={create} disabled={creating}>
+              {creating ? 'Creating…' : 'Create trip ✨'}
             </button>
           )}
         </div>

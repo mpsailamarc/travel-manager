@@ -24,7 +24,7 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   "Suggest items" updates it as the plan changes and never touches what you ticked.
 - **Start and return place** (e.g. San Francisco → Yosemite → San Francisco): shown on the Plan map and as a route line, and sent to the AI. A start typed without "Find" is located automatically; the map can be small, large or hidden.
 - **Budget estimate with assumptions**: lines sit under each category (fold or unfold each one), and every line can carry an assumption —
-  quantity × price, e.g. 4 days of car rental × A$121, 600 km × A$0.23. Change the quantity or price and the totals follow. A car in the plan adds
+  quantity × price, e.g. 4 days of car rental × A$121 per day, 600 km × A$0.23 per km (flights are one line for the whole group). Change the quantity or price and the totals follow. A car in the plan adds
   rental and fuel lines. No flights when the trip starts in the destination's country.
 - **Budget**: log spends in any currency (the date defaults to today on your device), tap one to edit it; per-category budget (with a rough automatic estimate), costs in the plan, money spent (bookings paid ahead + logged expenses)
   and what's left per day.
@@ -53,6 +53,8 @@ PythonAnywhere site (`server/travel_sync.py`, Python standard library only). Dat
 your sync code, so the server can't read it. Documents stay on each device. See `DEPLOY-pythonanywhere.md`.
 
 **Sharing**: export a trip as a `.trip.json` file and send it to family. They tap *Import* to get their own copy. Back up and restore all trips from Settings.
+
+**Navigation**: on a phone the bottom bar holds every section and scrolls sideways (the next tab peeks in, with a fading edge and an arrow).
 
 ## Run it
 

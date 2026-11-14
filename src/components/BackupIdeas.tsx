@@ -9,7 +9,6 @@ import { formatDuration } from '../lib/dates'
 import { distance } from '../lib/format'
 import { haversineM } from '../lib/geo'
 import { useAsync } from '../lib/hooks'
-import { uid } from '../lib/ids'
 import { toast } from './ui'
 
 /** Favourites not on any day, near today's city — the fallback list when plans change. */
@@ -28,9 +27,10 @@ export function BackupIdeas({ tripId, day }: { tripId: string; day: Day }) {
   const list = here.filter((f) => !onlyIndoor || isIndoor(f)).sort((a, b) => dist(a) - dist(b))
 
   async function addToday(f: Favorite) {
+    if ((await db.favorites.get(f.id))?.itemId) return // already added to a day
     const sameDay = await db.items.where({ tripId, date: day.date }).toArray()
-    const id = uid()
-    await db.items.add({
+    const id = `fav-${f.id}` // fixed per favourite: a double tap writes the same item
+    await db.items.put({
       id,
       tripId,
       date: day.date,

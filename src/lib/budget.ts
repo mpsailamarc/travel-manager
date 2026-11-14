@@ -5,7 +5,8 @@ import type { BudgetCategory, BudgetLevel, BudgetLine, Item, Trip } from '../typ
 import { BUDGET_CATEGORIES } from '../types'
 import { daysBetween } from './dates'
 import { fxRate } from './apis'
-import { plural } from './format'
+import { country } from './countries'
+import { money, plural } from './format'
 import { uid } from './ids'
 
 // Relative daily cost vs. Western Europe (1.0). Approximate.
@@ -34,7 +35,7 @@ const ROOM_NIGHT = 120
  * Change the quantity or the price and the amount follows. Flights are left out when the trip starts in the same
  * country as the destination; a car in the plan adds rental and fuel lines (days × daily rate, km × price per km).
  */
-export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeCurrency: string, items: Item[] = []): Promise<BudgetLine[]> {
+export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeCurrency: string, items: Item[] = []): Promise<{ lines: BudgetLine[]; basis: string[] }> {
   const nights = Math.max(1, daysBetween(trip.startDate, trip.endDate))
   const days = nights + 1
   const idx = trip.countryCodes.length ? trip.countryCodes.reduce((s, c) => s + (COST_INDEX[c] ?? 0.9), 0) / trip.countryCodes.length : 1
@@ -67,9 +68,10 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   type Raw = { category: BudgetCategory; label: string; qty: number; unit: string; price: number } // price in EUR
   const raw: Raw[] = []
   const add = (category: BudgetCategory, label: string, qty: number, unit: string, price: number) => raw.push({ category, label, qty, unit, price })
+  const travellers = adults + kids
   if (!domestic) {
-    add('flights', 'Flights · adults', adults, adults === 1 ? 'traveller' : 'travellers', flightPP * Math.sqrt(lvl))
-    if (kids) add('flights', 'Flights · children', kids, kids === 1 ? 'child' : 'children', 0.9 * flightPP * Math.sqrt(lvl))
+    // One line for everyone: children travel at 90% of an adult fare, so the price shown is the average per traveller.
+    add('flights', `Flights, return (${group})`, travellers, travellers === 1 ? 'traveller' : 'travellers', ((adults + kids * 0.9) / travellers) * flightPP * Math.sqrt(lvl))
   } else if (!hasCar) {
     add('transport', `Getting there and back from ${trip.startPlace?.name ?? 'home'} (fuel, parking or transit)`, 1, 'trip', 70 * idx * lvl)
   }
@@ -85,14 +87,40 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   add('other', 'Other & contingency', personDays, 'person-days', PER_PERSON_DAY.other * idx * lvl)
 
   const rate = (await fxRate('EUR', homeCurrency)) ?? 1
+  const names = trip.countryCodes.map((c) => country(c)?.name).filter(Boolean).join(' & ')
+  const pct = Math.round((idx - 1) * 100)
+  const where = names || 'your destination'
+  const basis = [
+    `Prices start from typical Western-Europe costs and are scaled for ${where}: ${pct === 0 ? 'about the same as' : `about ${Math.abs(pct)}% ${pct > 0 ? 'above' : 'below'}`} Western Europe.`,
+    `Budget level “${trip.budgetLevel}” scales them by ×${lvl}.`,
+    `For ${group}, ${plural(days, 'day')} and ${plural(nights, 'night')} (${plural(rooms, 'room')}).`,
+    domestic
+      ? `No flights: you start in the same country as the destination${trip.startPlace?.name ? ` (${trip.startPlace.name})` : ''}.`
+      : `Flights: a return fare of about ${money(flightPP * Math.sqrt(lvl) * rate, homeCurrency)} per adult (${longHaul ? 'long-haul' : 'short-haul'}), children at 90%. Remove the line if you already have your tickets${trip.startPlace?.name ? '' : ', or set where you start in Trip details if you start close to the destination'}.`,
+    ...(hasCar
+      ? [`Car: ${rented ? `rental of about ${money(55 * idx * Math.sqrt(lvl) * rate, homeCurrency)} a day, plus ` : ''}fuel at about ${money(0.12 * Math.min(idx, 1.2) * rate, homeCurrency, 2)} per km, for ${plural(carDays, 'day')} at roughly 150 km a day.`]
+      : []),
+    homeCurrency === 'EUR' ? 'Amounts are in euros.' : `Amounts are converted to ${homeCurrency} at today's rate (1 EUR = ${rate.toFixed(2)} ${homeCurrency}).`,
+    'These are rough guesses, not quotes. Change any quantity or price, remove lines you don\'t need, and swap in real prices as you book.',
+  ]
   // Unit prices keep their cents when small (0.19 per km), whole amounts otherwise.
   const roundPrice = (n: number) => (n >= 100 ? Math.round(n) : Math.round(n * 100) / 100)
-  return raw
+  const lines = raw
     .map((l) => {
       const price = roundPrice(l.price * rate)
       return { id: uid(), category: l.category, label: l.label, qty: l.qty, unit: l.unit, price, amount: Math.round(l.qty * price) }
     })
     .filter((l) => l.amount > 0)
+  return { lines, basis }
+}
+
+/** "per night", "per person per day", "each": what a unit price is for, so "A$263" is never a mystery. */
+export function perPhrase(unit = ''): string {
+  const u = unit.toLowerCase()
+  if (!u) return ''
+  if (u === 'person-days') return 'per person per day'
+  if (/^(traveller|adult|child|children|person|people)s?$/.test(u)) return 'each'
+  return `per ${unitFor(1, unit)}`
 }
 
 const UNIT_FORMS: Record<string, [string, string]> = { day: ['day', 'days'], night: ['night', 'nights'], move: ['move', 'moves'], traveller: ['traveller', 'travellers'], trip: ['trip', 'trips'], child: ['child', 'children'], ticket: ['ticket', 'tickets'], meal: ['meal', 'meals'] }

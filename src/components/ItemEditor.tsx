@@ -27,6 +27,8 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
   const settings = useSettings()
   const navigate = useNavigate()
   const isNew = !item.id
+  const [newId] = useState(uid) // fixed when the form opens: tapping Save twice saves one item
+  const [saving, setSaving] = useState(false)
   const [it, setIt] = useState<Partial<Item> & { date: string }>({ kind: 'activity', status: 'planned', ...item })
   const set = <K extends keyof Item>(k: K, v: Item[K] | undefined) => setIt((s) => ({ ...s, [k]: v }))
   const kind = (it.kind ?? 'activity') as ItemKind
@@ -52,13 +54,15 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       toast('Give it a title first')
       return
     }
+    if (saving) return
+    setSaving(true)
     let order = it.order
     if (order == null) {
       const sameDay = await db.items.where({ tripId: trip.id, date: it.date }).toArray()
       order = sameDay.reduce((m, x) => Math.max(m, x.order), -1) + 1
     }
     const full: Item = {
-      id: it.id ?? uid(),
+      id: it.id ?? newId,
       tripId: trip.id,
       date: it.date,
       kind,

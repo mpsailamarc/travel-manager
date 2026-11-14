@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, touchTrip } from '../db'
 import type { BudgetCategory, BudgetLine, Expense, ItemKind } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
-import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines, inferAssumption, lineAmount, unitFor } from '../lib/budget'
+import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines, inferAssumption, lineAmount, perPhrase, unitFor } from '../lib/budget'
 import { fxRate } from '../lib/apis'
 import { country } from '../lib/countries'
 import { daysBetween, formatDate, today } from '../lib/dates'
@@ -35,6 +35,7 @@ export default function BudgetPage() {
   const home = settings.homeCurrency
   const [editing, setEditing] = useState<Expense | null>(null)
   const cols = useMediaQuery('(min-width: 721px)') ? 4 : 3 // the 'In plan' column is hidden on phones
+  const [basisOpen, setBasisOpen] = useState(false)
   const [folded, setFolded] = useState<Partial<Record<BudgetCategory, boolean>>>({})
   const [assumptions, setAssumptions] = useState<Set<string>>(new Set()) // lines whose quantity × price editor is open
   // Lines from an older estimate get their quantity and price read back from their label (the amount stays the same).
@@ -89,12 +90,20 @@ export default function BudgetPage() {
   }
 
   async function estimate() {
-    if ((totalBudget || lines.length) && !confirm('Replace your current budget with a new rough estimate?')) return
-    const next = await estimateBudgetLines(trip, settings.nationality, home, items)
+    if (
+      (totalBudget || lines.length) &&
+      !confirm(
+        'Estimate for me builds a rough starting budget from typical costs for your destination, your budget level and your group.\n\n' +
+          'It REPLACES the budget numbers and lines you have now (your expenses and plan costs are not touched).\n\nContinue?',
+      )
+    )
+      return
+    const { lines: next, basis } = await estimateBudgetLines(trip, settings.nationality, home, items)
     // A fresh estimate replaces everything: categories it has no lines for (e.g. flights) are cleared.
-    await db.trips.update(trip.id, { budgetLines: next, budget: budgetFromLines(next, {}, []) })
+    await db.trips.update(trip.id, { budgetLines: next, budgetBasis: basis, budget: budgetFromLines(next, {}, []) })
     await touchTrip(trip.id)
-    toast('Estimate filled in — change or remove any line below')
+    setBasisOpen(true)
+    toast('Estimate filled in — see “How this was estimated” below the table')
   }
 
   /** Adding the first line to a category that had a typed-in budget keeps that amount as a line, so nothing is lost. */
@@ -148,6 +157,10 @@ export default function BudgetPage() {
               </button>
             </div>
           </div>
+          <p className="small muted" style={{ marginBottom: 8 }}>
+            Not sure what to put? <b>🧮 Estimate for me</b> fills in a rough budget from typical costs for your destination, your budget level and your group. Every line shows
+            <i> quantity × price</i> (for example <i>3 nights × A$263 per night</i>) so you can change it, remove it, or add your own with ＋.
+          </p>
           <datalist id="budget-units">
             {['days', 'nights', 'km', 'person-days', 'travellers', 'trips', 'tickets', 'meals'].map((u) => (
               <option key={u} value={u} />
@@ -249,7 +262,7 @@ export default function BudgetPage() {
                         <tr key={l.id} className="budget-line">
                           <td style={{ paddingLeft: 14 }}>
                             <button className="btn-ghost btn-sm" style={{ minHeight: 24, padding: '0 4px', color: 'var(--primary)', textAlign: 'left' }} onClick={toggle} aria-expanded={open}>
-                              {calc ? `${l.qty} ${unitFor(l.qty!, l.unit)} × ${money(l.price!, home, l.price! < 10 ? 2 : 0)}` : '＋ assumption'} {open ? '▴' : '▾'}
+                              {calc ? `${l.qty} ${unitFor(l.qty!, l.unit)} × ${money(l.price!, home, l.price! < 10 ? 2 : 0)} ${perPhrase(l.unit)}` : '＋ assumption'} {open ? '▴' : '▾'}
                             </button>
                           </td>
                           <td className="num">
@@ -309,7 +322,7 @@ export default function BudgetPage() {
                                   min={0}
                                   step="any"
                                   style={{ width: 92 }}
-                                  placeholder={`Price (${home})`}
+                                  placeholder={`Price per ${unitFor(1, l.unit) || 'unit'} (${home})`}
                                   aria-label="Price per unit"
                                   defaultValue={l.price ?? ''}
                                   key={`${l.id}-p-${l.price}`}
@@ -328,9 +341,22 @@ export default function BudgetPage() {
               })}
             </tbody>
           </table>
+          {trip.budgetBasis && lines.length > 0 && (
+            <details className="card tight" style={{ marginTop: 10 }} open={basisOpen} onToggle={(e) => setBasisOpen(e.currentTarget.open)}>
+              <summary className="small strong" style={{ cursor: 'pointer' }}>
+                ℹ️ How this was estimated
+              </summary>
+              <ul className="small" style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                {trip.budgetBasis.map((b, i) => (
+                  <li key={i} style={{ marginBottom: 4 }}>
+                    {b}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <p className="tiny muted" style={{ marginTop: 8 }}>
-            <b>Spent</b> = bookings that have a booking reference (paid ahead) + expenses you log. <b>Estimate for me</b> fills in typical daily costs for the destination, your budget level and
-            group size as lines under each category. Change an amount, rename or remove a line (✕), or tap ＋ on a category to add your own.
+            <b>Spent</b> = bookings that have a booking reference (paid ahead) + expenses you log.
           </p>
         </div>
 

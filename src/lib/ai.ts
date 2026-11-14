@@ -394,7 +394,10 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
       endDate: endDate > trip.endDate ? endDate : trip.endDate,
       cities: option.route.length ? option.route : trip.cities,
       budget,
-      budgetLines: trip.budgetLines?.filter((l) => typeof option.budget[l.category] !== 'number'),
+      ...(() => {
+        const kept = trip.budgetLines?.filter((l) => typeof option.budget[l.category] !== 'number')
+        return { budgetLines: kept?.length ? kept : undefined, budgetBasis: kept?.length ? trip.budgetBasis : undefined }
+      })(),
       notes: [trip.notes, option.tips.length ? `Tips from "${option.title}":\n• ${option.tips.join('\n• ')}` : ''].filter(Boolean).join('\n\n') || undefined,
     })
     for (const d of option.days) {

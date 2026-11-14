@@ -60,6 +60,9 @@ export default function FavoritesPage() {
 
   async function addFav(f: Omit<Favorite, 'id' | 'tripId' | 'city' | 'addedAt'>) {
     if (!city) return
+    // Checked in the database, not on screen: two quick taps on ⭐ add it once.
+    const already = (await db.favorites.where('tripId').equals(trip.id).toArray()).some((x) => sameCity(x.city, city) && x.name.toLowerCase() === f.name.toLowerCase())
+    if (already) return
     await db.favorites.add({ ...f, id: uid(), tripId: trip.id, city, addedAt: Date.now() })
     toast(`⭐ ${f.name}`)
   }
