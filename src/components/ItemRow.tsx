@@ -18,7 +18,7 @@ export function itemSubtitle(it: Item): string {
   return parts.join(' · ')
 }
 
-export function ItemRow({ item, onClick, actions, showStatus = true }: { item: Item; onClick?: () => void; actions?: ReactNode; showStatus?: boolean }) {
+export function ItemRow({ item, onClick, actions, showStatus = true, zoneNote }: { item: Item; onClick?: () => void; actions?: ReactNode; showStatus?: boolean; zoneNote?: string }) {
   const meta = KIND_META[item.kind]
   return (
     <div className={`item ${item.status === 'done' ? 'is-done' : ''} ${item.status === 'skipped' ? 'is-skipped' : ''}`}>
@@ -34,6 +34,7 @@ export function ItemRow({ item, onClick, actions, showStatus = true }: { item: I
           {item.kind === 'drive' && <span className="badge">Self-drive · no booking</span>}
         </div>
         {itemSubtitle(item) && <div className="item-sub">{itemSubtitle(item)}</div>}
+        {zoneNote && <div className="item-sub">🌏 {zoneNote}</div>}
         {item.notes && <div className="item-sub">{item.notes}</div>}
         {item.url && (
           <a className="item-sub" href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block', marginTop: 2 }}>

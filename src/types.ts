@@ -73,6 +73,7 @@ export interface Day {
   lon?: number
   title?: string
   notes?: string
+  tz?: string // IANA time zone, when set by hand; otherwise worked out from the city's coordinates
 }
 
 export const TRANSPORT_KINDS = ['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi'] as const
@@ -122,6 +123,8 @@ export interface Item {
   notes?: string
   order: number
   walk?: WalkRoute
+  fromTz?: string // zone of the start time of a transport item (e.g. Australia/Sydney), when not the obvious one
+  toTz?: string // zone of its end time (e.g. Asia/Tokyo)
   planner?: string // set on items built from favourites ("fav:<city>") so they can be rebuilt
 }
 

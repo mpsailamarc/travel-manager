@@ -1452,3 +1452,73 @@ hr {
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
+
+/* Dragging on the calendar */
+.tl-block {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.tl-block.is-editable {
+  cursor: grab;
+}
+
+.tl-block.is-dragging {
+  cursor: grabbing;
+  z-index: 5;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.25);
+  opacity: 0.95;
+  transition: none;
+}
+
+.tl-grip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.tl-grip::after {
+  content: '';
+  width: 28px;
+  height: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.35;
+}
+
+.tl-grip.top {
+  top: 0;
+}
+
+.tl-grip.bottom {
+  bottom: 0;
+}
+
+.tl-tip {
+  position: absolute;
+  right: 4px;
+  top: -24px;
+  background: var(--ink);
+  color: #fff;
+  font-style: normal;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tl-block.has-top-grip {
+  padding-top: 14px;
+}
+
+.tl-block.has-bottom-grip {
+  padding-bottom: 12px;
+}

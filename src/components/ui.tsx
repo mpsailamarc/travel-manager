@@ -82,25 +82,47 @@ export function Progress({ value, max, over }: { value: number; max: number; ove
   )
 }
 
-/* Toasts: call toast('Saved') from anywhere. */
+/* Toasts: call toast('Saved') from anywhere; give it an action for "Undo" or "Push back". */
 const EVT = 'tm-toast'
-export function toast(message: string) {
-  window.dispatchEvent(new CustomEvent(EVT, { detail: message }))
+interface ToastDetail {
+  message: string
+  action?: { label: string; run: () => void | Promise<void> }
+}
+export function toast(message: string, action?: ToastDetail['action']) {
+  window.dispatchEvent(new CustomEvent<ToastDetail>(EVT, { detail: { message, action } }))
 }
 
 export function Toaster() {
-  const [msg, setMsg] = useState<string>()
+  const [t, setT] = useState<ToastDetail>()
   useEffect(() => {
-    let t: ReturnType<typeof setTimeout>
+    let timer: ReturnType<typeof setTimeout>
     const on = (e: Event) => {
-      setMsg((e as CustomEvent<string>).detail)
-      clearTimeout(t)
-      t = setTimeout(() => setMsg(undefined), 2800)
+      const d = (e as CustomEvent<ToastDetail>).detail
+      setT(d)
+      clearTimeout(timer)
+      timer = setTimeout(() => setT(undefined), d.action ? 8000 : 2800)
     }
     window.addEventListener(EVT, on)
     return () => window.removeEventListener(EVT, on)
   }, [])
-  return msg ? <div className="toast">{msg}</div> : null
+  if (!t) return null
+  return (
+    <div className="toast row" style={{ gap: 12 }}>
+      <span>{t.message}</span>
+      {t.action && (
+        <button
+          className="btn-sm"
+          style={{ color: '#fff', borderColor: 'rgb(255 255 255 / 0.5)', background: 'transparent' }}
+          onClick={async () => {
+            setT(undefined)
+            await t.action!.run()
+          }}
+        >
+          {t.action.label}
+        </button>
+      )}
+    </div>
+  )
 }
 
 export async function copyText(text: string) {

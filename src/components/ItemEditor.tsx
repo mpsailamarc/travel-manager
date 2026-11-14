@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
 import { db, touchTrip } from '../db'
 import type { Item, ItemKind, ItemStatus, Trip } from '../types'
-import { dateRange, formatDate, hhmmToMin, minToHHMM } from '../lib/dates'
+import { addDays, daysBetween, dateRange, formatDate, formatDuration, hhmmToMin, minToHHMM } from '../lib/dates'
 import { country, CURRENCIES } from '../lib/countries'
 import { uid } from '../lib/ids'
 import { KIND_META, STATUS_LABEL, isTransport, needsBooking } from './kinds'
@@ -13,7 +13,19 @@ import { PlaceSearch } from './PlaceSearch'
 import { PlaceInfo } from './PlaceInfo'
 import { localWiki } from '../lib/apis'
 import { planRipple } from '../lib/ripple'
+import { journeyNote } from '../lib/dayview'
+import { itemZones, offsetMin, transportSpan, tzCity, tzLabel } from '../lib/tz'
 import { useSettings } from '../lib/hooks'
+
+const TIME_ZONES: string[] = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? []
+
+/** "3 h behind" / "2 h ahead of": how far one zone is from another at that moment. */
+function tzOffsetDiff(a: string, b: string, utcMs: number) {
+  const d = (offsetMin(a, utcMs) - offsetMin(b, utcMs)) / 60
+  const h = Math.abs(d)
+  const label = Number.isInteger(h) ? `${h} h` : `${Math.floor(h)} h ${Math.round((h % 1) * 60)} min`
+  return d === 0 ? 'same time as' : `${label} ${d > 0 ? 'ahead of' : 'behind'}`
+}
 
 interface Props {
   trip: Trip
@@ -32,6 +44,13 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
   const [it, setIt] = useState<Partial<Item> & { date: string }>({ kind: 'activity', status: 'planned', ...item })
   const set = <K extends keyof Item>(k: K, v: Item[K] | undefined) => setIt((s) => ({ ...s, [k]: v }))
   const kind = (it.kind ?? 'activity') as ItemKind
+
+  const days = useLiveQuery(() => db.days.where('tripId').equals(trip.id).toArray(), [trip.id])
+  const zoneCtx = { trip, days: days ?? [] }
+
+  // Transport times are clock times where they happen: departure in the departure place's zone, arrival in the arrival place's.
+  const zones = itemZones({ ...it, kind }, zoneCtx)
+  const span = isTransport(kind) ? transportSpan({ ...(it as Item), kind }, zoneCtx) : undefined
 
   /** Changing the start moves the whole item: the end follows, so the duration stays (an overnight flight too). */
   function setStart(v: string) {
@@ -71,6 +90,8 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       order,
       startTime: it.startTime || undefined,
       endTime: it.endTime || undefined,
+      fromTz: isTransport(kind) ? it.fromTz || undefined : undefined,
+      toTz: isTransport(kind) ? it.toTz || undefined : undefined,
       from: isTransport(kind) ? it.from : undefined,
       to: isTransport(kind) ? it.to : undefined,
       location: isTransport(kind) ? undefined : it.location,
@@ -129,11 +150,11 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
             </select>
           </label>
           <label>
-            {isTransport(kind) ? 'Departs' : kind === 'stay' ? 'Check-in' : 'Starts'}
+            {isTransport(kind) ? `Departs${zones.from ? ` · ${tzCity(zones.from)} time` : ''}` : kind === 'stay' ? 'Check-in' : 'Starts'}
             <input type="time" value={it.startTime ?? ''} onChange={(e) => setStart(e.target.value)} />
           </label>
           <label>
-            {isTransport(kind) ? 'Arrives' : 'Ends'}
+            {isTransport(kind) ? `Arrives${zones.to ? ` · ${tzCity(zones.to)} time` : ''}` : 'Ends'}
             <input type="time" value={it.endTime ?? ''} onChange={(e) => set('endTime', e.target.value)} />
           </label>
           <label>
@@ -147,6 +168,39 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
             </select>
           </label>
         </div>
+
+        {isTransport(kind) && span && (span.zonesDiffer || span.arrDate !== it.date) && (
+          <p className="small" style={{ margin: 0 }}>
+            🌏 Travel time <b>{formatDuration(span.durationMin * 60)}</b>
+            {span.arrDate > it.date ? ` · lands ${span.arrDate === addDays(it.date, 1) ? 'the next day' : `${daysBetween(it.date, span.arrDate)} days later`}` : span.arrDate < it.date ? ' · lands the day before (date line)' : ''}
+            {span.zonesDiffer && ` · ${tzCity(span.fromTz)} is ${tzOffsetDiff(span.fromTz, span.toTz, span.depUtc)} ${tzCity(span.toTz)}`}
+          </p>
+        )}
+        {isTransport(kind) && (
+          <details className="card tight">
+            <summary className="small strong" style={{ cursor: 'pointer' }}>
+              🕒 Time zones{zones.from && zones.to && zones.from !== zones.to ? ` · ${tzLabel(zones.from)} → ${tzLabel(zones.to)}` : ''}
+            </summary>
+            <div className="form-grid" style={{ marginTop: 8 }}>
+              <label>
+                Departure zone
+                <input list="tz-list" value={it.fromTz ?? ''} placeholder={zones.auto.from ? `Auto: ${tzLabel(zones.auto.from)}` : 'Auto'} onChange={(e) => set('fromTz', e.target.value || undefined)} />
+              </label>
+              <label>
+                Arrival zone
+                <input list="tz-list" value={it.toTz ?? ''} placeholder={zones.auto.to ? `Auto: ${tzLabel(zones.auto.to)}` : 'Auto'} onChange={(e) => set('toTz', e.target.value || undefined)} />
+              </label>
+            </div>
+            <p className="tiny muted" style={{ marginTop: 6 }}>
+              Zones are worked out from the places and the day's city. Type a city or region such as “Asia/Tokyo” only to override them. Leave empty for automatic.
+            </p>
+            <datalist id="tz-list">
+              {TIME_ZONES.map((z) => (
+                <option key={z} value={z} />
+              ))}
+            </datalist>
+          </details>
+        )}
 
         {(ripple.moves.length > 0 || ripple.blockedBy) && (
           <div className="notice info stack" style={{ gap: 6 }}>
@@ -273,6 +327,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
     >
       <div className="stack">
         <ItemSummary item={saved} />
+        {journeyNote(saved, zoneCtx) && <p className="small" style={{ margin: 0 }}>🌏 {journeyNote(saved, zoneCtx)}</p>}
         {saved.kind !== 'note' && (
           <PlaceInfo
             item={saved}

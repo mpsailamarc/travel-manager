@@ -5,6 +5,7 @@ import type { Day, Item, Place } from '../types'
 import { dateRange, formatDate, formatDuration, today } from '../lib/dates'
 import { distance, money } from '../lib/format'
 import { drivingRoute, locatePlace } from '../lib/apis'
+import { journeyNote } from '../lib/dayview'
 import { ItemRow } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
 import { Empty, Modal, toast } from '../components/ui'
@@ -236,7 +237,7 @@ export default function PlanPage() {
               {d?.notes && <p className="small muted" style={{ marginBottom: 6 }}>{d.notes}</p>}
               <div className="items">
                 {dayItems.map((it) => (
-                  <ItemRow key={it.id} item={it} onClick={() => setEditing(it)} />
+                  <ItemRow key={it.id} item={it} zoneNote={journeyNote(it, { trip, days })} onClick={() => setEditing(it)} />
                 ))}
                 {dayItems.length === 0 && <div className="small muted" style={{ padding: '6px 4px' }}>Free day — add something or leave it open.</div>}
               </div>

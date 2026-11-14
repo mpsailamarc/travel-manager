@@ -23,6 +23,11 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Pinned day selector**: the row of day buttons stays under the header while you scroll a day; picking another day starts it from its top.
 - **Day timeline**: the day laid out on an hour scale, each block as tall as the activity is long (overlaps side by side, a "now" line), with a bar
   showing how the day divides between travel, activities and meals. Switch to the plain list any time.
+- **Move and resize on the calendar**: press and hold a block (or drag with the mouse) to move it, drag its top or bottom handle to change the start or
+  the end; it snaps to 15 minutes. Booked items stay put. If a change makes things overlap you get "Push them back" and Undo.
+- **Time zones**: a day is shown in the local time of its city (worked out offline from coordinates). A flight is entered in the departure place's time
+  and the arrival in the arrival place's time, so "Sydney 22:30 → Tokyo 07:00" is 10 h 30 and appears at 20:30 on Tokyo's calendar, continuing onto the
+  next morning. Override the zones under "Time zones" in the item form if a guess is wrong.
 - **Switching itinerary idea is a clean swap**: the previous idea's items, to-dos (ticked ones stay), budget figures, tips and favourite-to-day links go;
   your own notes, figures and the end date you chose stay.
 - **Budget vs In the plan**: each category shows what's priced in the plan and what isn't yet ("not planned yet" / "over budget"), with an explanation.

@@ -10,6 +10,9 @@ import { applyDayReplan, CHATBOTS, parseDayItems, replanPrompt } from '../lib/ai
 import { ItemRow, itemSubtitle } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
 import { DayProportions, DayTimeline } from '../components/DayTimeline'
+import { buildDayView, journeyNote } from '../lib/dayview'
+import { durationMin } from '../lib/tz'
+import { planRipple } from '../lib/ripple'
 import { KIND_META, isTransport, needsBooking } from '../components/kinds'
 import { copyText, Empty, Modal, toast } from '../components/ui'
 import LazyMap from '../components/LazyMap'
@@ -27,8 +30,10 @@ export default function TodayPage() {
   const nowStr = nowHHMM()
   const day = days.find((d) => d.date === date)
   const dayItems = useMemo(() => sortItems(items.filter((i) => i.date === date)), [items, date])
-  const [view, setViewState] = useState<'timeline' | 'list'>(() => (localStorage.getItem('tm-day-view') === 'list' ? 'list' : 'timeline'))
-  const setView = (v: 'timeline' | 'list') => {
+  // The calendar in this day's own time (a flight from another zone is converted; one landing today shows its landing part).
+  const view = useMemo(() => buildDayView(items, date, { trip, days }), [items, date, trip, days])
+  const [mode, setViewState] = useState<'timeline' | 'list'>(() => (localStorage.getItem('tm-day-view') === 'list' ? 'list' : 'timeline'))
+  const setMode = (v: 'timeline' | 'list') => {
     setViewState(v)
     localStorage.setItem('tm-day-view', v)
   }
@@ -70,6 +75,34 @@ export default function TodayPage() {
     if (tomorrow > trip.endDate) return toast('That’s the last day of the trip')
     await db.items.update(it.id, { date: tomorrow, startTime: undefined })
     toast(`Moved to ${formatDate(tomorrow)}`)
+  }
+
+  /** Dragged on the calendar: save the new times, and offer to undo or to push overlapping items back. */
+  async function moveOnCalendar(it: Item, times: { startTime: string; endTime?: string }) {
+    const before = { startTime: it.startTime, endTime: it.endTime }
+    await db.items.update(it.id, { startTime: times.startTime, endTime: times.endTime ?? it.endTime })
+    await touchTrip(trip.id)
+    const shown = `${it.title}: ${times.startTime}${times.endTime ? `–${times.endTime}` : ''}`
+    const ripple = planRipple(await db.items.where({ tripId: trip.id, date: it.date }).toArray(), { id: it.id, startTime: times.startTime, endTime: times.endTime }, before)
+    const undo = async () => {
+      await db.items.update(it.id, { startTime: before.startTime, endTime: before.endTime })
+      await touchTrip(trip.id)
+    }
+    if (ripple.moves.length && !ripple.blockedBy) {
+      toast(`${shown} · now overlaps ${ripple.moves.length} item${ripple.moves.length > 1 ? 's' : ''}`, {
+        label: 'Push them back',
+        run: async () => {
+          await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.start, endTime: m.end } })))
+          await touchTrip(trip.id)
+          toast('Pushed back', { label: 'Undo', run: async () => {
+            await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.item.startTime, endTime: m.item.endTime } })))
+            await undo()
+          } })
+        },
+      })
+    } else {
+      toast(shown, { label: 'Undo', run: undo })
+    }
   }
 
   const goto = (d: string) => {
@@ -154,7 +187,8 @@ export default function TodayPage() {
                     </div>
                     <div className="small muted">
                       {t.from?.name} → {t.to?.name}
-                      {t.startTime && t.endTime && ` · ${formatDuration((hhmmToMin(t.endTime) - hhmmToMin(t.startTime) + 1440) % 1440 * 60)}`}
+                      {t.startTime && t.endTime && ` · ${formatDuration((durationMin(t, { trip, days }) ?? 0) * 60)}`}
+                      {journeyNote(t, { trip, days }) && ` · 🌏 ${journeyNote(t, { trip, days })}`}
                     </div>
                     {t.bookingRef && (
                       <div className="small">
@@ -179,10 +213,10 @@ export default function TodayPage() {
                 </span>
                 {dayItems.length > 0 && (
                   <div className="chips" style={{ flexWrap: 'nowrap' }}>
-                    <button className={`chip ${view === 'timeline' ? 'on' : ''}`} onClick={() => setView('timeline')}>
+                    <button className={`chip ${mode === 'timeline' ? 'on' : ''}`} onClick={() => setMode('timeline')}>
                       🕒 Timeline
                     </button>
-                    <button className={`chip ${view === 'list' ? 'on' : ''}`} onClick={() => setView('list')}>
+                    <button className={`chip ${mode === 'list' ? 'on' : ''}`} onClick={() => setMode('list')}>
                       ☰ List
                     </button>
                   </div>
@@ -192,16 +226,19 @@ export default function TodayPage() {
             {dayItems.length === 0 && <Empty emoji="☕" title="Free day">Add something, build a walk, or just wander.</Empty>}
             {dayItems.length > 0 && (
               <div style={{ marginBottom: 14 }}>
-                <DayProportions items={dayItems} />
+                <DayProportions entries={view.entries} />
               </div>
             )}
-            {view === 'timeline' && dayItems.length > 0 && <DayTimeline items={dayItems} now={isToday ? now : undefined} onOpen={(it) => setEditing(it)} />}
-            {view === 'list' && (
+            {mode === 'timeline' && dayItems.length > 0 && (
+              <DayTimeline view={view} now={isToday ? now : undefined} onOpen={(it) => setEditing(it)} onChange={moveOnCalendar} />
+            )}
+            {mode === 'list' && (
             <div className="items">
               {dayItems.map((it, i) => (
                 <div key={it.id}>
                   <ItemRow
                     item={it}
+                    zoneNote={journeyNote(it, { trip, days })}
                     onClick={() => setEditing(it)}
                     actions={
                       <>

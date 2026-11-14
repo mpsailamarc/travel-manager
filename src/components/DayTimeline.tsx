@@ -1,9 +1,15 @@
+import { useEffect, useRef, useState } from 'react'
 import type { Item, ItemKind } from '../types'
 import { KIND_META } from './kinds'
-import { formatDuration, hhmmToMin, minToHHMM } from '../lib/dates'
+import { formatDuration, minToHHMM } from '../lib/dates'
+import { tzLabel } from '../lib/tz'
+import type { DayEntry, DayView } from '../lib/dayview'
 
 const PX_PER_HOUR = 52
 const GUTTER = 46 // room for the hour labels
+const SNAP = 15 // minutes
+const MIN_LEN = 15
+const HOLD_MS = 350 // touch: hold this long before a block can be dragged, so scrolling past it still works
 
 type Group = 'travel' | 'activities' | 'meals' | 'stay' | 'other'
 
@@ -51,25 +57,24 @@ function guessMinutes(it: Item): number {
 }
 
 interface Block {
+  entry: DayEntry
   item: Item
   start: number
   end: number
   estimated: boolean
   col: number
   cols: number
+  /** Booked, converted from another zone, or cut by midnight: edit it in the form, not by dragging. */
+  fixed: boolean
 }
 
-function layout(items: Item[]): { blocks: Block[]; untimed: Item[] } {
-  const untimed = items.filter((i) => !i.startTime)
-  const raw = items
-    .filter((i) => i.startTime)
-    .map((item) => {
-      const start = hhmmToMin(item.startTime!)
-      let end = item.endTime ? hhmmToMin(item.endTime) : start
-      const estimated = !item.endTime || end === start
-      if (estimated) end = start + guessMinutes(item)
-      else if (end < start) end = 24 * 60 // runs past midnight: show to the end of the day
-      return { item, start, end: Math.min(end, 24 * 60), estimated }
+function layout(entries: DayEntry[]): Block[] {
+  const raw = entries
+    .map((e) => {
+      const estimated = e.end == null
+      const end = Math.max(e.end ?? e.start + guessMinutes(e.item), e.start + MIN_LEN)
+      const fixed = e.item.status === 'booked' || !!e.item.bookingRef || !!e.converted || !!e.spill || !!e.clippedStart || !!e.clippedEnd
+      return { entry: e, item: e.item, start: e.start, end: Math.min(end, 24 * 60), estimated, fixed }
     })
     .sort((a, b) => a.start - b.start || a.end - b.end)
 
@@ -93,12 +98,12 @@ function layout(items: Item[]): { blocks: Block[]; untimed: Item[] } {
     clusterEnd = Math.max(clusterEnd, r.end)
   }
   flush()
-  return { blocks, untimed }
+  return blocks
 }
 
 /** How the day divides between travel, activities and meals: one bar, so proportions are obvious at a glance. */
-export function DayProportions({ items }: { items: Item[] }) {
-  const { blocks } = layout(items)
+export function DayProportions({ entries }: { entries: DayEntry[] }) {
+  const blocks = layout(entries)
   const totals = new Map<Group, number>()
   for (const b of blocks) {
     const g = groupOf(b.item.kind)
@@ -128,22 +133,173 @@ export function DayProportions({ items }: { items: Item[] }) {
   )
 }
 
-/** The day laid out on an hour scale: a block is as tall as the activity is long. Tap one to open it. */
-export function DayTimeline({ items, now, onOpen }: { items: Item[]; now?: Date; onOpen: (item: Item) => void }) {
-  const { blocks, untimed } = layout(items)
+type Mode = 'move' | 'start' | 'end'
+interface Live {
+  id: string
+  mode: Mode
+  start: number
+  end: number
+}
+interface Gesture {
+  block: Block
+  mode: Mode
+  x0: number
+  y0: number
+  touch: boolean
+  active: boolean
+  timer?: number
+  live: { start: number; end: number }
+  activate: () => void
+}
+
+const hhmm = (min: number) => minToHHMM(Math.min(min, 24 * 60 - 1))
+
+/**
+ * The day laid out on an hour scale, in the day's destination time: a block is as tall as the activity is long.
+ * Tap a block to open it. Hold it (touch) or press and drag (mouse) to move it; drag its top or bottom edge to change
+ * when it starts or how long it lasts. Times snap to 15 minutes.
+ */
+export function DayTimeline({
+  view,
+  now,
+  onOpen,
+  onChange,
+}: {
+  view: DayView
+  now?: Date
+  onOpen: (item: Item) => void
+  onChange?: (item: Item, times: { startTime: string; endTime?: string }) => void
+}) {
+  const blocks = layout(view.entries)
+  const { untimed } = view
+  const from = blocks.length ? Math.max(0, Math.floor(Math.min(...blocks.map((b) => b.start), 7 * 60) / 60) * 60) : 7 * 60
+  const to = blocks.length ? Math.min(24 * 60, Math.ceil(Math.max(...blocks.map((b) => b.end), 19 * 60) / 60) * 60) : 19 * 60
+
+  const [live, setLive] = useState<Live | null>(null)
+  const gesture = useRef<Gesture | null>(null)
+  const suppressClick = useRef(false)
+  const wrap = useRef<HTMLDivElement>(null)
+  const latest = useRef({ from, to, onChange })
+  latest.current = { from, to, onChange }
+
+  // While a block is being dragged the page must not scroll under the finger.
+  useEffect(() => {
+    const el = wrap.current
+    if (!el) return
+    const stop = (e: TouchEvent) => {
+      if (gesture.current?.active && e.cancelable) e.preventDefault()
+    }
+    el.addEventListener('touchmove', stop, { passive: false })
+    return () => el.removeEventListener('touchmove', stop)
+  }, [blocks.length])
+
+  function clean() {
+    const g = gesture.current
+    if (g?.timer) clearTimeout(g.timer)
+    gesture.current = null
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onCancel)
+  }
+
+  function onMove(e: PointerEvent) {
+    const g = gesture.current
+    if (!g) return
+    const dx = e.clientX - g.x0
+    const dy = e.clientY - g.y0
+    if (!g.active) {
+      if (g.touch && (Math.abs(dy) > 8 || Math.abs(dx) > 8)) return clean() // the finger is scrolling the page
+      if (!g.touch && g.mode === 'move' && Math.abs(dy) > 4) g.activate()
+      if (!g.active) return
+    }
+    const delta = Math.round(((dy / PX_PER_HOUR) * 60) / SNAP) * SNAP
+    const { from, to } = latest.current
+    const b = g.block
+    let start = b.start
+    let end = b.end
+    if (g.mode === 'move') {
+      const len = b.end - b.start
+      start = Math.min(Math.max(b.start + delta, from), to - len)
+      end = start + len
+    } else if (g.mode === 'end') {
+      end = Math.min(Math.max(b.end + delta, b.start + MIN_LEN), to)
+    } else {
+      start = Math.min(Math.max(b.start + delta, from), b.end - MIN_LEN)
+    }
+    g.live = { start, end }
+    setLive({ id: b.item.id, mode: g.mode, start, end })
+  }
+
+  function onUp() {
+    const g = gesture.current
+    const cb = latest.current.onChange
+    if (g?.active) {
+      suppressClick.current = true // the click that follows the release must not open the item
+      setTimeout(() => (suppressClick.current = false), 150)
+      const b = g.block
+      const changed = g.live.start !== b.start || g.live.end !== b.end
+      if (changed && cb) {
+        // Only the part you changed is written: moving keeps the length, an item with no end time stays without one.
+        const hasEnd = !!b.item.endTime || g.mode === 'end' || (g.mode === 'start' && !b.estimated)
+        cb(b.item, { startTime: hhmm(g.live.start), endTime: hasEnd || g.mode !== 'move' ? hhmm(g.live.end) : undefined })
+      }
+    }
+    setLive(null)
+    clean()
+  }
+
+  function onCancel() {
+    setLive(null)
+    clean()
+  }
+
+  function down(e: React.PointerEvent, b: Block, mode: Mode) {
+    if (!onChange || b.fixed) return
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    if (gesture.current) clean()
+    const g: Gesture = {
+      block: b,
+      mode,
+      x0: e.clientX,
+      y0: e.clientY,
+      touch: e.pointerType !== 'mouse',
+      active: false,
+      live: { start: b.start, end: b.end },
+      activate: () => {
+        g.active = true
+        navigator.vibrate?.(12)
+        setLive({ id: b.item.id, mode, start: b.start, end: b.end })
+      },
+    }
+    gesture.current = g
+    if (mode !== 'move') {
+      e.stopPropagation()
+      g.activate() // the edge handles start at once: they don't compete with scrolling
+    } else if (g.touch) {
+      g.timer = window.setTimeout(g.activate, HOLD_MS)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+  }
+
   if (!blocks.length) {
     return <p className="small muted">Give items a start time (and an end time) to see the day laid out here.{untimed.length ? ` ${untimed.length} item(s) have no time yet.` : ''}</p>
   }
-  const from = Math.max(0, Math.floor(Math.min(...blocks.map((b) => b.start), 7 * 60) / 60) * 60)
-  const to = Math.min(24 * 60, Math.ceil(Math.max(...blocks.map((b) => b.end), 19 * 60) / 60) * 60)
   const y = (min: number) => ((min - from) / 60) * PX_PER_HOUR
   const nowMin = now ? now.getHours() * 60 + now.getMinutes() : undefined
   const hours: number[] = []
   for (let m = from; m <= to; m += 60) hours.push(m)
+  const editable = !!onChange && blocks.some((b) => !b.fixed)
 
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <div className="tl" style={{ height: y(to) }}>
+      {view.tz && (
+        <p className="tiny muted" style={{ margin: 0 }}>
+          🕒 Times in <b>{tzLabel(view.tz)}</b>, the local time of this day
+        </p>
+      )}
+      <div className="tl" ref={wrap} style={{ height: y(to) }}>
         {hours.map((m) => (
           <div key={m} className="tl-hour" style={{ top: y(m) }}>
             <span>{minToHHMM(m % (24 * 60))}</span>
@@ -151,29 +307,45 @@ export function DayTimeline({ items, now, onOpen }: { items: Item[]; now?: Date;
         ))}
         {blocks.map((b) => {
           const meta = KIND_META[b.item.kind]
-          const height = Math.max(26, y(b.end) - y(b.start) - 2)
+          const l = live?.id === b.item.id ? live : undefined
+          const start = l?.start ?? b.start
+          const end = l?.end ?? b.end
+          const height = Math.max(26, y(end) - y(start) - 2)
           const tall = height >= 44
+          const gripTop = !!onChange && !b.fixed && height >= 66 // short blocks only get the bottom handle: the top would cover their title
+          const gripBottom = !!onChange && !b.fixed && height >= 46
+          const note = b.entry.zoneNote
           return (
             <button
-              key={b.item.id}
-              className={`tl-block ${meta.cls || b.item.kind} ${b.item.status === 'done' ? 'is-done' : ''} ${b.estimated ? 'is-estimated' : ''}`}
+              key={b.item.id + (b.entry.spill ? ':spill' : '')}
+              className={`tl-block ${meta.cls || b.item.kind} ${b.item.status === 'done' ? 'is-done' : ''} ${b.estimated && !l ? 'is-estimated' : ''} ${l ? 'is-dragging' : ''} ${b.fixed ? '' : 'is-editable'} ${gripTop ? 'has-top-grip' : ''} ${gripBottom ? 'has-bottom-grip' : ''}`}
               style={{
-                top: y(b.start),
+                top: y(start),
                 height,
                 left: `calc(${GUTTER}px + (100% - ${GUTTER}px) * ${b.col / b.cols})`,
                 width: `calc((100% - ${GUTTER}px) / ${b.cols} - 3px)`,
               }}
-              onClick={() => onOpen(b.item)}
-              title={`${b.item.title} · ${b.item.startTime}–${minToHHMM(b.end % (24 * 60))}${b.estimated ? ' (estimated length)' : ''}`}
+              onPointerDown={(e) => down(e, b, 'move')}
+              onContextMenu={(e) => gesture.current && e.preventDefault()}
+              onClick={() => !suppressClick.current && onOpen(b.item)}
+              title={`${b.item.title} · ${hhmm(start)}–${hhmm(end)}${b.estimated ? ' (estimated length)' : ''}${note ? ` · ${note}` : ''}`}
             >
+              {gripTop && <i className="tl-grip top" onPointerDown={(e) => down(e, b, 'start')} onClick={(e) => e.stopPropagation()} aria-label="Drag to change the start" />}
               <b>
                 {meta.emoji} {b.item.title}
               </b>
               {tall && (
                 <span>
-                  {b.item.startTime}–{minToHHMM(b.end % (24 * 60))} · {b.estimated ? '~' : ''}
-                  {formatDuration((b.end - b.start) * 60)}
+                  {b.entry.spill ? `lands ${hhmm(end)}` : `${hhmm(start)}–${hhmm(end)}`} · {b.estimated && !l ? '~' : ''}
+                  {formatDuration((end - start) * 60)}
                 </span>
+              )}
+              {tall && note && <span>🌏 {note}</span>}
+              {gripBottom && <i className="tl-grip bottom" onPointerDown={(e) => down(e, b, 'end')} onClick={(e) => e.stopPropagation()} aria-label="Drag to change the end" />}
+              {l && (
+                <em className="tl-tip">
+                  {hhmm(start)}–{hhmm(end)} · {formatDuration((end - start) * 60)}
+                </em>
               )}
             </button>
           )
@@ -184,7 +356,8 @@ export function DayTimeline({ items, now, onOpen }: { items: Item[]; now?: Date;
           </div>
         )}
       </div>
-      {blocks.some((b) => b.estimated) && <p className="tiny muted">Dashed blocks have no end time: their length is a guess (~). Set an end time to make it exact.</p>}
+      {editable && <p className="tiny muted">✋ Hold a block and drag it to move it; drag its top or bottom edge to change when it starts or ends. Booked items stay fixed.</p>}
+      {blocks.some((b) => b.estimated) && <p className="tiny muted">Dashed blocks have no end time: their length is a guess (~). Drag the bottom edge to set it.</p>}
       {untimed.length > 0 && (
         <div className="stack" style={{ gap: 4 }}>
           <b className="small">No time set</b>
