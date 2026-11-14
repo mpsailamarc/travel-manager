@@ -126,7 +126,7 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     if (['flight', 'train', 'ferry', 'car'].includes(it.kind) && (it.status === 'idea' || it.status === 'planned')) {
       add({
         ruleId: `book:${it.id}`,
-        title: `Book ${it.title}`,
+        title: `Book: ${it.title}`,
         category: 'bookings',
         dueDate: it.kind === 'flight' ? before(60) : before(21),
         notes: `${formatDate(it.date)}${it.from?.name && it.to?.name ? ` · ${it.from.name} → ${it.to.name}` : ''}`,
@@ -311,6 +311,18 @@ export async function refreshChecklist(tripId: string, settings: Settings) {
   await db.checklist.bulkDelete(gone.map((e) => e.id))
   const fresh = draftsToItems(tripId, drafts, existing.filter((e) => !gone.includes(e)))
   await db.checklist.bulkPut(fresh)
+  // Keep open suggestions in step with the plan (a stay moved to another date, a renamed train…).
+  const byRule = new Map(drafts.map((d) => [d.ruleId, d]))
+  const changed = existing.filter((e) => {
+    const d = e.ruleId && !e.done && !e.dismissed ? byRule.get(e.ruleId) : undefined
+    return d && (d.title !== e.title || d.notes !== e.notes || d.link !== e.link || d.dueDate !== e.dueDate)
+  })
+  await db.checklist.bulkUpdate(
+    changed.map((e) => {
+      const d = byRule.get(e.ruleId!)!
+      return { key: e.id, changes: { title: d.title, notes: d.notes, link: d.link, dueDate: d.dueDate } }
+    }),
+  )
   return { added: fresh.length, removed: gone.length }
 }
 

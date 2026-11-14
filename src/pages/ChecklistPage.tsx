@@ -1,19 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
-import type { ChecklistCategory, ChecklistItem } from '../types'
+import type { ChecklistCategory, ChecklistItem, Item } from '../types'
 import { CHECKLIST_CATEGORIES } from '../types'
 import { CATEGORY_LABELS, refreshChecklist } from '../lib/checklist'
 import { daysBetween, formatDate, today } from '../lib/dates'
 import { uid } from '../lib/ids'
+import { KIND_META, isTransport } from '../components/kinds'
 import { Empty, Modal, Progress, toast } from '../components/ui'
 import { useTripCtx } from './TripLayout'
 
 export default function ChecklistPage() {
   const { trip, items, settings } = useTripCtx()
-  const list = useLiveQuery(() => db.checklist.where('tripId').equals(trip.id).toArray(), [trip.id])
+  const list = useLiveQuery(async () => (await db.checklist.where('tripId').equals(trip.id).toArray()).filter((c) => !c.dismissed), [trip.id])
   const [hideDone, setHideDone] = useState(false)
   const [editing, setEditing] = useState<Partial<ChecklistItem> | null>(null)
+  // Bring the checklist in line with the plan every time it's opened: new stays, trains, nights without a bed…
+  // (your ticks and your own entries are never touched).
+  const refreshed = useRef<string>(undefined)
+  useEffect(() => {
+    if (refreshed.current === trip.id) return
+    refreshed.current = trip.id
+    refreshChecklist(trip.id, settings).then(({ added, removed }) => {
+      if (added || removed) toast(`Checklist updated from your plan: ${added} added${removed ? `, ${removed} no longer needed` : ''}`)
+    })
+  }, [trip.id, settings])
+
   // Booked something on the Plan tab? Tick its "Book: …" entry here.
   useEffect(() => {
     if (!list) return
@@ -46,6 +58,7 @@ export default function ChecklistPage() {
     toast(added || removed ? `${added} added${removed ? `, ${removed} no longer needed` : ''}` : 'Checklist is up to date')
   }
 
+  const itemsById = new Map(items.map((i) => [i.id, i]))
   const byCat = CHECKLIST_CATEGORIES.map((cat) => ({
     cat,
     rows: list
@@ -99,30 +112,82 @@ export default function ChecklistPage() {
               {rows.filter((r) => r.done).length}/{rows.length}
             </span>
           </div>
-          {rows.map((c) => {
-            const overdue = !c.done && c.dueDate && c.dueDate < now
-            return (
-              <div key={c.id} className={`check ${c.done ? 'done' : ''}`}>
-                <input type="checkbox" checked={c.done} onChange={() => toggle(c)} aria-label={c.title} />
-                <div className="grow clickable" onClick={() => setEditing(c)}>
-                  <div className="check-title">{c.title}</div>
-                  {c.notes && <div className="small muted">{c.notes}</div>}
-                  <div className="row wrap" style={{ gap: 6, marginTop: 2 }}>
-                    {c.dueDate && <span className={`badge ${overdue ? 'danger' : ''}`}>{overdue ? 'Overdue · ' : 'By '}{formatDate(c.dueDate)}</span>}
-                    {c.link && (
-                      <a className="small" href={c.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-                        {c.link.includes('booking.com/searchresults') ? '🔎 Find a place on Booking.com ↗' : 'More info ↗'}
-                      </a>
-                    )}
+          {cat === 'bookings'
+            ? BOOKING_GROUPS.map((g) => {
+                const groupRows = rows.filter((c) => bookingKind(c, itemsById).group === g.key).sort((x, y) => sortDate(x, itemsById).localeCompare(sortDate(y, itemsById)))
+                if (!groupRows.length) return null
+                return (
+                  <div key={g.key}>
+                    <div className="check-group">
+                      {g.label} · {groupRows.filter((r) => r.done).length}/{groupRows.length}
+                    </div>
+                    {groupRows.map((c) => (
+                      <CheckRow key={c.id} c={c} icon={bookingKind(c, itemsById).icon} now={now} onToggle={() => toggle(c)} onEdit={() => setEditing(c)} />
+                    ))}
                   </div>
-                </div>
-              </div>
-            )
-          })}
+                )
+              })
+            : rows.map((c) => <CheckRow key={c.id} c={c} now={now} onToggle={() => toggle(c)} onEdit={() => setEditing(c)} />)}
         </section>
       ))}
 
       {editing && <ChecklistEditor tripId={trip.id} item={editing} onClose={() => setEditing(null)} />}
+    </div>
+  )
+}
+
+const BOOKING_GROUPS = [
+  { key: 'stays', label: '🛏️ Accommodation' },
+  { key: 'transport', label: '✈️ Transport' },
+  { key: 'tickets', label: '🎟️ Tickets & activities' },
+  { key: 'other', label: '📌 Other bookings' },
+] as const
+
+/** Which plan item a booking entry is about (from its rule id), to show the right icon and group. */
+function bookingKind(c: ChecklistItem, itemsById: Map<string, Item>): { group: (typeof BOOKING_GROUPS)[number]['key']; icon?: string } {
+  if (c.ruleId?.startsWith('stay-gap:')) return { group: 'stays', icon: '🛏️' }
+  const m = c.ruleId?.match(/^(book|ticket|checkin):(.+)$/)
+  const it = m ? itemsById.get(m[2]) : undefined
+  if (!it) return { group: 'other' }
+  if (it.kind === 'stay') return { group: 'stays', icon: KIND_META.stay.emoji }
+  if (isTransport(it.kind)) return { group: 'transport', icon: m![1] === 'checkin' ? '🛂' : KIND_META[it.kind].emoji }
+  return { group: 'tickets', icon: KIND_META[it.kind].emoji }
+}
+
+/** Bookings follow the trip's order: by the date of the stay, train or ticket (then by due date). */
+function sortDate(c: ChecklistItem, itemsById: Map<string, Item>) {
+  const gap = c.ruleId?.match(/^stay-gap:(.+)$/)?.[1]
+  const it = itemsById.get(c.ruleId?.split(':').slice(1).join(':') ?? '')
+  return `${it?.date ?? gap ?? '9999'}${it?.startTime ?? ''}${c.dueDate ?? ''}`
+}
+
+function CheckRow({ c, icon, now, onToggle, onEdit }: { c: ChecklistItem; icon?: string; now: string; onToggle: () => void; onEdit: () => void }) {
+  const overdue = !c.done && c.dueDate && c.dueDate < now
+  return (
+    <div className={`check ${c.done ? 'done' : ''}`}>
+      <input type="checkbox" checked={c.done} onChange={onToggle} aria-label={c.title} />
+      {icon && (
+        <span className="check-icon" aria-hidden>
+          {icon}
+        </span>
+      )}
+      <div className="grow clickable" onClick={onEdit}>
+        <div className="check-title">{c.title}</div>
+        {c.notes && <div className="small muted">{c.notes}</div>}
+        <div className="row wrap" style={{ gap: 6, marginTop: 2 }}>
+          {c.dueDate && (
+            <span className={`badge ${overdue ? 'danger' : ''}`}>
+              {overdue ? 'Overdue · ' : 'By '}
+              {formatDate(c.dueDate)}
+            </span>
+          )}
+          {c.link && (
+            <a className="small" href={c.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+              {c.link.includes('booking.com/searchresults') ? '🔎 Find a place on Booking.com ↗' : 'More info ↗'}
+            </a>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -146,7 +211,9 @@ function ChecklistEditor({ tripId, item, onClose }: { tripId: string; item: Part
     onClose()
   }
   async function remove() {
-    if (c.id) await db.checklist.delete(c.id)
+    // Automatic suggestions are hidden rather than deleted, so the next refresh doesn't add them back.
+    if (c.id && c.ruleId) await db.checklist.update(c.id, { dismissed: true })
+    else if (c.id) await db.checklist.delete(c.id)
     onClose()
   }
   return (
@@ -180,7 +247,7 @@ function ChecklistEditor({ tripId, item, onClose }: { tripId: string; item: Part
             <textarea style={{ minHeight: 70 }} value={c.notes ?? ''} onChange={(e) => setC({ ...c, notes: e.target.value })} />
           </label>
         </div>
-        {c.ruleId && <p className="tiny muted">Suggested automatically. If you delete it, “Suggest items” will add it back.</p>}
+        {c.ruleId && <p className="tiny muted">Suggested automatically from your plan. If you delete it, it won't come back.</p>}
         <div className="row between">
           {c.id ? (
             <button className="btn-ghost btn-danger" onClick={remove}>
