@@ -9,6 +9,19 @@ import { toast } from '../components/ui'
 import { SyncCard } from '../components/SyncCard'
 import { getConfig } from '../lib/sync'
 
+/** Drops the saved copy of the app (not your data) and reloads, so the newest version is fetched. */
+async function forceUpdate() {
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations()) ?? []
+    await Promise.all(regs.map((r) => r.unregister()))
+    for (const k of await caches.keys()) if (!k.startsWith('map-tiles') && k !== 'wiki') await caches.delete(k)
+  } catch {
+    /* reload anyway */
+  }
+  toast('Updating…')
+  setTimeout(() => location.reload(), 400)
+}
+
 export default function SettingsPage() {
   const s = useSettings()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -99,6 +112,20 @@ export default function SettingsPage() {
               }
             }}
           />
+        </div>
+      </div>
+
+      <div className="card stack">
+        <h3>App version</h3>
+        <p className="small">
+          <b>{__APP_VERSION__}</b>
+        </p>
+        <p className="small muted">
+          Installed apps keep a saved copy and can take a couple of opens to update. If this device behaves differently from another one, compare the version numbers —
+          and tap below to load the latest copy. Your trips and settings are not affected.
+        </p>
+        <div>
+          <button onClick={forceUpdate}>🔄 Force update</button>
         </div>
       </div>
 

@@ -1,10 +1,21 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process'
+
+// Shown in Settings so you can tell which copy of the app a device is running.
+const commit = (() => {
+  try {
+    return execSync('git rev-parse --short=7 HEAD').toString().trim()
+  } catch {
+    return 'dev'
+  }
+})()
 
 // Relative base so the build works from any static host path (GitHub Pages, a /travel/ folder on PythonAnywhere…).
 export default defineConfig({
   base: './',
+  define: { __APP_VERSION__: JSON.stringify(`${new Date().toISOString().slice(0, 10)} · ${commit}`) },
   // Local testing of sync: run `python3 server/travel_sync.py` (port 8792) next to `npm run dev`.
   server: { proxy: { '/travel-api': 'http://127.0.0.1:8792' } },
   build: {
