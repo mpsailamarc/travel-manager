@@ -7,10 +7,12 @@ import { distance, money } from '../lib/format'
 import { drivingRoute, locatePlace } from '../lib/apis'
 import { ItemRow } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
-import { Empty, Modal } from '../components/ui'
+import { Empty, Modal, toast } from '../components/ui'
 import { PlaceSearch } from '../components/PlaceSearch'
 import LazyMap, { type MapMarker } from '../components/LazyMap'
 import { useAsync, useMapSize, useMediaQuery } from '../lib/hooks'
+import { findDuplicateGroups, markNotDuplicates, mergeGroups, notDuplicates, type DuplicateGroup } from '../lib/duplicates'
+import { KIND_META } from '../components/kinds'
 import { useTripCtx } from './TripLayout'
 
 export default function PlanPage() {
@@ -180,6 +182,8 @@ export default function PlanPage() {
           </div>
         </div>
 
+        <DuplicatesNotice tripId={trip.id} items={items} />
+
         {!trip.startPlace?.name && <StartCard tripId={trip.id} />}
 
         {routeLine.length > 1 && (
@@ -258,6 +262,78 @@ export default function PlanPage() {
       {editing && <ItemEditor trip={trip} item={editing} city={dayByDate.get(editing.date)?.city} area={dayByDate.get(editing.date)} onClose={() => setEditing(null)} />}
       {dayEdit && <DayEditor day={dayEdit} onClose={() => setDayEdit(null)} />}
     </div>
+  )
+}
+
+/** "These look like the same thing twice": the planned flight and the imported booking of it, for example. One tap merges them. */
+function DuplicatesNotice({ tripId, items }: { tripId: string; items: Item[] }) {
+  const [ignored, setIgnored] = useState(notDuplicates)
+  const [open, setOpen] = useState(false)
+  const groups = useMemo(() => findDuplicateGroups(items, ignored), [items, ignored])
+  if (!groups.length) return null
+  const merge = async (gs: DuplicateGroup[]) => {
+    await mergeGroups(tripId, gs)
+    toast(`Merged ${gs.length} duplicate${gs.length > 1 ? 's' : ''}`)
+  }
+  const notDup = (gs: DuplicateGroup[]) => {
+    markNotDuplicates(gs.map((g) => g.key))
+    setIgnored(notDuplicates())
+  }
+  return (
+    <>
+      <div className="notice row wrap between" style={{ alignItems: 'center' }}>
+        <span>
+          ⚠️ <b>{groups.length === 1 ? '1 item appears twice' : `${groups.length} items appear twice`}</b> in your plan (e.g. {groups[0].keep.title}).
+        </span>
+        <button className="btn-sm" onClick={() => setOpen(true)}>
+          Review & merge
+        </button>
+      </div>
+      {open && (
+        <Modal title="Duplicates" onClose={() => setOpen(false)}>
+          <div className="stack">
+            <p className="small muted">
+              Each pair is merged into one item that keeps everything known about it (booking reference, times, price). The booked version is kept first.
+            </p>
+            {groups.map((g) => (
+              <div key={g.key} className="card tight stack" style={{ gap: 6 }}>
+                <div className="small muted">{formatDate(g.keep.date)}</div>
+                {[g.keep, ...g.extras].map((i, n) => (
+                  <div key={i.id} className="row small">
+                    <span>{KIND_META[i.kind].emoji}</span>
+                    <span className="grow">
+                      <b>{i.title}</b> {i.startTime && `· ${i.startTime}`} · {i.status}
+                      {i.bookingRef && ` · ref ${i.bookingRef}`}
+                    </span>
+                    {n === 0 && <span className="badge booked">kept</span>}
+                  </div>
+                ))}
+                <div className="row">
+                  <button className="btn-sm btn-primary" onClick={() => merge([g])}>
+                    Merge
+                  </button>
+                  <button className="btn-sm btn-ghost" onClick={() => notDup([g])}>
+                    Not duplicates
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className="row" style={{ justifyContent: 'flex-end' }}>
+              <button onClick={() => setOpen(false)}>Close</button>
+              <button
+                className="btn-primary"
+                onClick={async () => {
+                  await merge(groups)
+                  setOpen(false)
+                }}
+              >
+                Merge all ({groups.length})
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   )
 }
 

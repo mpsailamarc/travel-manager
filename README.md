@@ -18,6 +18,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   "Book:" entry. Existing "car" items are sorted by their title.
 - **Road routes on the Plan map**: legs you drive (arriving on a day within your car period) follow the real roads, with distance and driving time
   under the map; flights and other legs stay dashed straight lines. Routes: FOSSGIS OSRM (free), saved for offline.
+- **No double entries**: an imported booking fills in the matching planned item (flight, camper van pickup…) instead of being added next to it,
+  importing twice changes nothing, and the Plan warns if the same thing appears twice, with a one-tap merge.
 - **Plan**: day-by-day itinerary with a map. Add or edit flights, trains, buses, stays, activities, meals, walks and notes. You can also print it.
 - **Checklist**: generated from your destinations, nationality, travellers and itinerary. It covers passports, visas/ETAs/ESTA, insurance, EHIC,
   vaccines, unbooked transport, nights with no accommodation, online check-in, cash, eSIM, plug adapters, kids' items and packing.

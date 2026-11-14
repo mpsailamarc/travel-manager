@@ -9,6 +9,7 @@ import { addDays, daysBetween, formatDate } from './dates'
 import { country } from './countries'
 import { uid } from './ids'
 import { carKind } from './drive'
+import { isSameItem } from './duplicates'
 import { CATEGORY_META } from './favorites'
 
 export const CHATBOTS = [
@@ -403,8 +404,10 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
     for (const d of option.days) {
       const date = addDays(trip.startDate, d.day - 1)
       await db.days.put({ id: `${trip.id}:${date}`, tripId: trip.id, date, city: d.city, lat: d.lat, lon: d.lon, title: d.title })
-      const items = d.items.length ? d.items.map((a, i) => toItem(a, trip.id, date, i, currency)) : d.highlights.map((h, i) => base(trip.id, date, 'activity', h, i, 'idea'))
-      await db.items.bulkAdd(items)
+      const built = d.items.length ? d.items.map((a, i) => toItem(a, trip.id, date, i, currency)) : d.highlights.map((h, i) => base(trip.id, date, 'activity', h, i, 'idea'))
+      // Adding to an existing plan: don't add what the day already has (or what the answer lists twice).
+      const already = replace ? [] : await db.items.where({ tripId: trip.id, date }).toArray()
+      await db.items.bulkAdd(withoutDuplicates(built, already))
     }
     // Days the answer skipped (or gave no coordinates for) carry on from the previous day's city.
     const last = addDays(trip.startDate, Math.max(maxDay, daysBetween(trip.startDate, trip.endDate) + 1) - 1)
@@ -434,13 +437,53 @@ export async function applyDayReplan(trip: Trip, date: string, keep: Item[], ite
     const existing = await db.items.where({ tripId: trip.id, date }).toArray()
     const keepIds = new Set(keep.map((k) => k.id))
     await db.items.bulkDelete(existing.filter((e) => !keepIds.has(e.id)).map((e) => e.id))
-    await db.items.bulkAdd(items.map((a, i) => toItem(a, trip.id, date, keep.length + i, currency, 'planned')))
+    // The chatbot repeats the booked items it was told to keep: those are already here.
+    const kept = existing.filter((e) => keepIds.has(e.id))
+    await db.items.bulkAdd(withoutDuplicates(items.map((a, i) => toItem(a, trip.id, date, keep.length + i, currency, 'planned')), kept))
   })
   await touchTrip(trip.id)
 }
 
+/** Items of `fresh` that are not already in `existing` (nor repeated within `fresh`). */
+function withoutDuplicates(fresh: Item[], existing: Item[]): Item[] {
+  const out: Item[] = []
+  for (const n of fresh) if (![...existing, ...out].some((e) => isSameItem(e, n))) out.push(n)
+  return out
+}
+
+/**
+ * Imported bookings turn the matching planned item into a booked one (the flight in your itinerary gets its reference,
+ * times and price) instead of being added next to it. Importing the same confirmation twice changes nothing.
+ */
 export async function applyBookings(trip: Trip, items: ReturnType<typeof parseBookings>, currency: string) {
-  await db.items.bulkAdd(items.map((a, i) => toItem(a, trip.id, a.date, 100 + i, currency, 'booked')))
+  await db.transaction('rw', db.items, async () => {
+    for (const [i, a] of items.entries()) {
+      const fresh = toItem(a, trip.id, a.date, 100 + i, currency, 'booked')
+      const sameDay = await db.items.where({ tripId: trip.id, date: fresh.date }).toArray()
+      const same = sameDay.filter((x) => isSameItem(x, fresh))
+      if (fresh.bookingRef && same.some((x) => x.bookingRef === fresh.bookingRef)) continue // imported before
+      const target = same.find((x) => x.status !== 'booked') ?? same[0]
+      if (!target) {
+        await db.items.add(fresh)
+        continue
+      }
+      const notes = [target.notes, fresh.notes].filter((n, k, all) => n && all.indexOf(n) === k).join(' · ')
+      await db.items.put({
+        ...target,
+        title: fresh.title || target.title,
+        status: 'booked',
+        startTime: fresh.startTime ?? target.startTime,
+        endTime: fresh.endTime ?? target.endTime,
+        from: fresh.from ?? target.from,
+        to: fresh.to ?? target.to,
+        nights: fresh.nights ?? target.nights,
+        bookingRef: fresh.bookingRef ?? target.bookingRef,
+        provider: fresh.provider ?? target.provider,
+        cost: fresh.cost ?? target.cost,
+        notes: notes || undefined,
+      })
+    }
+  })
   await touchTrip(trip.id)
 }
 
@@ -470,7 +513,9 @@ export async function applyTemplate(trip: Trip) {
   }
   await db.transaction('rw', [db.days, db.items], async () => {
     await db.days.bulkPut(dayRows)
-    await db.items.bulkAdd(rows)
+    // A skeleton on top of an existing plan only adds what is missing.
+    const existing = await db.items.where('tripId').equals(trip.id).toArray()
+    await db.items.bulkAdd(withoutDuplicates(rows, existing))
   })
   await touchTrip(trip.id)
 }

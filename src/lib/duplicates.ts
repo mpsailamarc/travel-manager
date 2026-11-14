@@ -1,0 +1,119 @@
+// Spotting "the same thing twice" in a plan: the planned flight and the imported booking of that flight, the camper van
+// pickup from the itinerary and from the rental confirmation… and merging them into one item that has the best of both.
+
+import { db, touchTrip } from '../db'
+import type { Item, ItemStatus } from '../types'
+import { hhmmToMin } from './dates'
+
+// Words that say what kind of thing it is, not which one: they never decide whether two titles match.
+const GENERIC = new Set(
+  'the and an to from at in of on for with by your our my pick up pickup collect collection rental rent hire drop off dropoff return returning flight flights fly flying booking booked reservation confirmation'.split(' '),
+)
+
+function tokens(title: string): Set<string> {
+  return new Set(
+    title
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 1 && !GENERIC.has(w)),
+  )
+}
+
+const TRANSPORT = new Set(['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi'])
+
+/** Same kind of item, on the same day, and either about the same thing or at the same time. */
+export function isSameItem(a: Pick<Item, 'kind' | 'date' | 'title' | 'startTime'>, b: Pick<Item, 'kind' | 'date' | 'title' | 'startTime'>): boolean {
+  if (a.kind !== b.kind || a.date !== b.date) return false
+  const ta = tokens(a.title)
+  const tb = tokens(b.title)
+  const transport = TRANSPORT.has(a.kind) || a.kind === 'stay'
+  // A bare "Flight" / "Pick up car" matches any item of that kind and day.
+  if (transport && (ta.size === 0 || tb.size === 0)) return true
+  if (ta.size === 0 && tb.size === 0) return a.title.trim().toLowerCase() === b.title.trim().toLowerCase()
+  const inter = [...ta].filter((w) => tb.has(w)).length
+  const min = Math.min(ta.size, tb.size)
+  const union = ta.size + tb.size - inter
+  // One title contained in the other, or mostly the same words. A single shared word only counts for transport and stays.
+  if (min > 0 && inter === min && (min >= 2 || transport)) return true
+  if (union > 0 && inter / union >= 0.6) return true
+  // Two transports at the same time on the same day are the same journey described twice.
+  if (TRANSPORT.has(a.kind) && a.startTime && b.startTime && Math.abs(hhmmToMin(a.startTime) - hhmmToMin(b.startTime)) <= 10) return true
+  return false
+}
+
+const STATUS_RANK: Record<ItemStatus, number> = { done: 5, booked: 4, planned: 2, idea: 1, skipped: 0 }
+
+/** How much an item knows: the one that knows most is the one to keep. */
+function richness(i: Item) {
+  return (
+    STATUS_RANK[i.status] * 3 +
+    (i.bookingRef ? 4 : 0) +
+    (i.cost?.amount ? 1 : 0) +
+    (i.startTime ? 1 : 0) +
+    (i.endTime ? 1 : 0) +
+    (i.notes ? 1 : 0) +
+    (i.url ? 1 : 0) +
+    (i.walk ? 3 : 0)
+  )
+}
+
+export interface DuplicateGroup {
+  key: string // stable, for "these are not duplicates"
+  keep: Item
+  extras: Item[]
+}
+
+export function findDuplicateGroups(items: Item[], notDuplicates: Set<string> = new Set()): DuplicateGroup[] {
+  const real = items.filter((i) => i.status !== 'skipped' && !i.planner)
+  const groups: Item[][] = []
+  for (const it of [...real].sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order)) {
+    const g = groups.find((g) => g[0].date === it.date && g.some((x) => isSameItem(x, it)))
+    if (g) g.push(it)
+    else groups.push([it])
+  }
+  return groups
+    .filter((g) => g.length > 1)
+    .map((g) => {
+      const sorted = [...g].sort((a, b) => richness(b) - richness(a) || a.order - b.order)
+      return { key: g.map((x) => x.id).sort().join('+'), keep: sorted[0], extras: sorted.slice(1) }
+    })
+    .filter((g) => !notDuplicates.has(g.key))
+}
+
+/** The kept item takes whatever it was missing from the others (a booking reference, a time, notes…). */
+export function mergeInto(keep: Item, others: Item[]): Item {
+  const merged: Item = { ...keep }
+  const best = (k: keyof Item) => others.map((o) => o[k]).find((v) => v != null && v !== '')
+  for (const k of ['startTime', 'endTime', 'from', 'to', 'location', 'nights', 'bookingRef', 'provider', 'url', 'cost', 'notes', 'walk'] as const) {
+    if (merged[k] == null || merged[k] === '') (merged as unknown as Record<string, unknown>)[k] = best(k)
+  }
+  const top = [keep, ...others].reduce((s, i) => (STATUS_RANK[i.status] > STATUS_RANK[s] ? i.status : s), keep.status)
+  merged.status = top
+  return merged
+}
+
+export async function mergeGroups(tripId: string, groups: DuplicateGroup[]) {
+  await db.transaction('rw', [db.items, db.favorites], async () => {
+    for (const g of groups) {
+      await db.items.put(mergeInto(g.keep, g.extras))
+      await db.items.bulkDelete(g.extras.map((e) => e.id))
+      // Favourites that pointed at a removed copy follow the kept one.
+      const gone = new Set(g.extras.map((e) => e.id))
+      const favs = (await db.favorites.where('tripId').equals(tripId).toArray()).filter((f) => f.itemId && gone.has(f.itemId))
+      await db.favorites.bulkUpdate(favs.map((f) => ({ key: f.id, changes: { itemId: g.keep.id } })))
+    }
+  })
+  await touchTrip(tripId)
+}
+
+const IGNORE_KEY = 'tm-not-duplicates'
+export const notDuplicates = (): Set<string> => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(IGNORE_KEY) ?? '[]'))
+  } catch {
+    return new Set()
+  }
+}
+export const markNotDuplicates = (keys: string[]) => localStorage.setItem(IGNORE_KEY, JSON.stringify([...new Set([...notDuplicates(), ...keys])]))
