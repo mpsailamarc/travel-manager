@@ -42,6 +42,7 @@ function itemMinutes(it: Item): number {
     case 'train':
     case 'ferry':
     case 'car':
+    case 'drive':
       return 180
     case 'bus':
       return 45
@@ -259,7 +260,7 @@ function firstFreeSlot(dayItems: Item[]): string {
     if (!i.startTime) continue
     const s = hhmmToMin(i.startTime)
     const e = i.endTime ? hhmmToMin(i.endTime) : s + itemMinutes(i)
-    const arrival = ['flight', 'train', 'ferry', 'bus', 'car'].includes(i.kind)
+    const arrival = ['flight', 'train', 'ferry', 'bus', 'car', 'drive'].includes(i.kind)
     if (s <= t + 30 || (arrival && s < hhmmToMin('15:00'))) t = Math.max(t, e + (arrival ? 60 : 0))
   }
   return minToHHMM(Math.min(t, hhmmToMin('17:00')))

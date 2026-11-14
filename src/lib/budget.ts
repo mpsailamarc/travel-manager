@@ -56,8 +56,10 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   const hops = Math.max(0, trip.cities.length - 1)
 
   // A car in the plan: the days you have it run from its first to its last item.
-  const carDates = items.filter((i) => i.kind === 'car' && i.status !== 'skipped').map((i) => i.date).sort()
+  const carItems = items.filter((i) => (i.kind === 'car' || i.kind === 'drive') && i.status !== 'skipped')
+  const carDates = carItems.map((i) => i.date).sort()
   const hasCar = carDates.length > 0
+  const rented = carItems.some((i) => i.kind === 'car') // driving your own car has fuel but no rental
   // Only a pickup in the plan (no return noted)? Assume you keep the car for the whole trip: you can edit the quantity.
   const carSpan = hasCar ? daysBetween(carDates[0], carDates[carDates.length - 1]) + 1 : 0
   const carDays = hasCar ? (carSpan > 1 ? carSpan : days) : 0
@@ -72,7 +74,7 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
     add('transport', `Getting there and back from ${trip.startPlace?.name ?? 'home'} (fuel, parking or transit)`, 1, 'trip', 70 * idx * lvl)
   }
   if (hasCar) {
-    add('transport', 'Car rental', carDays, carDays === 1 ? 'day' : 'days', 55 * idx * Math.sqrt(lvl))
+    if (rented) add('transport', 'Car rental', carDays, carDays === 1 ? 'day' : 'days', 55 * idx * Math.sqrt(lvl))
     add('transport', `Fuel${trip.startPlace?.name ? ` (from ${trip.startPlace.name})` : ''}`, carDays * 150, 'km', 0.12 * Math.min(idx, 1.2))
   }
   add('transport', 'Local transport', personDays, 'person-days', PER_PERSON_DAY.transport * idx * lvl)

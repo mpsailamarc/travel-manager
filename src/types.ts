@@ -72,7 +72,7 @@ export interface Day {
   notes?: string
 }
 
-export const TRANSPORT_KINDS = ['flight', 'train', 'bus', 'car', 'ferry', 'taxi'] as const
+export const TRANSPORT_KINDS = ['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi'] as const
 export type TransportKind = (typeof TRANSPORT_KINDS)[number]
 export type ItemKind = TransportKind | 'stay' | 'activity' | 'meal' | 'walk' | 'note'
 export type ItemStatus = 'idea' | 'planned' | 'booked' | 'done' | 'skipped'

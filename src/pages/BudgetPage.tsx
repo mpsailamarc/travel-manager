@@ -20,6 +20,7 @@ const KIND_TO_CATEGORY: Record<ItemKind, BudgetCategory> = {
   train: 'transport',
   bus: 'transport',
   car: 'transport',
+  drive: 'transport',
   ferry: 'transport',
   taxi: 'transport',
   stay: 'stays',

@@ -8,6 +8,7 @@ import { BUDGET_CATEGORIES, CHECKLIST_CATEGORIES } from '../types'
 import { addDays, daysBetween, formatDate } from './dates'
 import { country } from './countries'
 import { uid } from './ids'
+import { carKind } from './drive'
 import { CATEGORY_META } from './favorites'
 
 export const CHATBOTS = [
@@ -16,7 +17,7 @@ export const CHATBOTS = [
   { name: 'ChatGPT', url: 'https://chatgpt.com/' },
 ]
 
-const KINDS = ['flight', 'train', 'bus', 'car', 'ferry', 'taxi', 'stay', 'activity', 'meal', 'walk', 'note'] as const
+const KINDS = ['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi', 'stay', 'activity', 'meal', 'walk', 'note'] as const
 
 const num = z.number().optional().catch(undefined)
 const str = z.string().optional().catch(undefined)
@@ -113,6 +114,7 @@ const ITEM_SCHEMA = `{ "kind": one of ${KINDS.map((k) => `"${k}"`).join('|')},
   "title": string, "time": "HH:MM" (optional), "endTime": "HH:MM" (optional),
   "place": string (optional), "lat": number, "lon": number (coordinates of the place, when known),
   "from": string, "to": string (transport only), "nights": number (stays only),
+  (use "drive" when we drive ourselves — nothing to book; use "car" only for renting, picking up or returning a rental car),
   "estCost": number (total for the group, in the trip currency), "bookAhead": boolean, "notes": string }`
 
 const CHECKLIST_SCHEMA = `{ "title": string, "category": one of ${CHECKLIST_CATEGORIES.map((c) => `"${c}"`).join('|')} }`
@@ -354,8 +356,9 @@ export function mergeDetail(option: AiOption, replies: { days: AiDay[]; checklis
 /* -------------------------------- Apply ----------------------------------- */
 
 function toItem(a: AiItem & { bookingRef?: string; provider?: string }, tripId: string, date: string, order: number, currency: string, status: Item['status'] = 'planned'): Item {
-  const kind = a.kind as ItemKind
-  const isTransport = ['flight', 'train', 'bus', 'car', 'ferry', 'taxi'].includes(kind)
+  // Chatbots call driving yourself "car" too; the title tells a rental from a drive.
+  const kind = (a.kind === 'car' ? carKind(a.title) : a.kind) as ItemKind
+  const isTransport = ['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi'].includes(kind)
   return {
     id: uid(),
     tripId,

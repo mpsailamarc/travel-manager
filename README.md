@@ -14,6 +14,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Quick template**: a skeleton plan with no AI, fully offline.
 - **Push-back on time changes**: when you make an item end later (a landing at 06:28), the editor offers to push the overlapping items after it
   back just enough, keeping their durations. Booked items are never moved.
+- **Self-drive vs car rental**: driving yourselves is its own type (🚙, nothing to book); only renting, picking up or returning a car (🚗) gets a
+  "Book:" entry. Existing "car" items are sorted by their title.
 - **Plan**: day-by-day itinerary with a map. Add or edit flights, trains, buses, stays, activities, meals, walks and notes. You can also print it.
 - **Checklist**: generated from your destinations, nationality, travellers and itinerary. It covers passports, visas/ETAs/ESTA, insurance, EHIC,
   vaccines, unbooked transport, nights with no accommodation, online check-in, cash, eSIM, plug adapters, kids' items and packing.

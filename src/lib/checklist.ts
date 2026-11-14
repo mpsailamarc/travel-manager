@@ -150,10 +150,10 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
         notes: 'Popular sights sell out or have timed entry.',
       })
     }
-    if (it.kind === 'car') {
+    if (it.kind === 'car' || it.kind === 'drive') {
       add({
         ruleId: 'driving',
-        title: 'Driving licence (+ international permit if required) and a credit card for the deposit',
+        title: items.some((i) => i.kind === 'car') ? 'Driving licence (+ international permit if required) and a credit card for the deposit' : 'Driving licence (+ international permit if required)',
         category: 'documents',
         dueDate: before(21),
         notes: dests.map((d) => `${d.name}: drive on the ${d.drive}`).join(' · '),
@@ -266,7 +266,7 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     if (ages.some((a) => a < 4)) {
       add({ ruleId: 'kids-baby', title: 'Stroller / carrier, nappies, wipes, baby food', category: 'kids', dueDate: before(2) })
     }
-    if (items.some((i) => i.kind === 'car' || i.kind === 'taxi')) {
+    if (items.some((i) => i.kind === 'car' || i.kind === 'drive' || i.kind === 'taxi')) {
       add({ ruleId: 'kids-carseat', title: 'Child car seat / booster (reserve with the rental or bring)', category: 'kids', dueDate: before(14) })
     }
   }

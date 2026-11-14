@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import { carKind } from './lib/drive'
 import type { ChecklistItem, Day, Expense, Favorite, Item, Settings, Trip, TripDocument } from './types'
 
 export const db = new Dexie('travel-manager') as Dexie & {
@@ -31,6 +32,18 @@ db.version(2).stores({
 db.version(3).stores({
   syncState: 'key',
 })
+
+// "Car" items that are just driving ("Drive to Yosemite") become self-drives: nothing to book. Rentals stay "car".
+db.version(4)
+  .stores({})
+  .upgrade((tx) =>
+    tx
+      .table('items')
+      .toCollection()
+      .modify((i) => {
+        if (i.kind === 'car') i.kind = carKind(i.title)
+      }),
+  )
 
 export const DEFAULT_SETTINGS: Settings = {
   id: 'me',
