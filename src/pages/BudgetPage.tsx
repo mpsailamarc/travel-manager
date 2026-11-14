@@ -7,9 +7,9 @@ import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines } from '../lib/budg
 import { fxRate } from '../lib/apis'
 import { country } from '../lib/countries'
 import { daysBetween, formatDate, today } from '../lib/dates'
-import { money, plural } from '../lib/format'
+import { money } from '../lib/format'
 import { useAsync } from '../lib/hooks'
-import { Progress, Section, toast } from '../components/ui'
+import { Progress, toast } from '../components/ui'
 import { uid } from '../lib/ids'
 import { QuickExpense } from '../components/QuickExpense'
 import { ExpenseEditor } from '../components/ExpenseEditor'
@@ -33,7 +33,6 @@ export default function BudgetPage() {
   const { trip, items, settings } = useTripCtx()
   const home = settings.homeCurrency
   const [editing, setEditing] = useState<Expense | null>(null)
-  const [linesOpen, setLinesOpen] = useState(true)
   const expenses = useLiveQuery(() => db.expenses.where('tripId').equals(trip.id).toArray(), [trip.id])
 
   const currencies = [...new Set(items.map((i) => i.cost?.currency).filter((c): c is string => !!c))]
@@ -129,13 +128,19 @@ export default function BudgetPage() {
               </tr>
             </thead>
             <tbody>
-              {BUDGET_CATEGORIES.map((c) => {
+              {BUDGET_CATEGORIES.flatMap((c) => {
                 const b = trip.budget[c] ?? 0
-                return (
+                const catLines = lines.filter((l) => l.category === c)
+                const main = (
                   <tr key={c}>
                     <td>
-                      <div>
-                        {BUDGET_LABELS[c].emoji} {BUDGET_LABELS[c].label}
+                      <div className="row" style={{ gap: 4 }}>
+                        <span className="grow">
+                          {BUDGET_LABELS[c].emoji} {BUDGET_LABELS[c].label}
+                        </span>
+                        <button className="icon-btn" aria-label={`Add a line to ${BUDGET_LABELS[c].label}`} title="Add a line" onClick={() => addLine(c)}>
+                          ＋
+                        </button>
                       </div>
                       {b > 0 && (
                         <div style={{ marginTop: 4 }}>
@@ -144,8 +149,8 @@ export default function BudgetPage() {
                       )}
                     </td>
                     <td className="num">
-                      {hasLines(c) ? (
-                        <span title="Adds up the lines in the breakdown below">{money(b, home)}</span>
+                      {catLines.length ? (
+                        <b title="Adds up the lines underneath">{money(b, home)}</b>
                       ) : (
                         <input
                           type="number"
@@ -161,81 +166,53 @@ export default function BudgetPage() {
                     <td className="num">{spent[c] ? money(spent[c], home) : '—'}</td>
                   </tr>
                 )
+                // The breakdown sits right under its category: edit an amount, rename, or remove a line.
+                const sub = catLines.map((l) => (
+                  <tr key={l.id} className="budget-line">
+                    <td style={{ paddingLeft: 18 }}>
+                      {/* A textarea so long names wrap instead of being cut off on a phone. */}
+                      <textarea
+                        rows={l.label.length > 36 ? 3 : 2}
+                        style={{ minHeight: 0, resize: 'none', fontSize: '0.85rem', lineHeight: 1.3, padding: '6px 8px' }}
+                        defaultValue={l.label}
+                        placeholder="What is it?"
+                        aria-label="Line name"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            e.currentTarget.blur()
+                          }
+                        }}
+                        onBlur={(e) => e.target.value !== l.label && saveLines(lines.map((x) => (x.id === l.id ? { ...x, label: e.target.value } : x)))}
+                      />
+                    </td>
+                    <td className="num">
+                      <input
+                        type="number"
+                        min={0}
+                        style={{ width: 100, textAlign: 'right' }}
+                        defaultValue={l.amount}
+                        key={`${l.id}-${l.amount}`}
+                        aria-label={`${l.label} amount`}
+                        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                        onBlur={(e) => Number(e.target.value) !== l.amount && saveLines(lines.map((x) => (x.id === l.id ? { ...x, amount: Number(e.target.value) || 0 } : x)))}
+                      />
+                    </td>
+                    <td className="hide-mobile" />
+                    <td className="num">
+                      <button className="icon-btn" aria-label={`Remove ${l.label}`} onClick={() => saveLines(lines.filter((x) => x.id !== l.id))}>
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))
+                return [main, ...sub]
               })}
             </tbody>
           </table>
-          <div style={{ marginTop: 12 }}>
-            <Section
-              open={linesOpen}
-              onToggle={() => setLinesOpen((o) => !o)}
-              title="Estimate breakdown"
-              summary={lines.length ? `· ${plural(lines.length, 'line')} · change or remove any of them` : '· tap “Estimate for me” to fill this in'}
-            >
-              {lines.length === 0 && (
-                <p className="small muted">
-                  The estimate shows up here as lines such as “Accommodation · 3 nights × 1 room”. Edit an amount, remove a line you don't need (say, flights when you're already
-                  at the start), or add your own.
-                </p>
-              )}
-              {BUDGET_CATEGORIES.filter((c) => hasLines(c)).map((c) => (
-                <div key={c} className="stack" style={{ gap: 4 }}>
-                  <div className="row between">
-                    <b className="small">
-                      {BUDGET_LABELS[c].emoji} {BUDGET_LABELS[c].label}
-                    </b>
-                    <span className="small muted">{money(trip.budget[c] ?? 0, home)}</span>
-                  </div>
-                  {lines
-                    .filter((l) => l.category === c)
-                    .map((l) => (
-                      <div key={l.id} className="row">
-                        <input
-                          className="grow"
-                          defaultValue={l.label}
-                          placeholder="What is it?"
-                          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                          onBlur={(e) => e.target.value !== l.label && saveLines(lines.map((x) => (x.id === l.id ? { ...x, label: e.target.value } : x)))}
-                        />
-                        <input
-                          type="number"
-                          min={0}
-                          style={{ width: 96, textAlign: 'right' }}
-                          defaultValue={l.amount}
-                          key={`${l.id}-${l.amount}`}
-                          aria-label={`${l.label} amount`}
-                          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                          onBlur={(e) => Number(e.target.value) !== l.amount && saveLines(lines.map((x) => (x.id === l.id ? { ...x, amount: Number(e.target.value) || 0 } : x)))}
-                        />
-                        <button className="icon-btn" aria-label={`Remove ${l.label}`} onClick={() => saveLines(lines.filter((x) => x.id !== l.id))}>
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                </div>
-              ))}
-              <div className="row wrap">
-                <select
-                  defaultValue=""
-                  aria-label="Add a line"
-                  style={{ width: 'auto' }}
-                  onChange={(e) => {
-                    if (e.target.value) addLine(e.target.value as BudgetCategory)
-                    e.target.value = ''
-                  }}
-                >
-                  <option value="">＋ Add a line…</option>
-                  {BUDGET_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {BUDGET_LABELS[c].emoji} {BUDGET_LABELS[c].label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </Section>
-          </div>
           <p className="tiny muted" style={{ marginTop: 8 }}>
-            <b>Spent</b> = bookings that have a booking reference (paid ahead) + expenses you log. <b>Estimate for me</b> uses typical daily costs for the destination,
-            your budget level and group size — a starting point; the AI ideas include a more specific budget.
+            <b>Spent</b> = bookings that have a booking reference (paid ahead) + expenses you log. <b>Estimate for me</b> fills in typical daily costs for the destination, your budget level and
+            group size as lines under each category. Change an amount, rename or remove a line (✕), or tap ＋ on a category to add your own.
           </p>
         </div>
 
