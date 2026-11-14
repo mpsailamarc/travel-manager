@@ -5,6 +5,7 @@ import type { ChecklistCategory, ChecklistItem, Day, Item, Settings, Trip } from
 import { db } from '../db'
 import { addDays, dateRange, formatDate } from './dates'
 import { country, needsAdapter, travelAdvice, visaWikipediaUrl } from './countries'
+import { tripadvisorSearch } from './links'
 
 export interface ChecklistDraft {
   ruleId: string
@@ -13,6 +14,7 @@ export interface ChecklistDraft {
   dueDate?: string
   notes?: string
   link?: string
+  altLink?: string
 }
 
 const LOW_HEALTH_RISK = new Set([
@@ -148,6 +150,7 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
         category: 'bookings',
         dueDate: addDays(it.date, -7),
         notes: 'Popular sights sell out or have timed entry.',
+        altLink: tripadvisorSearch(it.location?.name ?? it.title, days.find((d) => d.date === it.date)?.city),
       })
     }
     if (it.kind === 'car' || it.kind === 'drive') {
@@ -176,6 +179,7 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
       dueDate: before(45),
       notes: [city, `${formatDate(st.date)} · ${nights} night${nights > 1 ? 's' : ''}`, st.cost?.amount ? `budgeted ${st.cost.amount} ${st.cost.currency}` : ''].filter(Boolean).join(' · '),
       link: st.url ?? bookingSearch(city ?? st.title, st.date, addDays(st.date, nights), groupAdults, childAges),
+      altLink: tripadvisorSearch(st.title, city),
     })
   }
 
@@ -195,6 +199,7 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
       dueDate: before(45),
       notes: 'No accommodation in the plan for these nights yet. Add it on the Plan tab once booked.',
       link: city ? bookingSearch(city, run[0], addDays(run[run.length - 1], 1), groupAdults, childAges) : undefined,
+      altLink: city ? tripadvisorSearch(`${city} hotels`) : undefined,
     })
     run = []
   }
@@ -315,12 +320,12 @@ export async function refreshChecklist(tripId: string, settings: Settings) {
   const byRule = new Map(drafts.map((d) => [d.ruleId, d]))
   const changed = existing.filter((e) => {
     const d = e.ruleId && !e.done && !e.dismissed && !e.locked ? byRule.get(e.ruleId) : undefined
-    return d && (d.title !== e.title || d.notes !== e.notes || d.link !== e.link || d.dueDate !== e.dueDate)
+    return d && (d.title !== e.title || d.notes !== e.notes || d.link !== e.link || d.altLink !== e.altLink || d.dueDate !== e.dueDate)
   })
   await db.checklist.bulkUpdate(
     changed.map((e) => {
       const d = byRule.get(e.ruleId!)!
-      return { key: e.id, changes: { title: d.title, notes: d.notes, link: d.link, dueDate: d.dueDate } }
+      return { key: e.id, changes: { title: d.title, notes: d.notes, link: d.link, altLink: d.altLink, dueDate: d.dueDate } }
     }),
   )
   return { added: fresh.length, removed: gone.length }

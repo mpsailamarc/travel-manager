@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { Item } from '../types'
 import type { LatLon } from '../lib/geo'
-import { findWikipedia, wikiSummary } from '../lib/apis'
+import { findWikipedia, placesFromTitle, wikiSummary } from '../lib/apis'
+import { tripadvisorSearch } from '../lib/links'
 import { useAsync, useOnline } from '../lib/hooks'
 import { isTransport } from './kinds'
 
@@ -13,6 +14,7 @@ export function linkLabel(url: string) {
     const host = new URL(url).hostname.replace(/^www\./, '')
     if (host.includes('alltrails.')) return '🥾 Open in AllTrails'
     if (host.includes('wikiloc.')) return '🥾 Open in Wikiloc'
+    if (host.includes('tripadvisor.')) return '🦉 Open on Tripadvisor'
     if (host.includes('booking.')) return '🛏️ Open on Booking.com'
     if (host.includes('airbnb.')) return '🛏️ Open on Airbnb'
     if (host.includes('google.') && url.includes('/maps')) return '🗺️ Open in Maps'
@@ -49,6 +51,9 @@ export function PlaceInfo({ item, city, area, lang, country }: { item: Item; cit
   const q = [place?.name ?? item.title, city].filter(Boolean).join(', ')
   const mapUrl = near ? `https://www.google.com/maps/search/?api=1&query=${near.lat},${near.lon}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
   // City walks built from sights don't need AllTrails; hikes and free-form walks do.
+  // Tripadvisor search for places you'd look up reviews for: the place's own name, else the name inside the title ("Lunch: sardines in Alfama" → Alfama).
+  const taName = place?.name && place.name !== item.title ? place.name : placesFromTitle(item.title)[0] ?? item.title
+  const taQuery = isTransport(item.kind) || item.kind === 'note' || item.walk?.stops.length ? undefined : taName
   const trail = (item.kind === 'walk' && !item.walk?.stops.length) || (!item.walk && TRAIL.test(item.title))
   const allTrails = `https://www.google.com/search?q=${encodeURIComponent(`site:alltrails.com ${item.title}${city ? ` ${city}` : ''}`)}`
 
@@ -85,6 +90,11 @@ export function PlaceInfo({ item, city, area, lang, country }: { item: Item; cit
         <a className="btn btn-sm" href={mapUrl} target="_blank" rel="noreferrer">
           🗺️ Map
         </a>
+        {taQuery && !item.url?.includes('tripadvisor.') && (
+          <a className="btn btn-sm" href={tripadvisorSearch(taQuery, city)} target="_blank" rel="noreferrer" title="Opens Tripadvisor's search for this place">
+            🦉 Find on Tripadvisor
+          </a>
+        )}
         {trail && !item.url?.includes('alltrails.') && (
           <a className="btn btn-sm" href={allTrails} target="_blank" rel="noreferrer" title="Searches AllTrails for this trail">
             🥾 Find on AllTrails

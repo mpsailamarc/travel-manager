@@ -204,6 +204,11 @@ function CheckRow({ c, icon, now, onToggle, onEdit }: { c: ChecklistItem; icon?:
               {c.link.includes('booking.com/searchresults') ? '🔎 Find a place on Booking.com ↗' : `${linkLabel(c.link)} ↗`}
             </a>
           )}
+          {c.altLink && (
+            <a className="small" href={c.altLink} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+              🦉 Tripadvisor ↗
+            </a>
+          )}
         </div>
       </div>
     </div>

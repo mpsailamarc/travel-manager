@@ -11,6 +11,7 @@ import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
 import { Empty, toast } from '../components/ui'
 import LazyMap, { type MapMarker } from '../components/LazyMap'
+import { tripadvisorSearch } from '../lib/links'
 import { useTripCtx } from './TripLayout'
 
 export default function WalkPage() {
@@ -393,6 +394,7 @@ export function PoiDetail({
   onClose,
   addLabel = '+ Add to walk',
   removeLabel = 'Remove from walk',
+  city,
 }: {
   poi: Poi | WalkStop
   selected: boolean
@@ -400,6 +402,7 @@ export function PoiDetail({
   onClose: () => void
   addLabel?: string
   removeLabel?: string
+  city?: string
 }) {
   const { data, loading } = useAsync(() => (poi.wikipedia || poi.wikidata ? wikiSummary(poi) : Promise.resolve(undefined)), [poi.id])
   const p = poi as Poi
@@ -431,6 +434,11 @@ export function PoiDetail({
         {data?.url && (
           <a className="btn btn-ghost" href={data.url} target="_blank" rel="noreferrer">
             Wikipedia ↗
+          </a>
+        )}
+        {city && (
+          <a className="btn btn-ghost" href={tripadvisorSearch(poi.name, city)} target="_blank" rel="noreferrer">
+            🦉 Tripadvisor ↗
           </a>
         )}
       </div>

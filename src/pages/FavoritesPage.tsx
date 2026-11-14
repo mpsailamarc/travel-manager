@@ -14,6 +14,7 @@ import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
 import { Empty, Progress, Section, toast } from '../components/ui'
 import LazyMap, { type MapMarker } from '../components/LazyMap'
+import { tripadvisorSearch } from '../lib/links'
 import { PromptBox } from './IdeasPage'
 import { PoiDetail } from './WalkPage'
 import { useTripCtx } from './TripLayout'
@@ -274,6 +275,7 @@ export default function FavoritesPage() {
                   onClose={() => setDetail(undefined)}
                   addLabel="⭐ Add to favourites"
                   removeLabel="Remove from favourites"
+                  city={city}
                 />
               )}
               <div className="chips">
@@ -289,6 +291,7 @@ export default function FavoritesPage() {
               </div>
               {source === 'sights' && (
                 <SightList
+                  city={city}
                   pois={sights.data}
                   loading={sights.loading}
                   error={sights.error ? (online ? 'The free sights services are busy — try again in a minute.' : 'You are offline — sights load when you are back online.') : undefined}
@@ -320,6 +323,24 @@ export default function FavoritesPage() {
   )
 }
 
+/** 🦉 opens Tripadvisor's search for this place: reviews, photos and opening hours, outside the app. */
+function TripadvisorLink({ name, city }: { name: string; city: string }) {
+  return (
+    <a
+      className="btn btn-ghost btn-sm"
+      style={{ padding: '0 6px', minHeight: 28 }}
+      href={tripadvisorSearch(name, city)}
+      target="_blank"
+      rel="noreferrer"
+      title="Find on Tripadvisor"
+      aria-label={`Find ${name} on Tripadvisor`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      🦉
+    </a>
+  )
+}
+
 function FavRow({ fav: f, dates, dayNo, onMove, onRemove }: { fav: Favorite; dates: string[]; dayNo: (d: string) => number; onMove: (d: string | undefined) => void; onRemove: () => void }) {
   const meta = categoryMeta(f.category)
   return (
@@ -336,6 +357,7 @@ function FavRow({ fav: f, dates, dayNo, onMove, onRemove }: { fav: Favorite; dat
           {f.notes && ` · ${f.notes}`}
         </div>
       </div>
+      <TripadvisorLink name={f.name} city={f.city} />
       <select className="btn-sm" style={{ width: 'auto', minHeight: 30, padding: '2px 6px' }} value={f.date && dates.includes(f.date) ? f.date : ''} onChange={(e) => onMove(e.target.value || undefined)} aria-label="Day">
         <option value="">Backup</option>
         {dates.map((d) => (
@@ -352,6 +374,7 @@ function FavRow({ fav: f, dates, dayNo, onMove, onRemove }: { fav: Favorite; dat
 }
 
 function SightList(p: {
+  city: string
   pois?: Poi[]
   loading: boolean
   error?: string
@@ -392,6 +415,7 @@ function SightList(p: {
                 {p.center && ` · ${distance(haversineM(p.center, x))} from centre`} · ~{x.visitMin} min
               </div>
             </div>
+            <TripadvisorLink name={x.name} city={p.city} />
             <button
               className={`btn-sm ${p.isFav(x) ? 'btn-primary' : ''}`}
               aria-label="Favourite"
@@ -449,6 +473,7 @@ function AiIdeas({ city, isFav, onToggle }: { city: string; isFav: (i: CityIdea)
                 {i.notes && ` · ${i.notes}`}
               </div>
             </div>
+            <TripadvisorLink name={i.name} city={city} />
             <button className={`btn-sm ${isFav(i) ? 'btn-primary' : ''}`} aria-label="Favourite">
               {isFav(i) ? '★' : '☆'}
             </button>

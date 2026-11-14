@@ -25,6 +25,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Switching itinerary idea is a clean swap**: the previous idea's items, to-dos (ticked ones stay), budget figures, tips and favourite-to-day links go;
   your own notes, figures and the end date you chose stay.
 - **Budget vs In the plan**: each category shows what's priced in the plan and what isn't yet ("not planned yet" / "over budget"), with an explanation.
+- **Tripadvisor links** (no account, no key): 🦉 "Find on Tripadvisor" on activities, meals and stays, on favourites, sights and AI ideas (restaurants too),
+  and on the checklist's hotel and ticket entries; a Tripadvisor link you paste into an item shows as "Open on Tripadvisor".
 - **Plan**: day-by-day itinerary with a map. Add or edit flights, trains, buses, stays, activities, meals, walks and notes. You can also print it.
 - **Checklist**: generated from your destinations, nationality, travellers and itinerary. It covers passports, visas/ETAs/ESTA, insurance, EHIC,
   vaccines, unbooked transport, nights with no accommodation, online check-in, cash, eSIM, plug adapters, kids' items and packing.
@@ -96,6 +98,7 @@ Open each day (and each walk map) once while online so maps and weather are cach
 | Map tiles | OpenFreeMap (OpenStreetMap data) | attribution shown on the map |
 | Sights | Overpass API (OSM) + Wikipedia geosearch | queried in parallel, cached 14 days |
 | Walking and driving routes | FOSSGIS OSRM (`routing.openstreetmap.de`) | falls back to a straight line |
+| Reviews, hotels, restaurants | Tripadvisor search links (opened in the browser or its app; no API) | |
 | Place search | Nominatim | explicit "Find" button only (no autocomplete, per its policy) |
 | Descriptions & photos | Wikipedia / Wikidata | CC BY-SA |
 | Weather | Open-Meteo | free for non-commercial use |
