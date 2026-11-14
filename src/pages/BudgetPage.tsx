@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, touchTrip } from '../db'
 import type { BudgetCategory, BudgetLine, Expense, ItemKind } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
-import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines, lineAmount, unitFor } from '../lib/budget'
+import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines, inferAssumption, lineAmount, unitFor } from '../lib/budget'
 import { fxRate } from '../lib/apis'
 import { country } from '../lib/countries'
 import { daysBetween, formatDate, today } from '../lib/dates'
@@ -37,6 +37,15 @@ export default function BudgetPage() {
   const cols = useMediaQuery('(min-width: 721px)') ? 4 : 3 // the 'In plan' column is hidden on phones
   const [folded, setFolded] = useState<Partial<Record<BudgetCategory, boolean>>>({})
   const [assumptions, setAssumptions] = useState<Set<string>>(new Set()) // lines whose quantity × price editor is open
+  // Lines from an older estimate get their quantity and price read back from their label (the amount stays the same).
+  useEffect(() => {
+    const old = trip.budgetLines
+    if (!old) return
+    const next = old.map((l) => (l.qty && l.price ? l : inferAssumption(l)))
+    // Amounts don't change here, so the category totals stay as they are.
+    if (next.some((l, i) => l !== old[i])) db.trips.update(trip.id, { budgetLines: next })
+  }, [trip.id, trip.budgetLines])
+
   const expenses = useLiveQuery(() => db.expenses.where('tripId').equals(trip.id).toArray(), [trip.id])
 
   const currencies = [...new Set(items.map((i) => i.cost?.currency).filter((c): c is string => !!c))]
@@ -207,13 +216,16 @@ export default function BudgetPage() {
                   : catLines.flatMap((l) => {
                       const calc = !!(l.qty && l.price)
                       const open = assumptions.has(l.id)
-                      const toggle = () =>
+                      const toggle = () => {
+                        // Opening the editor on a line without an assumption starts it as "1 × its amount", never empty.
+                        if (!open && !(l.qty && l.price)) saveLines(lines.map((x) => (x.id === l.id ? inferAssumption(x, true) : x)))
                         setAssumptions((a) => {
                           const n = new Set(a)
                           if (n.has(l.id)) n.delete(l.id)
                           else n.add(l.id)
                           return n
                         })
+                      }
                       const rows = [
                         // The name gets the full width on its own row: long names stay readable on a phone.
                         <tr key={l.id + '-name'} className="budget-line budget-line-name">

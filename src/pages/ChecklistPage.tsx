@@ -8,13 +8,14 @@ import { daysBetween, formatDate, today } from '../lib/dates'
 import { uid } from '../lib/ids'
 import { KIND_META, isTransport } from '../components/kinds'
 import { linkLabel } from '../components/PlaceInfo'
-import { Empty, Modal, Progress, toast } from '../components/ui'
+import { Empty, Modal, Progress, Section, toast } from '../components/ui'
 import { useTripCtx } from './TripLayout'
 
 export default function ChecklistPage() {
   const { trip, items, settings } = useTripCtx()
   const list = useLiveQuery(async () => (await db.checklist.where('tripId').equals(trip.id).toArray()).filter((c) => !c.dismissed), [trip.id])
   const [hideDone, setHideDone] = useState(false)
+  const [openCats, setOpenCats] = useState<Set<ChecklistCategory>>(new Set()) // every section starts folded
   const [editing, setEditing] = useState<Partial<ChecklistItem> | null>(null)
   // Bring the checklist in line with the plan every time it's opened: new stays, trains, nights without a bed…
   // (your ticks and your own entries are never touched).
@@ -86,9 +87,14 @@ export default function ChecklistPage() {
           </div>
         </div>
         <Progress value={done} max={list.length} />
-        <label className="inline small">
-          <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> Hide done
-        </label>
+        <div className="row between wrap">
+          <label className="inline small">
+            <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> Hide done
+          </label>
+          <button className="btn-sm" onClick={() => setOpenCats(openCats.size ? new Set() : new Set(byCat.map((g) => g.cat)))}>
+            {openCats.size ? 'Collapse all' : 'Expand all'}
+          </button>
+        </div>
         {!settings.nationality && <div className="notice">Set your nationality in Settings to get visa, plug and roaming advice that fits you.</div>}
       </div>
 
@@ -103,34 +109,45 @@ export default function ChecklistPage() {
         </div>
       )}
 
-      {byCat.map(({ cat, rows }) => (
-        <section key={cat} className="card">
-          <div className="card-title">
-            <h3>
-              {CATEGORY_LABELS[cat].emoji} {CATEGORY_LABELS[cat].label}
-            </h3>
-            <span className="small muted">
-              {rows.filter((r) => r.done).length}/{rows.length}
-            </span>
-          </div>
-          {cat === 'bookings'
-            ? BOOKING_GROUPS.map((g) => {
-                const groupRows = rows.filter((c) => bookingKind(c, itemsById).group === g.key).sort((x, y) => sortDate(x, itemsById).localeCompare(sortDate(y, itemsById)))
-                if (!groupRows.length) return null
-                return (
-                  <div key={g.key}>
-                    <div className="check-group">
-                      {g.label} · {groupRows.filter((r) => r.done).length}/{groupRows.length}
-                    </div>
-                    {groupRows.map((c) => (
-                      <CheckRow key={c.id} c={c} icon={bookingKind(c, itemsById).icon} now={now} onToggle={() => toggle(c)} onEdit={() => setEditing(c)} />
-                    ))}
-                  </div>
-                )
+      {byCat.map(({ cat, rows }) => {
+        const open = openCats.has(cat)
+        const overdue = rows.filter((c) => !c.done && c.dueDate && c.dueDate < now).length
+        return (
+          <Section
+            key={cat}
+            open={open}
+            onToggle={() =>
+              setOpenCats((o) => {
+                const n = new Set(o)
+                if (n.has(cat)) n.delete(cat)
+                else n.add(cat)
+                return n
               })
-            : rows.map((c) => <CheckRow key={c.id} c={c} now={now} onToggle={() => toggle(c)} onEdit={() => setEditing(c)} />)}
-        </section>
-      ))}
+            }
+            title={`${CATEGORY_LABELS[cat].emoji} ${CATEGORY_LABELS[cat].label}`}
+            summary={`· ${rows.filter((r) => r.done).length}/${rows.length}${overdue ? ` · ${overdue} overdue` : ''}`}
+          >
+            <div>
+              {cat === 'bookings'
+                ? BOOKING_GROUPS.map((g) => {
+                    const groupRows = rows.filter((c) => bookingKind(c, itemsById).group === g.key).sort((x, y) => sortDate(x, itemsById).localeCompare(sortDate(y, itemsById)))
+                    if (!groupRows.length) return null
+                    return (
+                      <div key={g.key}>
+                        <div className="check-group">
+                          {g.label} · {groupRows.filter((r) => r.done).length}/{groupRows.length}
+                        </div>
+                        {groupRows.map((c) => (
+                          <CheckRow key={c.id} c={c} icon={bookingKind(c, itemsById).icon} now={now} onToggle={() => toggle(c)} onEdit={() => setEditing(c)} />
+                        ))}
+                      </div>
+                    )
+                  })
+                : rows.map((c) => <CheckRow key={c.id} c={c} now={now} onToggle={() => toggle(c)} onEdit={() => setEditing(c)} />)}
+            </div>
+          </Section>
+        )
+      })}
 
       {editing && <ChecklistEditor tripId={trip.id} item={editing} onClose={() => setEditing(null)} />}
     </div>

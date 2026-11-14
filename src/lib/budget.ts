@@ -104,6 +104,21 @@ export function unitFor(qty: number, unit = ''): string {
   return forms ? (qty === 1 ? forms[0] : forms[1]) : unit
 }
 
+const LABEL_QTY = /(\d+(?:[.,]\d+)?)\s*(days?|nights?|moves?|adults?|children|child|travellers?|person-days)\b/i
+
+/**
+ * A line made before assumptions existed has no quantity or price. Read them back from its label ("… · 3 nights × 1 room"
+ * gives 3 nights at amount ÷ 3); with `fallback`, any other line becomes "1 × its amount", so the fields are never empty.
+ */
+export function inferAssumption(l: BudgetLine, fallback = false): BudgetLine {
+  if ((l.qty && l.price) || !l.amount) return l.qty || !fallback ? l : { ...l, qty: 1 }
+  const m = l.label.match(LABEL_QTY)
+  if (!m && !fallback) return l
+  const qty = m ? Number(m[1].replace(',', '.')) || 1 : 1
+  const unit = m ? m[2].toLowerCase().replace(/^adult$/, 'adults') : l.unit
+  return { ...l, qty, unit, price: Math.round((l.amount / qty) * 100) / 100 }
+}
+
 /** The amount of a line: quantity × price when both are filled in, otherwise the amount typed in. */
 export const lineAmount = (l: BudgetLine) => (l.qty && l.price ? Math.round(l.qty * l.price) : l.amount)
 
