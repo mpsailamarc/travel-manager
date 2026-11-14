@@ -293,13 +293,6 @@ export default function TodayPage() {
               {tonight.status !== 'booked' && <span className="badge danger">Not booked yet</span>}
             </div>
           )}
-          {trip.countryCodes.length > 0 && (
-            <Link to="../essentials" className="card tight row trip-card">
-              <span style={{ fontSize: '1.4rem' }}>🧭</span>
-              <span className="grow small">Emergency numbers, plugs, currency & tipping</span>
-              <span className="muted">›</span>
-            </Link>
-          )}
         </div>
       </div>
 
