@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { STATUS_LABEL } from './kinds'
 import type { ItemStatus } from '../types'
 
@@ -139,4 +139,13 @@ export async function copyText(text: string) {
     ta.remove()
     toast('Copied to clipboard')
   }
+}
+
+/** 1–5 stars in halves, drawn from one glyph row so a half star needs no extra image. */
+export function Stars({ value, title }: { value: number; title?: string }) {
+  return (
+    <span className="stars" style={{ '--v': value } as CSSProperties} title={title} role="img" aria-label={`${value} out of 5`}>
+      ★★★★★
+    </span>
+  )
 }

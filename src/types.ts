@@ -185,6 +185,7 @@ export interface Favorite {
   source: 'sight' | 'ai' | 'manual'
   wikipedia?: string
   wikidata?: string
+  interest?: { stars: number; langs: number } // how widely written about (Wikipedia language editions), 1–5 stars
   notes?: string
   date?: ISODate // undefined = not scheduled (a backup idea)
   pinned?: boolean // you chose the day yourself; "Plan my days" keeps it

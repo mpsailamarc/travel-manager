@@ -113,7 +113,7 @@ export function PlaceInfo({ item, city, area, lang, country }: { item: Item; cit
   )
 }
 
-function WikiCard({ title, extract, image, thumbnail, url }: { title: string; extract: string; image?: string; thumbnail?: string; url: string }) {
+export function WikiCard({ title, extract, image, thumbnail, url }: { title: string; extract: string; image?: string; thumbnail?: string; url: string }) {
   const [src, setSrc] = useState(image)
   return (
     <div className="wiki-card">

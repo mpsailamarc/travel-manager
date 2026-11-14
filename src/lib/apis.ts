@@ -610,3 +610,121 @@ export async function fxRate(from: string, to: string): Promise<number | undefin
   }
   return undefined
 }
+
+/* ---------------------------- Level of interest ---------------------------- */
+// There is no free source of visitor reviews, so "interest" is how widely a place is written about: the number of
+// Wikipedia language editions that have an article on it (Wikidata). The Eiffel Tower has 170+, a village chapel has 2.
+// It ranks sights well and costs nothing; page views per month are shown as extra detail when a place is opened.
+
+export interface Interest {
+  stars: number // 1–5, in halves
+  langs: number // Wikipedia language editions
+}
+
+export function interestFromLangs(langs: number): Interest | undefined {
+  if (langs < 1) return undefined
+  const stars = 1 + 4 * Math.min(1, Math.log10(langs) / Math.log10(80))
+  return { langs, stars: Math.round(stars * 2) / 2 }
+}
+
+export function interestTier(stars: number): string {
+  return stars >= 4.5 ? 'World-famous' : stars >= 3.5 ? 'Very popular' : stars >= 2.5 ? 'Well known' : stars >= 1.5 ? 'Local interest' : 'Little known'
+}
+
+const NOT_A_LANGUAGE = new Set(['commonswiki', 'specieswiki', 'metawiki', 'mediawikiwiki', 'wikidatawiki', 'sourceswiki'])
+
+/** Wikidata ids for places that only know their Wikipedia article ("pt:Torre de Belém"), looked up per language, 50 at a time. */
+async function wikidataIds(tags: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const byLang = new Map<string, string[]>()
+  for (const tag of tags) {
+    const m = tag.match(/^([a-z-]+):(.+)$/)
+    if (!m) continue
+    const cached = cacheGet<string>(`qid:${tag}`, 90 * 864e5)
+    if (cached) out.set(tag, cached)
+    else byLang.set(m[1], [...(byLang.get(m[1]) ?? []), m[2]])
+  }
+  type R = { query?: { normalized?: { from: string; to: string }[]; redirects?: { from: string; to: string }[]; pages?: Record<string, { title: string; pageprops?: { wikibase_item?: string } }> } }
+  await Promise.all(
+    [...byLang].map(async ([lang, titles]) => {
+      for (let i = 0; i < titles.length; i += 50) {
+        const chunk = titles.slice(i, i + 50)
+        try {
+          const r = await getJSON<R>(
+            `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=pageprops&ppprop=wikibase_item&redirects=1&titles=${encodeURIComponent(chunk.join('|'))}`,
+          )
+          const final = new Map<string, string>() // final title -> id
+          for (const p of Object.values(r.query?.pages ?? {})) if (p.pageprops?.wikibase_item) final.set(p.title, p.pageprops.wikibase_item)
+          const step = (t: string) => [...(r.query?.normalized ?? []), ...(r.query?.redirects ?? [])].reduce((cur, x) => (x.from === cur ? x.to : cur), t)
+          for (const t of chunk) {
+            const id = final.get(step(step(t)))
+            if (id) {
+              out.set(`${lang}:${t}`, id)
+              cacheSet(`qid:${lang}:${t}`, id)
+            }
+          }
+        } catch {
+          /* this batch stays unrated */
+        }
+      }
+    }),
+  )
+  return out
+}
+
+/** Level of interest for many places at once (two small batched requests), by the key you give each. */
+export async function interestOf(subjects: { key: string; wikipedia?: string; wikidata?: string }[]): Promise<Map<string, Interest>> {
+  const result = new Map<string, Interest>()
+  const missing = subjects.filter((s) => !s.wikidata && s.wikipedia).map((s) => s.wikipedia!)
+  const ids = missing.length ? await wikidataIds([...new Set(missing)]) : new Map<string, string>()
+  const qidOf = (s: { wikipedia?: string; wikidata?: string }) => s.wikidata ?? (s.wikipedia ? ids.get(s.wikipedia) : undefined)
+  const langs = new Map<string, number>()
+  const todo: string[] = []
+  for (const q of new Set(subjects.map(qidOf).filter((q): q is string => !!q))) {
+    const c = cacheGet<number>(`langs:${q}`, 60 * 864e5)
+    if (c != null) langs.set(q, c)
+    else todo.push(q)
+  }
+  type W = { entities?: Record<string, { sitelinks?: Record<string, unknown> }> }
+  for (let i = 0; i < todo.length; i += 25) {
+    const chunk = todo.slice(i, i + 25)
+    try {
+      const w = await getJSON<W>(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&origin=*&props=sitelinks&ids=${chunk.join('|')}`, undefined, 20000)
+      for (const q of chunk) {
+        const n = Object.keys(w.entities?.[q]?.sitelinks ?? {}).filter((s) => s.endsWith('wiki') && !NOT_A_LANGUAGE.has(s)).length
+        langs.set(q, n)
+        cacheSet(`langs:${q}`, n)
+      }
+    } catch {
+      /* services busy: those stay unrated for now */
+    }
+  }
+  for (const s of subjects) {
+    const q = qidOf(s)
+    const i = q != null && langs.has(q) ? interestFromLangs(langs.get(q)!) : undefined
+    if (i) result.set(s.key, i)
+  }
+  return result
+}
+
+/** Average page views per month over the last 12 full months, for an article such as {lang:'en', title:'Eiffel Tower'}. */
+export async function monthlyViews(lang: string, title: string): Promise<number | undefined> {
+  const key = `views:${lang}:${title}`
+  const cached = cacheGet<number>(key, 30 * 864e5)
+  if (cached != null) return cached
+  const end = new Date()
+  end.setUTCDate(1)
+  end.setUTCDate(0) // last day of the previous month
+  const start = new Date(Date.UTC(end.getUTCFullYear() - 1, end.getUTCMonth() + 1, 1))
+  const d = (x: Date) => `${x.getUTCFullYear()}${String(x.getUTCMonth() + 1).padStart(2, '0')}${String(x.getUTCDate()).padStart(2, '0')}00`
+  try {
+    const r = await getJSON<{ items?: { views: number }[] }>(
+      `https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/${lang}.wikipedia/all-access/user/${encodeURIComponent(title.replace(/ /g, '_'))}/monthly/${d(start)}/${d(end)}`,
+    )
+    const v = r.items?.length ? Math.round(r.items.reduce((s, i) => s + i.views, 0) / r.items.length) : undefined
+    if (v != null) cacheSet(key, v)
+    return v
+  } catch {
+    return undefined
+  }
+}

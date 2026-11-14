@@ -49,11 +49,15 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   Tick, skip, reorder or push an item to the next day, and get directions.
 - **Replan**: "it's raining" / "kids are tired" → a prompt for a free chatbot → paste back a new plan for the rest of the day
   (keeps what's booked or done).
-- **Favourites per city**: browse sights (OpenStreetMap + Wikipedia), AI ideas (restaurants, experiences, day trips, kid-friendly places)
-  or add your own, and ⭐ the ones you like. **Plan my days** groups them by area, fits them to your pace and what's already planned
-  (booked tickets, travel days), and builds a walking tour per day. Move any favourite to another day yourself and it stays there.
+- **Wishlist per city** (was "Favourites"): browse sights (OpenStreetMap + Wikipedia), AI ideas (restaurants, experiences, day trips,
+  kid-friendly places) or add your own, and tap ＋ on the ones you want. Tap any place to open it in a window with its photo, description,
+  practical facts and a **star rating**. **Plan my days** groups the wishlist by area, fits it to your pace and what's already planned
+  (booked tickets, travel days), and builds a walking tour per day. Move any place to another day yourself and it stays there.
   What doesn't fit becomes a backup idea.
-- **Backup ideas on Today**: unscheduled favourites near today's city, switching to indoor ones when rain is forecast. "+ Today" adds one to the plan.
+- **Level of interest (stars)**: no free source has visitor reviews, so the stars show how widely a place is written about: the number of
+  Wikipedia language editions with an article on it (Wikidata), from 1★ (a village chapel) to 5★ (Eiffel Tower, 170+ languages). Sights can be
+  sorted most interesting first; the place window also shows Wikipedia page views per month. Tripadvisor stays a link out.
+- **Backup ideas on Today**: unscheduled wishlist places near today's city, switching to indoor ones when rain is forecast. "+ Today" adds one to the plan.
 - **Walking tours**: pick sights in any city (OpenStreetMap + Wikipedia, with photos and descriptions). The app finds the best order,
   gets the real walking route and builds a timeline with visit times. Save it to a day.
 - **About & links on every item**: tap an item on Today for its Wikipedia article (looked up automatically, also for

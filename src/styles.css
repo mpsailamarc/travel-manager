@@ -981,6 +981,19 @@ th.num {
   border-color: #a8a29e;
 }
 
+.stars {
+  display: inline-block;
+  font-size: 0.95em;
+  line-height: 1;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  background: linear-gradient(90deg, #f0a202 calc(var(--v, 0) / 5 * 100%), #d6d3d1 0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
 /* POI list */
 
 .poi {

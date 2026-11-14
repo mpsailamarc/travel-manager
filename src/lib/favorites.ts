@@ -236,7 +236,7 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
           order: order++,
           walk,
           planner: tag,
-          notes: 'Built from your favourites.',
+          notes: 'Built from your wishlist.',
         })
       }
       for (const f of mine.filter((f) => !geo.includes(f))) {

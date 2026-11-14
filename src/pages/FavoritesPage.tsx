@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
 import type { Favorite, Place } from '../types'
-import { fetchPois, type Poi } from '../lib/apis'
+import { fetchPois, interestOf, interestTier, type Interest, type Poi } from '../lib/apis'
 import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
 import { applyCityPlan, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
 import { daysBetween, formatDate, formatDuration, today } from '../lib/dates'
@@ -12,11 +12,11 @@ import { haversineM, type LatLon } from '../lib/geo'
 import { useAsync, useOnline } from '../lib/hooks'
 import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
-import { Empty, Progress, Section, toast } from '../components/ui'
+import { Empty, Progress, Section, Stars, toast } from '../components/ui'
+import { PlaceModal, type PlaceSubject } from '../components/PlaceModal'
 import LazyMap, { type MapMarker } from '../components/LazyMap'
 import { tripadvisorSearch } from '../lib/links'
 import { PromptBox } from './IdeasPage'
-import { PoiDetail } from './WalkPage'
 import { useTripCtx } from './TripLayout'
 
 type Source = 'sights' | 'ai' | 'own'
@@ -47,7 +47,8 @@ export default function FavoritesPage() {
   const dates = city ? cityDates(days, city) : []
 
   const [source, setSource] = useState<Source>('sights')
-  const [detail, setDetail] = useState<Poi>()
+  // The place open in the window: from sights, an AI idea or the wishlist itself.
+  const [detail, setDetail] = useState<{ subject: PlaceSubject; poi?: Poi; idea?: CityIdea; fav?: Favorite }>()
   const [busy, setBusy] = useState(false)
 
   const cityFavs = (favs ?? []).filter((f) => sameCity(f.city, city))
@@ -61,11 +62,11 @@ export default function FavoritesPage() {
 
   async function addFav(f: Omit<Favorite, 'id' | 'tripId' | 'city' | 'addedAt'>) {
     if (!city) return
-    // Checked in the database, not on screen: two quick taps on ⭐ add it once.
+    // Checked in the database, not on screen: two quick taps on ＋ add it once.
     const already = (await db.favorites.where('tripId').equals(trip.id).toArray()).some((x) => sameCity(x.city, city) && x.name.toLowerCase() === f.name.toLowerCase())
     if (already) return
     await db.favorites.add({ ...f, id: uid(), tripId: trip.id, city, addedAt: Date.now() })
-    toast(`⭐ ${f.name}`)
+    toast(`🎯 ${f.name} added to your wishlist`)
   }
 
   async function removeFav(f: Favorite) {
@@ -77,7 +78,14 @@ export default function FavoritesPage() {
   async function toggleSight(p: Poi) {
     const existing = findFav(p.name, p.wikidata)
     if (existing) return removeFav(existing)
-    await addFav({ name: p.name, lat: p.lat, lon: p.lon, category: p.category, visitMin: p.visitMin, source: 'sight', wikipedia: p.wikipedia, wikidata: p.wikidata })
+    await addFav({ name: p.name, lat: p.lat, lon: p.lon, category: p.category, visitMin: p.visitMin, source: 'sight', wikipedia: p.wikipedia, wikidata: p.wikidata, interest: interest.get(p.id) })
+  }
+
+  async function toggleIdea(i: CityIdea) {
+    const existing = findFav(i.name)
+    if (existing) return removeFav(existing)
+    const cat = CATEGORY_META[i.category] ? i.category : 'attraction'
+    await addFav({ name: i.name, lat: i.lat, lon: i.lon, category: cat, visitMin: i.visitMin ?? categoryMeta(cat).visitMin, indoor: i.indoor, source: 'ai', notes: i.notes })
   }
 
   async function move(f: Favorite, date: string | undefined) {
@@ -112,16 +120,45 @@ export default function FavoritesPage() {
 
   const sights = useAsync(() => (center && source === 'sights' ? fetchPois(center, 2500) : Promise.resolve([] as Poi[])), [center?.lat, center?.lon, source])
 
+  // How interesting each sight is (Wikipedia language editions); the list can then put the best first.
+  const rated = useAsync(
+    () => (sights.data?.length ? interestOf(sights.data.map((p) => ({ key: p.id, wikipedia: p.wikipedia, wikidata: p.wikidata }))) : Promise.resolve(new Map<string, Interest>())),
+    [sights.data],
+  )
+  const interest = rated.data ?? new Map<string, Interest>()
+
+  // Wishlist entries that don't have a rating yet (older ones, or added from ideas) get one in the background.
+  useEffect(() => {
+    const todo = cityFavs.filter((f) => !f.interest && (f.wikipedia || f.wikidata))
+    if (!todo.length) return
+    let alive = true
+    interestOf(todo.map((f) => ({ key: f.id, wikipedia: f.wikipedia, wikidata: f.wikidata }))).then((m) => {
+      if (alive) for (const [id, i] of m) db.favorites.update(id, { interest: i })
+    })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [favs, city])
+
+  const openPoi = (p: Poi) => setDetail({ poi: p, subject: { ...p, interest: interest.get(p.id) } })
+  const openFav = (f: Favorite) =>
+    setDetail({ fav: f, subject: { name: f.name, category: f.category, lat: f.lat, lon: f.lon, wikipedia: f.wikipedia, wikidata: f.wikidata, notes: f.notes, visitMin: f.visitMin, indoor: f.indoor, interest: f.interest } })
+  const openIdea = (i: CityIdea) => {
+    const cat = CATEGORY_META[i.category] ? i.category : 'attraction'
+    setDetail({ idea: i, subject: { name: i.name, category: cat, lat: i.lat, lon: i.lon, notes: i.notes, visitMin: i.visitMin ?? categoryMeta(cat).visitMin, indoor: i.indoor } })
+  }
+
   const markers = useMemo((): MapMarker[] => {
     const m: MapMarker[] = []
     if (source === 'sights')
       for (const p of sights.data ?? []) {
         if (findFav(p.name, p.wikidata)) continue
-        m.push({ id: p.id, lat: p.lat, lon: p.lon, label: categoryMeta(p.category).emoji, variant: 'dim', title: p.name, onClick: () => { setDetail(p); setFindOpen(true) } })
+        m.push({ id: p.id, lat: p.lat, lon: p.lon, label: categoryMeta(p.category).emoji, variant: 'dim', title: p.name, onClick: () => openPoi(p) })
       }
     for (const f of cityFavs) {
       if (f.lat == null || f.lon == null) continue
-      m.push({ id: f.id, lat: f.lat, lon: f.lon, label: isScheduled(f) ? String(dayNo(f.date!)) : '★', variant: isScheduled(f) ? 'on' : 'start', title: f.name })
+      m.push({ id: f.id, lat: f.lat, lon: f.lon, label: isScheduled(f) ? String(dayNo(f.date!)) : '★', variant: isScheduled(f) ? 'on' : 'start', title: f.name, onClick: () => openFav(f) })
     }
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,6 +177,7 @@ export default function FavoritesPage() {
     setMapSizeState(v)
     localStorage.setItem('tm-fav-map', v)
   }
+  const shown = detail && (detail.fav ? cityFavs.find((f) => f.id === detail.fav!.id) : findFav(detail.subject.name, detail.subject.wikidata))
   const findIsOpen = findOpen ?? (favs !== undefined && cityFavs.length === 0)
 
   const cityPicker = (
@@ -149,7 +187,7 @@ export default function FavoritesPage() {
           {cities.map((c) => (
             <button key={c.name} className={`chip ${sameCity(c.name, city) ? 'on' : ''}`} onClick={() => setParams({ city: c.name })}>
               {c.name}
-              {(favs ?? []).filter((f) => sameCity(f.city, c.name)).length > 0 && ` ⭐${(favs ?? []).filter((f) => sameCity(f.city, c.name)).length}`}
+              {(favs ?? []).filter((f) => sameCity(f.city, c.name)).length > 0 && ` 🎯${(favs ?? []).filter((f) => sameCity(f.city, c.name)).length}`}
             </button>
           ))}
           {city && !cities.some((c) => sameCity(c.name, city)) && <button className="chip on">{city}</button>}
@@ -193,13 +231,13 @@ export default function FavoritesPage() {
           <div className="stack">
             <div className="card stack">
               <div className="row between wrap">
-                <h3>⭐ Favourites in {city}</h3>
+                <h3>🎯 Wishlist for {city}</h3>
                 <span className="small muted">{plural(cityFavs.length, 'place')}</span>
               </div>
               {dates.length > 0 ? (
                 <>
                   <p className="small muted">
-                    {plural(dates.length, 'day')} here ({dates.map((d) => `day ${dayNo(d)}`).join(', ')}). “Plan my days” groups favourites by area, fits your pace and builds a walk per day;
+                    {plural(dates.length, 'day')} here ({dates.map((d) => `day ${dayNo(d)}`).join(', ')}). “Plan my days” groups your wishlist by area, fits your pace and builds a walk per day;
                     days you pick yourself are kept.
                   </p>
                   <div className="row wrap">
@@ -212,9 +250,9 @@ export default function FavoritesPage() {
                   </div>
                 </>
               ) : (
-                <div className="notice info">No day of the trip is in {city} yet. Set the city on a day (Plan tab) to spread favourites over it — until then they're backup ideas.</div>
+                <div className="notice info">No day of the trip is in {city} yet. Set the city on a day (Plan tab) to spread your wishlist over it — until then they're backup ideas.</div>
               )}
-              {cityFavs.length === 0 && <p className="small muted">Tap ⭐ on sights or ideas (below) to collect them here.</p>}
+              {cityFavs.length === 0 && <p className="small muted">Tap ＋ on sights or ideas (below) to collect them here, or tap a place to read about it first.</p>}
             </div>
 
             {dates.map((d) => {
@@ -232,9 +270,9 @@ export default function FavoritesPage() {
                   summary={`· ${plural(list.length, 'place')} · ${status}`}
                 >
                   <Progress value={used} max={cap || 1} over={used > cap} />
-                  {list.length === 0 && <span className="small muted">Nothing from favourites yet.</span>}
+                  {list.length === 0 && <span className="small muted">Nothing from your wishlist yet.</span>}
                   {list.map((f) => (
-                    <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
+                    <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onOpen={() => openFav(f)} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
                   ))}
                 </Section>
               )
@@ -242,8 +280,8 @@ export default function FavoritesPage() {
 
             {backups.length > 0 && (
               <Section open={backupsOpen} onToggle={() => setBackupsOpen((o) => !o)} title="🧺 Backup ideas" summary={`· ${backups.length} · not on a day, shown on Today when plans change`}>
-                {backups.map((f) => (
-                  <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
+                {[...backups].sort((a, b) => (b.interest?.stars ?? 0) - (a.interest?.stars ?? 0)).map((f) => (
+                  <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onOpen={() => openFav(f)} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
                 ))}
               </Section>
             )}
@@ -267,17 +305,6 @@ export default function FavoritesPage() {
             )}
 
             <Section open={findIsOpen} onToggle={() => setFindOpen(!findIsOpen)} title="🔎 Find things to do" summary={findIsOpen ? undefined : '· sights, AI ideas, add your own'}>
-              {detail && (
-                <PoiDetail
-                  poi={detail}
-                  selected={!!findFav(detail.name, detail.wikidata)}
-                  onToggle={() => toggleSight(detail)}
-                  onClose={() => setDetail(undefined)}
-                  addLabel="⭐ Add to favourites"
-                  removeLabel="Remove from favourites"
-                  city={city}
-                />
-              )}
               <div className="chips">
                 <button className={`chip ${source === 'sights' ? 'on' : ''}`} onClick={() => setSource('sights')}>
                   🏛️ Sights
@@ -298,26 +325,57 @@ export default function FavoritesPage() {
                   noCenter={!center}
                   isFav={(p) => !!findFav(p.name, p.wikidata)}
                   onToggle={toggleSight}
-                  onOpen={setDetail}
+                  onOpen={openPoi}
                   center={center}
+                  interest={interest}
+                  rating={rated.loading}
                 />
               )}
               {source === 'ai' && (
                 <AiIdeas
                   city={city}
                   isFav={(i) => !!findFav(i.name)}
-                  onToggle={(i) => {
-                    const existing = findFav(i.name)
-                    if (existing) return removeFav(existing)
-                    const cat = CATEGORY_META[i.category] ? i.category : 'attraction'
-                    return addFav({ name: i.name, lat: i.lat, lon: i.lon, category: cat, visitMin: i.visitMin ?? categoryMeta(cat).visitMin, indoor: i.indoor, source: 'ai', notes: i.notes })
-                  }}
+                  onToggle={toggleIdea}
+                  onOpen={openIdea}
                 />
               )}
               {source === 'own' && <OwnIdea city={city} onAdd={addFav} />}
             </Section>
           </div>
         </div>
+      )}
+
+      {detail && city && (
+        <PlaceModal
+          subject={shown ? { ...detail.subject, interest: detail.subject.interest ?? shown.interest } : detail.subject}
+          city={city}
+          inList={!!shown}
+          onToggle={async () => {
+            if (detail.poi) await toggleSight(detail.poi)
+            else if (detail.idea) await toggleIdea(detail.idea)
+            else if (shown) {
+              await removeFav(shown)
+              setDetail(undefined)
+            }
+          }}
+          onClose={() => setDetail(undefined)}
+          onInterest={(i) => {
+            if (shown && !shown.interest) db.favorites.update(shown.id, { interest: i })
+          }}
+          dayPicker={
+            shown &&
+            dates.length > 0 && (
+              <select className="btn-sm" style={{ width: 'auto', minHeight: 36 }} value={shown.date && dates.includes(shown.date) ? shown.date : ''} onChange={(e) => move(shown, e.target.value || undefined)} aria-label="Day">
+                <option value="">Backup (no day)</option>
+                {dates.map((d) => (
+                  <option key={d} value={d}>
+                    Day {dayNo(d)} · {formatDate(d)}
+                  </option>
+                ))}
+              </select>
+            )
+          }
+        />
       )}
     </div>
   )
@@ -341,13 +399,15 @@ function TripadvisorLink({ name, city }: { name: string; city: string }) {
   )
 }
 
-function FavRow({ fav: f, dates, dayNo, onMove, onRemove }: { fav: Favorite; dates: string[]; dayNo: (d: string) => number; onMove: (d: string | undefined) => void; onRemove: () => void }) {
+function FavRow({ fav: f, dates, dayNo, onOpen, onMove, onRemove }: { fav: Favorite; dates: string[]; dayNo: (d: string) => number; onOpen: () => void; onMove: (d: string | undefined) => void; onRemove: () => void }) {
   const meta = categoryMeta(f.category)
   return (
     <div className="row" style={{ alignItems: 'center' }}>
       <span style={{ fontSize: '1.2rem' }}>{meta.emoji}</span>
-      <div className="grow">
-        <div className="small strong">{f.name}</div>
+      <div className="grow" style={{ cursor: 'pointer' }} onClick={onOpen} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen()}>
+        <div className="small strong">
+          {f.name} {f.interest && <Stars value={f.interest.stars} title={interestTier(f.interest.stars)} />}
+        </div>
         <div className="tiny muted">
           ~{formatDuration(f.visitMin * 60)}
           {isIndoor(f) && ' · indoor'}
@@ -383,13 +443,27 @@ function SightList(p: {
   isFav: (p: Poi) => boolean
   onToggle: (p: Poi) => void
   onOpen: (p: Poi) => void
+  interest: Map<string, Interest>
+  rating: boolean
 }) {
   const [cat, setCat] = useState<string>()
+  const [sort, setSort] = useState<'interest' | 'near'>('interest')
   if (p.noCenter) return <p className="small muted">This city has no coordinates yet — tap “Find” on the day's city (Plan tab) or search above.</p>
-  const list = (p.pois ?? []).filter((x) => !cat || x.category === cat)
+  const stars = (x: Poi) => p.interest.get(x.id)?.stars ?? 0
+  const list = (p.pois ?? [])
+    .filter((x) => !cat || x.category === cat)
+    .sort((a, b) => (sort === 'near' && p.center ? haversineM(p.center, a) - haversineM(p.center, b) : stars(b) - stars(a) || b.score - a.score))
   const cats = [...new Set((p.pois ?? []).map((x) => x.category))]
   return (
     <div className="stack" style={{ gap: 8 }}>
+      <div className="chips">
+        <button className={`chip ${sort === 'interest' ? 'on' : ''}`} onClick={() => setSort('interest')}>
+          ★ Most interesting first
+        </button>
+        <button className={`chip ${sort === 'near' ? 'on' : ''}`} onClick={() => setSort('near')}>
+          📍 Nearest first
+        </button>
+      </div>
       {cats.length > 1 && (
         <div className="chips">
           <button className={`chip ${!cat ? 'on' : ''}`} onClick={() => setCat(undefined)}>
@@ -403,13 +477,17 @@ function SightList(p: {
         </div>
       )}
       {p.loading && <p className="small muted">Loading sights…</p>}
+      {!p.loading && p.rating && <p className="tiny muted">Rating how well known each place is…</p>}
+      {!p.loading && !p.rating && p.interest.size > 0 && <p className="tiny muted">Stars show how widely a place is written about on Wikipedia, not visitor reviews.</p>}
       {p.error && <div className="notice error">{p.error}</div>}
       <div className="poi-list">
         {list.map((x) => (
           <div key={x.id} className={`poi ${p.isFav(x) ? 'on' : ''}`} onClick={() => p.onOpen(x)}>
             <span style={{ fontSize: '1.3rem' }}>{categoryMeta(x.category).emoji}</span>
             <div className="grow">
-              <div className="strong small">{x.name}</div>
+              <div className="strong small">
+                {x.name} {p.interest.get(x.id) && <Stars value={p.interest.get(x.id)!.stars} title={interestTier(p.interest.get(x.id)!.stars)} />}
+              </div>
               <div className="tiny muted">
                 {categoryMeta(x.category).label}
                 {p.center && ` · ${distance(haversineM(p.center, x))} from centre`} · ~{x.visitMin} min
@@ -418,13 +496,13 @@ function SightList(p: {
             <TripadvisorLink name={x.name} city={p.city} />
             <button
               className={`btn-sm ${p.isFav(x) ? 'btn-primary' : ''}`}
-              aria-label="Favourite"
+              aria-label="Add to wishlist"
               onClick={(e) => {
                 e.stopPropagation()
                 p.onToggle(x)
               }}
             >
-              {p.isFav(x) ? '★' : '☆'}
+              {p.isFav(x) ? '✓' : '＋'}
             </button>
           </div>
         ))}
@@ -433,7 +511,7 @@ function SightList(p: {
   )
 }
 
-function AiIdeas({ city, isFav, onToggle }: { city: string; isFav: (i: CityIdea) => boolean; onToggle: (i: CityIdea) => void }) {
+function AiIdeas({ city, isFav, onToggle, onOpen }: { city: string; isFav: (i: CityIdea) => boolean; onToggle: (i: CityIdea) => void; onOpen: (i: CityIdea) => void }) {
   const { trip, settings } = useTripCtx()
   const key = `tm-cityideas:${trip.id}:${city.toLowerCase()}`
   const [answer, setAnswer] = useState(() => localStorage.getItem(key) ?? '')
@@ -462,7 +540,7 @@ function AiIdeas({ city, isFav, onToggle }: { city: string; isFav: (i: CityIdea)
       {parsed.error && <div className="notice error">{parsed.error}</div>}
       <div className="poi-list">
         {parsed.ideas?.map((i) => (
-          <div key={i.name} className={`poi ${isFav(i) ? 'on' : ''}`} onClick={() => onToggle(i)}>
+          <div key={i.name} className={`poi ${isFav(i) ? 'on' : ''}`} onClick={() => onOpen(i)}>
             <span style={{ fontSize: '1.3rem' }}>{categoryMeta(i.category).emoji}</span>
             <div className="grow">
               <div className="strong small">{i.name}</div>
@@ -474,8 +552,15 @@ function AiIdeas({ city, isFav, onToggle }: { city: string; isFav: (i: CityIdea)
               </div>
             </div>
             <TripadvisorLink name={i.name} city={city} />
-            <button className={`btn-sm ${isFav(i) ? 'btn-primary' : ''}`} aria-label="Favourite">
-              {isFav(i) ? '★' : '☆'}
+            <button
+              className={`btn-sm ${isFav(i) ? 'btn-primary' : ''}`}
+              aria-label="Add to wishlist"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggle(i)
+              }}
+            >
+              {isFav(i) ? '✓' : '＋'}
             </button>
           </div>
         ))}
@@ -531,7 +616,7 @@ function OwnIdea({ city, onAdd }: { city: string; onAdd: (f: Omit<Favorite, 'id'
       <p className="tiny muted">Tap “Find” to attach a location so it can join a walking tour.</p>
       <div>
         <button className="btn-primary" disabled={!place?.name} onClick={add}>
-          ⭐ Add to favourites
+          🎯 Add to wishlist
         </button>
       </div>
     </div>

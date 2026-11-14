@@ -27,7 +27,7 @@ const TABS = [
   { to: 'plan', label: 'Plan', emoji: '🗓️', mobile: 1 },
   { to: 'today', label: 'Day by day', emoji: '📍', mobile: 2 },
   { to: 'ideas', label: 'Ideas (AI)', emoji: '✨', mobile: 6 },
-  { to: 'favorites', label: 'Favourites', emoji: '⭐', mobile: 3 },
+  { to: 'favorites', label: 'Wishlist', emoji: '🎯', mobile: 3 },
   { to: 'checklist', label: 'Checklist', emoji: '✅', mobile: 4 },
   { to: 'budget', label: 'Budget', emoji: '💶', mobile: 5 },
   { to: 'essentials', label: 'Essentials', emoji: '🧭', mobile: 7 },

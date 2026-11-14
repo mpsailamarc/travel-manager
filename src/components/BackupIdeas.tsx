@@ -59,7 +59,7 @@ export function BackupIdeas({ tripId, day }: { tripId: string; day: Day }) {
           </button>
         </div>
       </div>
-      {list.length === 0 && <p className="small muted">No indoor favourites here — try “All”, or add some in Favourites.</p>}
+      {list.length === 0 && <p className="small muted">No indoor places on your wishlist here — try “All”, or add some in the Wishlist.</p>}
       {list.slice(0, 6).map((f) => (
         <div key={f.id} className="row">
           <span style={{ fontSize: '1.2rem' }}>{categoryMeta(f.category).emoji}</span>
@@ -82,7 +82,7 @@ export function BackupIdeas({ tripId, day }: { tripId: string; day: Day }) {
         </div>
       ))}
       <Link to={`../favorites?city=${encodeURIComponent(day.city ?? '')}`} className="small">
-        All favourites →
+        Open the wishlist →
       </Link>
     </div>
   )
