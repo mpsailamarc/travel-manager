@@ -3,9 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { db, touchTrip } from '../db'
 import type { Item } from '../types'
 import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin, nowHHMM, today } from '../lib/dates'
-import { money } from '../lib/format'
-import { country, flag } from '../lib/countries'
-import { forecast, fxRate, weatherEmoji } from '../lib/apis'
+import { country } from '../lib/countries'
+import { forecast, weatherEmoji } from '../lib/apis'
 import { useAsync, useNow } from '../lib/hooks'
 import { sortItems } from '../lib/hooks'
 import { applyDayReplan, CHATBOTS, parseDayItems, replanPrompt } from '../lib/ai'
@@ -224,13 +223,17 @@ export default function TodayPage() {
             </div>
           )}
           <QuickExpense tripId={trip.id} date={date} home={settings.homeCurrency} local={country(trip.countryCodes[0])?.currency ?? settings.homeCurrency} />
-          {trip.countryCodes.map((c) => (
-            <LocalInfo key={c} code={c} home={settings.homeCurrency} />
-          ))}
+          {trip.countryCodes.length > 0 && (
+            <Link to="../essentials" className="card tight row trip-card">
+              <span style={{ fontSize: '1.4rem' }}>🧭</span>
+              <span className="grow small">Emergency numbers, plugs, currency & tipping</span>
+              <span className="muted">›</span>
+            </Link>
+          )}
         </div>
       </div>
 
-      {editing && <ItemEditor trip={trip} item={editing} city={day?.city} onClose={() => setEditing(null)} />}
+      {editing && <ItemEditor trip={trip} item={editing} city={day?.city} area={day} onClose={() => setEditing(null)} />}
       {replan && <ReplanModal date={date} dayItems={dayItems} onClose={() => setReplan(false)} />}
     </div>
   )
@@ -309,47 +312,6 @@ function Weather({ lat, lon, date }: { lat?: number; lon?: number; date: string 
         {Math.round(w.tMax)}° / {Math.round(w.tMin)}°
       </div>
       {w.rainChance != null && w.rainChance > 20 && <div className="tiny muted">☔ {w.rainChance}%</div>}
-    </div>
-  )
-}
-
-function LocalInfo({ code, home }: { code: string; home: string }) {
-  const c = country(code)
-  const { data: rate } = useAsync(() => (c ? fxRate(c.currency, home) : Promise.resolve(undefined)), [c?.currency, home])
-  if (!c) return null
-  return (
-    <div className="card stack" style={{ gap: 10 }}>
-      <h3>
-        {flag(code)} {c.name} essentials
-      </h3>
-      <div className="info-grid">
-        <div className="info-tile">
-          <div className="k">Emergency</div>
-          <div className="v">
-            <a href={`tel:${c.emergency.match(/\d+/)?.[0]}`}>{c.emergency}</a>
-          </div>
-        </div>
-        <div className="info-tile">
-          <div className="k">Plugs</div>
-          <div className="v">
-            Type {c.plugs.join('/')} · {c.voltage} V
-          </div>
-        </div>
-        <div className="info-tile">
-          <div className="k">Currency</div>
-          <div className="v">
-            {c.currency}
-            {c.currency !== home && rate && <span className="small muted"> · 100 = {money(100 * rate, home, 2)}</span>}
-          </div>
-        </div>
-        <div className="info-tile">
-          <div className="k">Driving</div>
-          <div className="v">On the {c.drive}</div>
-        </div>
-      </div>
-      <p className="small">
-        <b>Tipping:</b> {c.tipping}
-      </p>
     </div>
   )
 }

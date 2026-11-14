@@ -17,6 +17,7 @@ import WalkPage from './pages/WalkPage'
 import SharePage from './pages/SharePage'
 import MorePage from './pages/MorePage'
 import FavoritesPage from './pages/FavoritesPage'
+import EssentialsPage from './pages/EssentialsPage'
 
 function Shell() {
   const online = useOnline()
@@ -68,6 +69,7 @@ const router = createHashRouter([
           { path: 'docs', element: <DocsPage /> },
           { path: 'walk', element: <WalkPage /> },
           { path: 'favorites', element: <FavoritesPage /> },
+          { path: 'essentials', element: <EssentialsPage /> },
           { path: 'share', element: <SharePage /> },
           { path: 'more', element: <MorePage /> },
         ],

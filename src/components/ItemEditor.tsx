@@ -3,23 +3,25 @@ import { useNavigate } from 'react-router-dom'
 import { db, touchTrip } from '../db'
 import type { Item, ItemKind, ItemStatus, Trip } from '../types'
 import { dateRange, formatDate } from '../lib/dates'
-import { CURRENCIES } from '../lib/countries'
+import { country, CURRENCIES } from '../lib/countries'
 import { uid } from '../lib/ids'
 import { KIND_META, STATUS_LABEL, isTransport, needsBooking } from './kinds'
 import { Modal, StatusBadge, toast } from './ui'
 import { itemSubtitle } from './ItemRow'
 import { PlaceSearch } from './PlaceSearch'
 import { PlaceInfo } from './PlaceInfo'
+import { localWiki } from '../lib/apis'
 import { useSettings } from '../lib/hooks'
 
 interface Props {
   trip: Trip
   item: Partial<Item> & { date: string }
   city?: string
+  area?: { lat?: number; lon?: number } // the day's city, to check Wikipedia matches are nearby
   onClose: () => void
 }
 
-export function ItemEditor({ trip, item, city, onClose }: Props) {
+export function ItemEditor({ trip, item, city, area, onClose }: Props) {
   const settings = useSettings()
   const navigate = useNavigate()
   const isNew = !item.id
@@ -221,7 +223,15 @@ export function ItemEditor({ trip, item, city, onClose }: Props) {
     >
       <div className="stack">
         <ItemSummary item={saved} />
-        {saved.kind !== 'note' && <PlaceInfo item={saved} city={city} />}
+        {saved.kind !== 'note' && (
+          <PlaceInfo
+            item={saved}
+            city={city}
+            area={area?.lat != null && area.lon != null ? { lat: area.lat, lon: area.lon } : undefined}
+            lang={localWiki(trip.countryCodes[0])}
+            country={country(trip.countryCodes[0])?.name}
+          />
+        )}
         {saved.kind === 'walk' && (
           <div>
             <button type="button" onClick={() => navigate(`/trip/${trip.id}/walk?item=${saved.id}`)}>

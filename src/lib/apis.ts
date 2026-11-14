@@ -3,7 +3,7 @@
 //   OpenStreetMap Overpass (points of interest) · FOSSGIS OSRM (walking routes) · Nominatim (place search)
 //   Wikipedia / Wikidata (descriptions, photos) · Open-Meteo (weather) · Frankfurter / ECB (exchange rates)
 
-import type { LatLon } from './geo'
+import { haversineM, type LatLon } from './geo'
 import type { WalkStop } from '../types'
 
 const CACHE_PREFIX = 'tm-cache:'
@@ -323,7 +323,7 @@ export async function wikiSummary(poi: { wikipedia?: string; wikidata?: string }
 
 // Words that say what you do, not where: they shouldn't decide which article matches.
 const GENERIC = new Set(
-  'the and with from for tour walk walking hike hiking trek visit trip day half full lunch dinner breakfast brunch evening morning afternoon night sunset sunrise view views tickets ticket guided free early late around near into over via los las del des der die das dos old new'.split(' '),
+  'the and with from for tour walk walking hike hiking trek visit trip day half full lunch dinner breakfast brunch evening morning afternoon night sunset sunrise view views tickets ticket guided free early late around near into over via los las del des der die das dos old new hotel hostel apartment room rooms accommodation stay check rest relax pack packing time back return arrive arrival depart departure transfer drive flight bus train local best famous family kids children'.split(' '),
 )
 
 function keyWords(s: string) {
@@ -345,36 +345,138 @@ function matches(nameWords: string[], title: string) {
   return nameWords.filter((w) => t.some((x) => sameWord(w, x))).length
 }
 
-/**
- * Finds the Wikipedia article for a plan item that has no link yet (e.g. created by the AI). With coordinates,
- * it takes the closest article within 500 m that shares a word with the name; otherwise it searches by name and
- * city and needs at least two matching words (or the only one). Better no article than a wrong one.
- */
-export async function findWikipedia(name: string, near?: LatLon, city?: string): Promise<WikiSummary | undefined> {
-  const key = `wikifind2:${name.toLowerCase()}|${near ? `${near.lat.toFixed(3)},${near.lon.toFixed(3)}` : ''}|${city ?? ''}`
-  const cached = cacheGet<{ title?: string }>(key, 30 * 864e5)
-  let title = cached?.title
-  if (!cached) {
-    const cityWords = city ? keyWords(city) : []
-    const words = keyWords(name).filter((w) => !cityWords.some((c) => sameWord(w, c)))
-    if (!words.length) return undefined
-    if (near) {
-      type G = { query?: { geosearch: { title: string }[] } }
-      const g = await getJSON<G>(
-        `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=geosearch&gscoord=${near.lat}|${near.lon}&gsradius=500&gslimit=50`,
-      )
-      title = g.query?.geosearch.find((x) => matches(words, x.title) >= 1)?.title // sorted by distance
-    }
-    if (!title) {
-      type S = { query?: { search: { title: string }[] } }
-      const q = encodeURIComponent(city && !name.toLowerCase().includes(city.toLowerCase()) ? `${name} ${city}` : name)
-      const r = await getJSON<S>(`https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=search&srlimit=5&srsearch=${q}`)
-      const need = Math.min(2, words.length)
-      title = r.query?.search.find((x) => matches(words, x.title) >= need)?.title
-    }
-    cacheSet(key, { title })
+/* ---- Getting the place out of an activity title ("Hike to Grey lookout" → "Grey") ---- */
+
+const ACTIVITY_LEAD =
+  /^(?:(?:half|full)[- ]day\s+)?(?:visit|explore|discover|see|guided tour|tour|hike|hiking|walk|walking|trek|stroll|climb|drive|day trip|excursion|sunrise|sunset|lunch|dinner|breakfast|brunch|picnic|swim|boat trip|boat|ferry|catamaran|bike|cycle|kayak|tasting|shopping|relax|free time)\b[^,:]*?\b(?:to|at|in|of|around|through|along|on|up|from|by)\s+/i
+const LEADING_VERB = /^(?:visit|explore|discover|see|stroll(?:\s+along)?|tour|hike|walk|trek|climb|enjoy|admire)\s+/i
+const TRAILING = /\s+(?:at sunset|at sunrise|sunset|sunrise|hike|hiking|trek|walk|tour|visit|trip|day trip|viewpoint|lookout|stroll|excursion|tasting|boat trip|cruise|riverside|playground)$/i
+
+/** Likely place names hidden in an activity title, most complete first. */
+export function placesFromTitle(title: string): string[] {
+  let t = title.replace(/\([^)]*\)/g, ' ').replace(/\s+[—–]\s+.*$|\s+-\s+.*$/, '')
+  if (/→|->/.test(t)) return [] // transport between two places
+  if (t.includes(':')) t = t.slice(t.indexOf(':') + 1)
+  t = t.trim().replace(ACTIVITY_LEAD, '').replace(LEADING_VERB, '')
+  for (let i = 0; i < 2; i++) t = t.replace(TRAILING, '')
+  t = t.replace(/^the\s+/i, '').trim()
+  const out = [t]
+  const tail = t.match(/\s(?:in|at|near|on)\s+([A-ZÀ-Ý].+)$/) // "grilled sardines in Alfama" → "Alfama"
+  if (tail) out.push(tail[1])
+  out.push(...t.split(/\s+(?:&|and|\+|to)\s+|,\s*/))
+  return [...new Set(out.map((x) => x.replace(TRAILING, '').trim()))].filter((x) => x.length > 2)
+}
+
+// Local-language Wikipedias worth a second try (Latin script, so names can be matched).
+const LOCAL_WIKI: Record<string, string> = {
+  ES: 'es', MX: 'es', AR: 'es', CL: 'es', PE: 'es', CO: 'es', CR: 'es', PT: 'pt', BR: 'pt', FR: 'fr', BE: 'fr', MA: 'fr',
+  DE: 'de', AT: 'de', CH: 'de', IT: 'it', NL: 'nl', PL: 'pl', CZ: 'cs', HU: 'hu', SE: 'sv', NO: 'no', DK: 'da', HR: 'hr',
+  TR: 'tr', ID: 'id', VN: 'vi', IS: 'is',
+}
+export const localWiki = (countryCode?: string) => (countryCode ? LOCAL_WIKI[countryCode.toUpperCase()] : undefined)
+
+export interface WikiQuery {
+  title: string // the activity title
+  place?: string // the place name, when different from the title
+  near?: LatLon // the item's own coordinates
+  area?: LatLon // where you are that day (the day's city): results must be within 120 km
+  city?: string
+  country?: string // for articles without coordinates, the text must mention the city or the country
+  lang?: string // local Wikipedia to try after English
+}
+
+// Common geographic nouns: matching one of these alone says little ("Lake", "Cave"); a proper name ("Chaxa") does.
+const COMMON_PLACE = new Set(
+  'laguna lagoon lake lago valley valle cave cueva mount monte cerro mountain peak hill beach playa river rio church iglesia cathedral catedral museum museo palace palacio park parque square plaza praca market mercado tower torre bridge puente castle castillo castelo garden jardin national natural monument monumento island isla waterfall cascada glacier glaciar desert desierto viewpoint mirador street calle avenue avenida station center centre'.split(' '),
+)
+
+interface Candidate {
+  title: string
+  lang: string
+  wikidata?: string
+  coords?: LatLon
+  intro?: string
+}
+
+async function wikiNearby(lang: string, p: LatLon): Promise<Candidate[]> {
+  type R = { query?: { pages: Record<string, { title: string; coordinates?: LatLon[]; pageprops?: { wikibase_item?: string } }> } }
+  const r = await getJSON<R>(
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${p.lat}|${p.lon}&ggsradius=500&ggslimit=50&prop=coordinates|pageprops&ppprop=wikibase_item&colimit=max`,
+  )
+  return Object.values(r.query?.pages ?? {})
+    .map((x) => ({ title: x.title, lang, wikidata: x.pageprops?.wikibase_item, coords: x.coordinates?.[0] }))
+    .sort((a, b) => (a.coords && b.coords ? haversineM(p, a.coords) - haversineM(p, b.coords) : 0))
+}
+
+async function wikiSearch(lang: string, q: string): Promise<Candidate[]> {
+  type R = {
+    query?: { pages: Record<string, { title: string; index: number; coordinates?: LatLon[]; pageprops?: { wikibase_item?: string }; extract?: string }> }
   }
-  const summary = title ? await wikiSummary({ wikipedia: `en:${title}` }) : undefined
+  const r = await getJSON<R>(
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=6&gsrsearch=${encodeURIComponent(q)}&prop=coordinates|pageprops|extracts&ppprop=wikibase_item&colimit=max&exintro=1&explaintext=1&exlimit=max&exchars=600`,
+  )
+  return Object.values(r.query?.pages ?? {})
+    .sort((a, b) => a.index - b.index)
+    .map((x) => ({ title: x.title, lang, wikidata: x.pageprops?.wikibase_item, coords: x.coordinates?.[0], intro: x.extract }))
+}
+
+/**
+ * Finds the Wikipedia article for a plan item that has no link yet (e.g. created by the AI). It tries the place name
+ * and the place names inside the title, in English and then the local language: first articles within 500 m of the
+ * item, then a search by name and city. A result must share the distinctive words of the name (two, or the only one)
+ * and, when the day's location is known, lie within 50 km of it. Better no article than a wrong one.
+ */
+export async function findWikipedia(q: WikiQuery): Promise<WikiSummary | undefined> {
+  const key = `wikifind4:${[q.title, q.place, q.near && `${q.near.lat.toFixed(3)},${q.near.lon.toFixed(3)}`, q.city, q.lang].join('|').toLowerCase()}`
+  const cached = cacheGet<{ hit?: Candidate }>(key, 30 * 864e5)
+  let hit = cached?.hit
+  if (!cached) {
+    // City words don't count, in any spelling ("Lisboa" = "Lisbon").
+    const cityWords = q.city ? keyWords(q.city) : []
+    const isCity = (w: string) => cityWords.some((c) => sameWord(w, c) || (w.length >= 5 && c.length >= 5 && w.slice(0, 5) === c.slice(0, 5)))
+    const names = [...new Set([q.place, ...placesFromTitle(q.title), q.title].filter((x): x is string => !!x))]
+      .map((name) => ({ name, words: keyWords(name).filter((w) => !isCity(w)) }))
+      .filter((n) => n.words.length)
+      .slice(0, 5)
+    const area = q.area ?? q.near
+    const regionWords = [...cityWords, ...(q.country ? keyWords(q.country) : [])]
+    const mentionsRegion = (intro?: string) => {
+      const t = keyWords(intro ?? '')
+      return regionWords.some((w) => t.some((x) => sameWord(w, x)))
+    }
+    const ok = (c: Candidate, words: string[]) => {
+      if (area && c.coords && haversineM(area, c.coords) > 120_000) return false // parks and day trips can be far from town
+      const hits = words.filter((w) => matches([w], c.title))
+      const properName = hits.some((w) => w.length >= 4 && !COMMON_PLACE.has(w)) // "Chaxa", "Milodón", not "Lake"
+      // Some articles have no coordinates ("Cueva del Milodón"): then the title must carry a proper name and the
+      // opening paragraph must mention the city or the country — so "French Kiwi Juice" doesn't pass for "French Valley".
+      if (area && !c.coords) return properName && mentionsRegion(c.intro)
+      // Two shared words, or the only one; near the day's city a single proper name is enough.
+      return hits.length >= Math.min(2, words.length) || (!!area && properName)
+    }
+
+    search: for (const lang of [...new Set(['en', q.lang ?? 'en'])]) {
+      if (q.near) {
+        const nearby = await wikiNearby(lang, q.near)
+        for (const n of names) {
+          // Right next to the place, one shared word is enough.
+          hit = nearby.find((c) => matches(n.words, c.title) >= 1)
+          if (hit) break search
+        }
+      }
+      for (const n of names) {
+        // With the city first (disambiguates), then the name alone (local-language searches choke on mixed words).
+        const queries = q.city && !n.name.toLowerCase().includes(q.city.toLowerCase()) ? [`${n.name} ${q.city}`, n.name] : [n.name]
+        for (const query of queries) {
+          hit = (await wikiSearch(lang, query)).find((c) => ok(c, n.words))
+          if (hit) break search
+        }
+      }
+    }
+    cacheSet(key, { hit })
+  }
+  // Prefer the English article when the match was found on the local Wikipedia.
+  const summary = hit ? await wikiSummary({ wikipedia: `${hit.lang}:${hit.title}`, wikidata: hit.wikidata }) : undefined
   return summary && !/may refer to:?$/i.test(summary.extract.trim()) ? summary : undefined
 }
 
@@ -446,21 +548,30 @@ export function setManualRate(from: string, to: string, rate: number) {
   localStorage.setItem(MANUAL_RATES_KEY, JSON.stringify(r))
 }
 
-/** Rate to convert 1 `from` into `to`. ECB data covers ~30 major currencies; others need a manual rate. */
+/**
+ * Rate to convert 1 `from` into `to`. European Central Bank data (Frankfurter) covers ~30 major currencies; for the
+ * rest (Chilean peso, Peruvian sol, Moroccan dirham…) it falls back to ExchangeRate-API's free open endpoint
+ * (166 currencies, daily). A manual rate always wins. Rates are cached for offline use.
+ */
 export async function fxRate(from: string, to: string): Promise<number | undefined> {
   if (from === to) return 1
   const manual = manualRates()[`${from}>${to}`]
   if (manual) return manual
-  const key = `fx:${from}`
-  let rates = cacheGet<Record<string, number>>(key, 12 * 3600e3)
-  if (!rates) {
-    try {
-      const r = await getJSON<{ rates: Record<string, number> }>(`https://api.frankfurter.dev/v1/latest?base=${from}`)
-      rates = r.rates
-      cacheSet(key, rates)
-    } catch {
-      rates = cacheGetStale<Record<string, number>>(key)
+  for (const source of ['ecb', 'erapi'] as const) {
+    const key = `fx:${source}:${from}`
+    let rates = cacheGet<Record<string, number>>(key, 12 * 3600e3)
+    if (!rates) {
+      try {
+        rates =
+          source === 'ecb'
+            ? (await getJSON<{ rates: Record<string, number> }>(`https://api.frankfurter.dev/v1/latest?base=${from}`)).rates
+            : (await getJSON<{ rates: Record<string, number> }>(`https://open.er-api.com/v6/latest/${from}`)).rates
+        cacheSet(key, rates)
+      } catch {
+        rates = cacheGetStale<Record<string, number>>(key)
+      }
     }
+    if (rates?.[to]) return rates[to]
   }
-  return rates?.[to]
+  return undefined
 }

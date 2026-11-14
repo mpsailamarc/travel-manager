@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Item } from '../types'
+import type { LatLon } from '../lib/geo'
 import { findWikipedia, wikiSummary } from '../lib/apis'
 import { useAsync, useOnline } from '../lib/hooks'
 import { isTransport } from './kinds'
@@ -30,15 +31,21 @@ export function wikiUrl(tag: string) {
  * About a plan item: the matching Wikipedia article (looked up automatically when the item has no link),
  * your own link, and quick links to maps, Wikivoyage and AllTrails. Everything opens in the browser or app — no accounts needed.
  */
-export function PlaceInfo({ item, city }: { item: Item; city?: string }) {
+export function PlaceInfo({ item, city, area, lang, country }: { item: Item; city?: string; area?: LatLon; lang?: string; country?: string }) {
   const online = useOnline()
   const place = isTransport(item.kind) ? item.to : item.location
-  // The place's own name ("Castelo de São Jorge") matches articles better than the activity title ("Visit the castle").
-  const name = place?.name ?? item.title
   const near = place?.lat != null && place.lon != null ? { lat: place.lat, lon: place.lon } : undefined
   const lookUp = !isTransport(item.kind) && item.kind !== 'note' && item.kind !== 'stay' && !item.walk
 
-  const wiki = useAsync(() => (lookUp && online ? findWikipedia(name, near, city) : Promise.resolve(undefined)), [name, near?.lat, near?.lon, city, online])
+  // The place's own name ("Castelo de São Jorge") matches better than the activity title; the lookup also digs
+  // place names out of the title ("Hike to Grey lookout" → "Grey") and checks results are near the day's city.
+  const wiki = useAsync(
+    () =>
+      lookUp && online
+        ? findWikipedia({ title: item.title, place: place?.name !== item.title ? place?.name : undefined, near, area, city, lang, country })
+        : Promise.resolve(undefined),
+    [item.title, place?.name, near?.lat, near?.lon, area?.lat, area?.lon, city, lang, country, online],
+  )
   const q = [place?.name ?? item.title, city].filter(Boolean).join(', ')
   const mapUrl = near ? `https://www.google.com/maps/search/?api=1&query=${near.lat},${near.lon}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
   // City walks built from sights don't need AllTrails; hikes and free-form walks do.
@@ -64,7 +71,7 @@ export function PlaceInfo({ item, city }: { item: Item; city?: string }) {
         <div className="stack" style={{ gap: 4 }}>
           <b className="small">Stops</b>
           {item.walk.stops.map((s, i) => (
-            <StopLink key={s.id} n={i + 1} name={s.name} wikipedia={s.wikipedia} wikidata={s.wikidata} city={city} />
+            <StopLink key={s.id} n={i + 1} name={s.name} wikipedia={s.wikipedia} wikidata={s.wikidata} city={city} near={{ lat: s.lat, lon: s.lon }} lang={lang} country={country} />
           ))}
         </div>
       )}
@@ -119,9 +126,9 @@ function WikiCard({ title, extract, image, thumbnail, url }: { title: string; ex
   )
 }
 
-function StopLink({ n, name, wikipedia, wikidata, city }: { n: number; name: string; wikipedia?: string; wikidata?: string; city?: string }) {
+function StopLink({ n, name, wikipedia, wikidata, city, near, lang, country }: { n: number; name: string; wikipedia?: string; wikidata?: string; city?: string; near: LatLon; lang?: string; country?: string }) {
   // Stops picked from sights carry their article; others are looked up like any place.
-  const { data } = useAsync(() => (wikipedia || wikidata ? wikiSummary({ wikipedia, wikidata }) : findWikipedia(name, undefined, city)), [name])
+  const { data } = useAsync(() => (wikipedia || wikidata ? wikiSummary({ wikipedia, wikidata }) : findWikipedia({ title: name, near, area: near, city, lang, country })), [name])
   const url = data?.url ?? (wikipedia ? wikiUrl(wikipedia) : undefined)
   return (
     <div className="row small">

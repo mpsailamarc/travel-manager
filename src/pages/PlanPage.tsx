@@ -136,7 +136,7 @@ export default function PlanPage() {
 
       <div className="sticky-side hide-mobile stack">{map}</div>
 
-      {editing && <ItemEditor trip={trip} item={editing} city={dayByDate.get(editing.date)?.city} onClose={() => setEditing(null)} />}
+      {editing && <ItemEditor trip={trip} item={editing} city={dayByDate.get(editing.date)?.city} area={dayByDate.get(editing.date)} onClose={() => setEditing(null)} />}
       {dayEdit && <DayEditor day={dayEdit} onClose={() => setDayEdit(null)} />}
     </div>
   )

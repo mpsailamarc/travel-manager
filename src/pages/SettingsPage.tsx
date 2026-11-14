@@ -121,7 +121,7 @@ export default function SettingsPage() {
           Maps © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, tiles by <a href="https://openfreemap.org">OpenFreeMap</a> · Sights via
           the Overpass API · Walking routes by <a href="https://routing.openstreetmap.de">FOSSGIS OSRM</a> · Place search by Nominatim · Descriptions & photos from
           Wikipedia/Wikidata (CC BY-SA) · Weather by <a href="https://open-meteo.com">Open-Meteo</a> · Exchange rates by <a href="https://frankfurter.dev">Frankfurter</a>{' '}
-          (ECB). All free for personal use, no accounts or keys.
+          (ECB) and <a href="https://www.exchangerate-api.com">Rates By Exchange Rate API</a>. All free for personal use, no accounts or keys.
         </p>
       </div>
     </div>

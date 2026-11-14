@@ -34,7 +34,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **About & links on every item**: tap an item on Today for its Wikipedia article (looked up automatically, also for
   AI-created activities), a map link, the city's Wikivoyage guide, and "Find on AllTrails" for hikes. Paste a trail,
   booking or ticket link into an item and it shows as a button (e.g. "Open in AllTrails").
-- **Local essentials**: emergency number, plugs/voltage, currency and exchange rate, driving side, tipping.
+- **Essentials tab**: per country, emergency numbers (tap to call), plugs/voltage and whether you need an adapter, driving side,
+  tipping, entry schemes, and a currency converter (ECB rates, plus ExchangeRate-API for currencies like CLP), saved for offline use.
 - **Docs**: passport scans, tickets and insurance stored on the device, available offline.
 
 **Sync** (optional): your devices (and family) stay in sync automatically through a small add-on for your own
@@ -79,7 +80,7 @@ Open each day (and each walk map) once while online so maps and weather are cach
 | Place search | Nominatim | explicit "Find" button only (no autocomplete, per its policy) |
 | Descriptions & photos | Wikipedia / Wikidata | CC BY-SA |
 | Weather | Open-Meteo | free for non-commercial use |
-| Exchange rates | Frankfurter (ECB) | ~30 major currencies; others can be entered by hand |
+| Exchange rates | Frankfurter (ECB) + ExchangeRate-API open endpoint | ECB for ~30 major currencies, ExchangeRate-API for the rest (166) |
 
 Every request has a timeout, and results are cached on the device, so a slow or blocked service never freezes the app.
 

@@ -29,6 +29,7 @@ const TABS = [
   { to: 'favorites', label: 'Favourites', emoji: '⭐' },
   { to: 'checklist', label: 'Checklist', emoji: '✅', mobile: true },
   { to: 'budget', label: 'Budget', emoji: '💶', mobile: true },
+  { to: 'essentials', label: 'Essentials', emoji: '🧭', mobile: true },
   { to: 'walk', label: 'Walks', emoji: '🚶' },
   { to: 'docs', label: 'Docs', emoji: '📄' },
   { to: 'share', label: 'Share', emoji: '📤' },
