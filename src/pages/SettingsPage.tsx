@@ -62,7 +62,7 @@ export default function SettingsPage() {
             </select>
           </label>
         </div>
-        <p className="tiny muted">Used for visa links, plug adapters, roaming advice, budget estimates and walking times. Stays on this device.</p>
+        <p className="tiny muted">Used for visa links, plug adapters, roaming advice, budget estimates and walking times. Synced between your devices if sync is on.</p>
       </div>
 
       <SyncCard />

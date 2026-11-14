@@ -58,7 +58,7 @@ export function SyncCard() {
         </div>
         <p className="small">{syncLabel(status)}</p>
         <p className="small muted">
-          Trips, plans, checklists, expenses and favourites sync automatically with every device using the same code. Documents stay on each device.
+          Trips, plans, checklists, expenses, favourites and your settings sync automatically with every device using the same code. Documents stay on each device.
         </p>
         <div className="row wrap">
           <button onClick={() => syncNow()} disabled={status.state === 'syncing'}>
@@ -98,7 +98,7 @@ export function SyncCard() {
       <h3>☁️ Sync between devices</h3>
       <p className="small">
         Keep your computer, phone (and family) in sync automatically, through your own PythonAnywhere site. Your data is encrypted on the device with a sync code before it's
-        sent — the server can't read it. Documents stay on each device.
+        sent — the server can't read it. Documents (passport scans) stay on each device.
       </p>
       {!mode && (
         <div className="row wrap">

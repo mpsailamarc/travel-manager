@@ -5,12 +5,12 @@
 // - Local changes are found by comparing each record's hash with its hash at the last sync, so no change
 //   tracking is needed anywhere else in the app. Deleted records become tombstones.
 // - Conflicts: if the same record changed on two devices between syncs, the device that syncs last wins.
-// - Documents (passport scans…) and settings stay on each device.
+// - Documents (passport scans…) stay on each device.
 
 import { useEffect, useState } from 'react'
 import { db } from '../db'
 
-const TABLES = ['trips', 'days', 'items', 'checklist', 'expenses', 'favorites'] as const
+const TABLES = ['trips', 'days', 'items', 'checklist', 'expenses', 'favorites', 'settings'] as const
 type SyncTable = (typeof TABLES)[number]
 
 const CONFIG_KEY = 'tm-sync'

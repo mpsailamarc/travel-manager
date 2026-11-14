@@ -69,7 +69,7 @@ online, and every minute while the app is open. The ☁️ ✓ in the top bar sh
 About sync:
 - Everything is encrypted on the device with your code before it's sent. The server stores only scrambled data,
   so keep the code safe: without it the synced copy can't be read (each device still has its own copy).
-- Synced: trips, plans, checklists, expenses, favourites. **Not synced:** documents (passport scans etc.) and Settings.
+- Synced: trips, plans, checklists, expenses, favourites and Settings. **Not synced:** documents (passport scans etc.).
 - If the same thing is edited on two devices between syncs, the device that syncs last wins.
 - The server allows at most 3 different sync codes, so strangers can't use your site as free storage.
   The data lives in `/home/YOUR-USERNAME/travel-manager-api/travel_sync.sqlite3`, outside the public `/travel/` folder.

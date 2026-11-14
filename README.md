@@ -40,7 +40,7 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 
 **Sync** (optional): your devices (and family) stay in sync automatically through a small add-on for your own
 PythonAnywhere site (`server/travel_sync.py`, Python standard library only). Data is encrypted on the device with
-your sync code, so the server can't read it. Documents and settings stay on each device. See `DEPLOY-pythonanywhere.md`.
+your sync code, so the server can't read it. Documents stay on each device. See `DEPLOY-pythonanywhere.md`.
 
 **Sharing**: export a trip as a `.trip.json` file and send it to family. They tap *Import* to get their own copy. Back up and restore all trips from Settings.
 
