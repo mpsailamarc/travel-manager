@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, touchTrip } from '../db'
-import type { BudgetCategory, ItemKind } from '../types'
+import type { BudgetCategory, Expense, ItemKind } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
 import { BUDGET_LABELS, estimateBudget } from '../lib/budget'
 import { fxRate } from '../lib/apis'
@@ -10,6 +11,7 @@ import { money } from '../lib/format'
 import { useAsync } from '../lib/hooks'
 import { Progress, toast } from '../components/ui'
 import { QuickExpense } from '../components/QuickExpense'
+import { ExpenseEditor } from '../components/ExpenseEditor'
 import { useTripCtx } from './TripLayout'
 
 const KIND_TO_CATEGORY: Record<ItemKind, BudgetCategory> = {
@@ -29,6 +31,7 @@ const KIND_TO_CATEGORY: Record<ItemKind, BudgetCategory> = {
 export default function BudgetPage() {
   const { trip, items, settings } = useTripCtx()
   const home = settings.homeCurrency
+  const [editing, setEditing] = useState<Expense | null>(null)
   const expenses = useLiveQuery(() => db.expenses.where('tripId').equals(trip.id).toArray(), [trip.id])
 
   const currencies = [...new Set(items.map((i) => i.cost?.currency).filter((c): c is string => !!c))]
@@ -159,7 +162,7 @@ export default function BudgetPage() {
             <table>
               <tbody>
                 {byDate.map((e) => (
-                  <tr key={e.id}>
+                  <tr key={e.id} className="clickable" onClick={() => setEditing(e)}>
                     <td className="small muted nowrap">{formatDate(e.date, { day: 'numeric', month: 'short' })}</td>
                     <td>
                       {BUDGET_LABELS[e.category].emoji} {e.note ?? BUDGET_LABELS[e.category].label}
@@ -168,8 +171,25 @@ export default function BudgetPage() {
                       {money(e.amount, e.currency, 2)}
                       {e.currency !== home && <div className="tiny muted">{money(e.amountHome, home, 2)}</div>}
                     </td>
-                    <td style={{ width: 30 }}>
-                      <button className="icon-btn" aria-label="Delete" onClick={() => db.expenses.delete(e.id)}>
+                    <td style={{ width: 64 }} className="nowrap">
+                      <button
+                        className="icon-btn"
+                        aria-label="Edit"
+                        onClick={(ev) => {
+                          ev.stopPropagation()
+                          setEditing(e)
+                        }}
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        className="icon-btn"
+                        aria-label="Delete"
+                        onClick={(ev) => {
+                          ev.stopPropagation()
+                          if (confirm(`Delete this expense (${money(e.amount, e.currency, 2)})?`)) db.expenses.delete(e.id)
+                        }}
+                      >
                         🗑️
                       </button>
                     </td>
@@ -180,6 +200,7 @@ export default function BudgetPage() {
           </div>
         </div>
       </div>
+      {editing && <ExpenseEditor expense={editing} tripDates={[trip.startDate, trip.endDate]} home={home} onClose={() => setEditing(null)} />}
     </div>
   )
 }
