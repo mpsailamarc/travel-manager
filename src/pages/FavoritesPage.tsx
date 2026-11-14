@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
 import type { Day, Favorite, Place } from '../types'
 import { fetchPois, interestOf, interestTier, type Interest, type Poi } from '../lib/apis'
 import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
-import { applyCityPlan, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
+import { applyCityPlan, plannerTag, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
 import { addDays, dateRange, daysBetween, formatDate, formatDuration, today } from '../lib/dates'
 import { distance, plural } from '../lib/format'
 import { haversineM, type LatLon } from '../lib/geo'
@@ -177,23 +177,44 @@ export default function FavoritesPage() {
     setDetail({ idea: i, subject: { name: i.name, category: cat, lat: i.lat, lon: i.lon, notes: i.notes, visitMin: i.visitMin ?? categoryMeta(cat).visitMin, indoor: i.indoor } })
   }
 
+  // One day shown on the map: its places numbered in walking order, joined by the walking route.
+  const [focus, setFocus] = useState<string>()
+  useEffect(() => setFocus(undefined), [city])
+  const focusWalk = focus && city ? items.find((i) => i.date === focus && i.kind === 'walk' && i.planner === plannerTag(city)) : undefined
+  const mapBox = useRef<HTMLDivElement>(null)
+  function showOnMap(d: string) {
+    setFocus(d)
+    if (mapSize === 'hidden') setMapSize('small')
+    setTimeout(() => mapBox.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
+  }
+
   const markers = useMemo((): MapMarker[] => {
     const m: MapMarker[] = []
-    if (source === 'sights')
+    if (source === 'sights' && !focus)
       for (const p of sights.data ?? []) {
         if (findFav(p.name, p.wikidata)) continue
         m.push({ id: p.id, lat: p.lat, lon: p.lon, label: categoryMeta(p.category).emoji, variant: 'dim', title: p.name, onClick: () => openPoi(p) })
       }
+    if (focus) {
+      const stops = focusWalk?.walk?.stops ?? []
+      const st = focusWalk?.walk?.start
+      if (st?.lat != null && st.lon != null) m.push({ id: 'start', lat: st.lat, lon: st.lon, label: 'S', variant: 'start', title: st.name })
+      stops.forEach((s, n) => {
+        const f = cityFavs.find((x) => x.id === s.id)
+        m.push({ id: s.id, lat: s.lat, lon: s.lon, label: String(n + 1), variant: 'on', title: s.name, onClick: f ? () => openFav(f) : undefined })
+      })
+      return m
+    }
     for (const f of cityFavs) {
       if (f.lat == null || f.lon == null) continue
       m.push({ id: f.id, lat: f.lat, lon: f.lon, label: isScheduled(f) ? String(dayNo(f.date!)) : '★', variant: isScheduled(f) ? 'on' : 'start', title: f.name, onClick: () => openFav(f) })
     }
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sights.data, favs, source, city])
+  }, [sights.data, favs, source, city, focus, focusWalk])
 
   // Re-fit when the city, the sights or the day plan change — not on every star, which would jump while browsing.
-  const fitKey = `${city}-${source}-${cityFavs.filter((f) => f.date).map((f) => f.id + f.date).join()}`
+  const fitKey = `${city}-${source}-${focus ?? ''}-${focusWalk?.walk?.distanceM ?? ''}-${cityFavs.filter((f) => f.date).map((f) => f.id + f.date).join()}`
 
   // What's folded: the sights/ideas search (once you have favourites), days (when there are many), the map (small by default).
   const [findOpen, setFindOpen] = useState<boolean>()
@@ -310,6 +331,13 @@ export default function FavoritesPage() {
                 >
                   <Progress value={used} max={cap || 1} over={used > cap} />
                   {list.some((f) => f.lat != null && !f.itemId) && (
+                    <div>
+                      <button className="btn-sm" onClick={() => showOnMap(d)}>
+                        🗺️ Show this day on the map
+                      </button>
+                    </div>
+                  )}
+                  {list.some((f) => f.lat != null && !f.itemId) && (
                     <WalkSettings
                       key={d + (days.find((x) => x.date === d)?.walkStart?.name ?? '')}
                       day={days.find((x) => x.date === d)}
@@ -341,7 +369,7 @@ export default function FavoritesPage() {
 
           <div className="stack">
             {center && (
-              <div className="card stack" style={{ gap: 8 }}>
+              <div ref={mapBox} className="card stack" style={{ gap: 8 }}>
                 <div className="row between">
                   <b>🗺️ Map</b>
                   <div className="chips">
@@ -352,7 +380,45 @@ export default function FavoritesPage() {
                     ))}
                   </div>
                 </div>
-                {mapSize !== 'hidden' && (
+                {dates.length > 0 && (
+                  <div className="chips">
+                    <button className={`chip ${!focus ? 'on' : ''}`} onClick={() => setFocus(undefined)}>
+                      All
+                    </button>
+                    {dates.map((d) => (
+                      <button key={d} className={`chip ${focus === d ? 'on' : ''}`} onClick={() => showOnMap(d)}>
+                        Day {dayNo(d)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {focus && (
+                  <div className="small stack" style={{ gap: 2 }}>
+                    <b>
+                      Day {dayNo(focus)} · {formatDate(focus)}
+                    </b>
+                    {focusWalk?.walk ? (
+                      <>
+                        <span className="muted">
+                          🚶 {focusWalk.walk.stops.length} {focusWalk.walk.stops.length === 1 ? 'stop' : 'stops'} · {distance(focusWalk.walk.distanceM)} on foot · about{' '}
+                          {formatDuration(focusWalk.walk.walkS + focusWalk.walk.stops.reduce((a, x) => a + x.visitMin, 0) * 60)} in all
+                          {focusWalk.startTime && ` · starts ${focusWalk.startTime}`}
+                          {focusWalk.walk.routedBy === 'straight-line' && ' · straight-line estimate'}
+                        </span>
+                        <ol style={{ margin: 0, paddingLeft: 20 }}>
+                          {focusWalk.walk.stops.map((x) => (
+                            <li key={x.id}>
+                              {x.name} <span className="tiny muted">~{formatDuration(x.visitMin * 60)}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </>
+                    ) : (
+                      <span className="muted">Nothing with a location on this day yet. Add places from the wishlist, then “Plan my days”.</span>
+                    )}
+                  </div>
+                )}
+                {mapSize !== 'hidden' && !focus && (
                   <div className="row wrap" style={{ gap: 6 }}>
                     {moved ? (
                       <button className="btn-primary btn-sm" onClick={searchHere}>
@@ -368,7 +434,7 @@ export default function FavoritesPage() {
                     )}
                   </div>
                 )}
-                {mapSize !== 'hidden' && <LazyMap key={mapSize} markers={markers} center={center} zoom={13} fitKey={fitKey} className={mapSize === 'large' ? 'tall' : 'short'} locate onMoveEnd={setView} />}
+                {mapSize !== 'hidden' && <LazyMap key={mapSize} markers={markers} line={focusWalk?.walk?.geometry} dashed={focusWalk?.walk?.routedBy === 'straight-line'} center={center} zoom={13} fitKey={fitKey} className={mapSize === 'large' ? 'tall' : 'short'} locate onMoveEnd={setView} />}
               </div>
             )}
 
