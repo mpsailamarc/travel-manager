@@ -9,7 +9,7 @@ import { money } from '../lib/format'
 import { Modal, toast } from './ui'
 
 /** Edit a logged expense: amount, currency, date, category, note — and what it came to in your home currency. */
-export function ExpenseEditor({ expense, tripDates, home, onClose }: { expense: Expense; tripDates: [string, string]; home: string; onClose: () => void }) {
+export function ExpenseEditor({ expense, home, onClose }: { expense: Expense; home: string; onClose: () => void }) {
   const [amount, setAmount] = useState(String(expense.amount))
   const [currency, setCurrency] = useState(expense.currency)
   const [date, setDate] = useState(expense.date)
@@ -90,7 +90,7 @@ export function ExpenseEditor({ expense, tripDates, home, onClose }: { expense: 
           )}
           <label>
             Date
-            <input type="date" value={date} min={tripDates[0]} max={tripDates[1]} onChange={(e) => setDate(e.target.value)} />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
         </div>
         <div className="chips">

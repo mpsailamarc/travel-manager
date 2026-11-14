@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { db } from '../db'
 import type { BudgetCategory } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
@@ -8,10 +7,13 @@ import { fxRate } from '../lib/apis'
 import { BUDGET_LABELS } from '../lib/budget'
 import { money } from '../lib/format'
 import { uid } from '../lib/ids'
+import { today } from '../lib/dates'
 import { toast } from './ui'
 
-export function QuickExpense({ tripId, date, home, local, budgetLink = true }: { tripId: string; date: string; home: string; local: string; budgetLink?: boolean }) {
+export function QuickExpense({ tripId, home, local }: { tripId: string; home: string; local: string }) {
   const [amount, setAmount] = useState('')
+  // Defaults to today's date on this device (not the trip's dates): you log what you just spent.
+  const [date, setDate] = useState(today)
   const [currency, setCurrency] = useState(local)
   const [category, setCategory] = useState<BudgetCategory>('food')
   const [note, setNote] = useState('')
@@ -39,14 +41,7 @@ export function QuickExpense({ tripId, date, home, local, budgetLink = true }: {
 
   return (
     <div className="card stack" style={{ gap: 8 }}>
-      <div className="row between">
-        <h3>💳 Log a spend</h3>
-        {budgetLink && (
-          <Link to="../budget" className="small">
-            Budget →
-          </Link>
-        )}
-      </div>
+      <h3>💳 Log a spend</h3>
       <div className="row">
         <input inputMode="decimal" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
         <select style={{ width: 90 }} value={currency} onChange={(e) => setCurrency(e.target.value)}>
@@ -63,6 +58,7 @@ export function QuickExpense({ tripId, date, home, local, budgetLink = true }: {
         ))}
       </div>
       <div className="row">
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value || today())} style={{ maxWidth: 160 }} aria-label="Date" />
         <input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
         <button className="btn-primary" onClick={add} disabled={!amount}>
           Add

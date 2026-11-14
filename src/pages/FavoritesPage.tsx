@@ -12,7 +12,7 @@ import { haversineM, type LatLon } from '../lib/geo'
 import { useAsync, useOnline } from '../lib/hooks'
 import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
-import { Empty, Progress, toast } from '../components/ui'
+import { Empty, Progress, Section, toast } from '../components/ui'
 import LazyMap, { type MapMarker } from '../components/LazyMap'
 import { PromptBox } from './IdeasPage'
 import { PoiDetail } from './WalkPage'
@@ -113,7 +113,7 @@ export default function FavoritesPage() {
     if (source === 'sights')
       for (const p of sights.data ?? []) {
         if (findFav(p.name, p.wikidata)) continue
-        m.push({ id: p.id, lat: p.lat, lon: p.lon, label: categoryMeta(p.category).emoji, variant: 'dim', title: p.name, onClick: () => setDetail(p) })
+        m.push({ id: p.id, lat: p.lat, lon: p.lon, label: categoryMeta(p.category).emoji, variant: 'dim', title: p.name, onClick: () => { setDetail(p); setFindOpen(true) } })
       }
     for (const f of cityFavs) {
       if (f.lat == null || f.lon == null) continue
@@ -126,27 +126,54 @@ export default function FavoritesPage() {
   // Re-fit when the city, the sights or the day plan change — not on every star, which would jump while browsing.
   const fitKey = `${city}-${source}-${sights.data?.length ?? 0}-${cityFavs.filter((f) => f.date).map((f) => f.id + f.date).join()}`
 
-  return (
-    <div className="stack">
-      <div className="card tight stack" style={{ gap: 8 }}>
-        <div className="chips">
+  // What's folded: the sights/ideas search (once you have favourites), days (when there are many), the map (small by default).
+  const [findOpen, setFindOpen] = useState<boolean>()
+  const [openDays, setOpenDays] = useState<Record<string, boolean>>({})
+  const [backupsOpen, setBackupsOpen] = useState(true)
+  const [cityOpen, setCityOpen] = useState(false)
+  const [mapSize, setMapSizeState] = useState<'small' | 'large' | 'hidden'>(() => (localStorage.getItem('tm-fav-map') as 'small' | 'large' | 'hidden') || 'small')
+  const setMapSize = (v: 'small' | 'large' | 'hidden') => {
+    setMapSizeState(v)
+    localStorage.setItem('tm-fav-map', v)
+  }
+  const findIsOpen = findOpen ?? (favs !== undefined && cityFavs.length === 0)
+
+  const cityPicker = (
+    <div className="card tight stack" style={{ gap: 8 }}>
+      <div className="row wrap" style={{ gap: 6 }}>
+        <div className="chips grow">
           {cities.map((c) => (
             <button key={c.name} className={`chip ${sameCity(c.name, city) ? 'on' : ''}`} onClick={() => setParams({ city: c.name })}>
               {c.name}
               {(favs ?? []).filter((f) => sameCity(f.city, c.name)).length > 0 && ` ⭐${(favs ?? []).filter((f) => sameCity(f.city, c.name)).length}`}
             </button>
           ))}
+          {city && !cities.some((c) => sameCity(c.name, city)) && <button className="chip on">{city}</button>}
         </div>
+        <button className="btn-sm" onClick={() => setCityOpen((o) => !o)}>
+          {cityOpen ? 'Hide' : '＋ Another city'}
+        </button>
+      </div>
+      {cityOpen && (
         <PlaceSearch
-          label="Another city"
+          label="Search for a city"
           value={other}
           onChange={(p) => {
             setOther(p)
-            if (p?.lat != null) setParams({ city: p.name })
+            if (p?.lat != null) {
+              setParams({ city: p.name })
+              setCityOpen(false)
+            }
           }}
           placeholder="e.g. Sintra"
         />
-      </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div className="stack">
+      {cityPicker}
 
       {!city && (
         <div className="card">
@@ -158,19 +185,94 @@ export default function FavoritesPage() {
 
       {city && (
         <div className="grid-2">
+          {/* Your favourites and days come first: that's what you come back to. */}
           <div className="stack">
-            {center && <LazyMap markers={markers} center={center} zoom={13} fitKey={fitKey} className="tall" locate />}
-            {detail && (
-              <PoiDetail
-                poi={detail}
-                selected={!!findFav(detail.name, detail.wikidata)}
-                onToggle={() => toggleSight(detail)}
-                onClose={() => setDetail(undefined)}
-                addLabel="⭐ Add to favourites"
-                removeLabel="Remove from favourites"
-              />
-            )}
             <div className="card stack">
+              <div className="row between wrap">
+                <h3>⭐ Favourites in {city}</h3>
+                <span className="small muted">{plural(cityFavs.length, 'place')}</span>
+              </div>
+              {dates.length > 0 ? (
+                <>
+                  <p className="small muted">
+                    {plural(dates.length, 'day')} here ({dates.map((d) => `day ${dayNo(d)}`).join(', ')}). “Plan my days” groups favourites by area, fits your pace and builds a walk per day;
+                    days you pick yourself are kept.
+                  </p>
+                  <div className="row wrap">
+                    <button className="btn-primary" disabled={!cityFavs.length || busy || !plannable.length} onClick={planMyDays}>
+                      {busy ? 'Planning…' : '✨ Plan my days'}
+                    </button>
+                    <Link className="btn btn-ghost" to="../plan">
+                      See the plan →
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <div className="notice info">No day of the trip is in {city} yet. Set the city on a day (Plan tab) to spread favourites over it — until then they're backup ideas.</div>
+              )}
+              {cityFavs.length === 0 && <p className="small muted">Tap ⭐ on sights or ideas (below) to collect them here.</p>}
+            </div>
+
+            {dates.map((d) => {
+              const list = cityFavs.filter((f) => f.date === d)
+              const cap = dayCapacity(trip, items, d)
+              const used = list.filter((f) => !f.itemId).reduce((s, f) => s + favMinutes(f), 0)
+              const open = openDays[d] ?? (d >= today() && dates.length <= 3) // past days start folded
+              const status = d < today() ? 'past' : cap === 0 ? 'already full' : `${formatDuration(used * 60)} of ${formatDuration(cap * 60)} free`
+              return (
+                <Section
+                  key={d}
+                  open={open}
+                  onToggle={() => setOpenDays((o) => ({ ...o, [d]: !open }))}
+                  title={`Day ${dayNo(d)} · ${formatDate(d)}`}
+                  summary={`· ${plural(list.length, 'place')} · ${status}`}
+                >
+                  <Progress value={used} max={cap || 1} over={used > cap} />
+                  {list.length === 0 && <span className="small muted">Nothing from favourites yet.</span>}
+                  {list.map((f) => (
+                    <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
+                  ))}
+                </Section>
+              )
+            })}
+
+            {backups.length > 0 && (
+              <Section open={backupsOpen} onToggle={() => setBackupsOpen((o) => !o)} title="🧺 Backup ideas" summary={`· ${backups.length} · not on a day, shown on Today when plans change`}>
+                {backups.map((f) => (
+                  <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
+                ))}
+              </Section>
+            )}
+          </div>
+
+          <div className="stack">
+            {center && (
+              <div className="card stack" style={{ gap: 8 }}>
+                <div className="row between">
+                  <b>🗺️ Map</b>
+                  <div className="chips">
+                    {(['small', 'large', 'hidden'] as const).map((v) => (
+                      <button key={v} className={`chip ${mapSize === v ? 'on' : ''}`} onClick={() => setMapSize(v)}>
+                        {v === 'small' ? 'Small' : v === 'large' ? 'Large' : 'Hide'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {mapSize !== 'hidden' && <LazyMap key={mapSize} markers={markers} center={center} zoom={13} fitKey={fitKey} className={mapSize === 'large' ? 'tall' : 'short'} locate />}
+              </div>
+            )}
+
+            <Section open={findIsOpen} onToggle={() => setFindOpen(!findIsOpen)} title="🔎 Find things to do" summary={findIsOpen ? undefined : '· sights, AI ideas, add your own'}>
+              {detail && (
+                <PoiDetail
+                  poi={detail}
+                  selected={!!findFav(detail.name, detail.wikidata)}
+                  onToggle={() => toggleSight(detail)}
+                  onClose={() => setDetail(undefined)}
+                  addLabel="⭐ Add to favourites"
+                  removeLabel="Remove from favourites"
+                />
+              )}
               <div className="chips">
                 <button className={`chip ${source === 'sights' ? 'on' : ''}`} onClick={() => setSource('sights')}>
                   🏛️ Sights
@@ -194,77 +296,20 @@ export default function FavoritesPage() {
                   center={center}
                 />
               )}
-              {source === 'ai' && <AiIdeas city={city} isFav={(i) => !!findFav(i.name)} onToggle={(i) => {
-                const existing = findFav(i.name)
-                if (existing) return removeFav(existing)
-                const cat = CATEGORY_META[i.category] ? i.category : 'attraction'
-                return addFav({ name: i.name, lat: i.lat, lon: i.lon, category: cat, visitMin: i.visitMin ?? categoryMeta(cat).visitMin, indoor: i.indoor, source: 'ai', notes: i.notes })
-              }} />}
-              {source === 'own' && <OwnIdea city={city} onAdd={addFav} />}
-            </div>
-          </div>
-
-          <div className="stack">
-            <div className="card stack">
-              <div className="row between wrap">
-                <h3>⭐ Favourites in {city}</h3>
-                <span className="small muted">{cityFavs.length}</span>
-              </div>
-              {dates.length > 0 ? (
-                <>
-                  <p className="small muted">
-                    You have {plural(dates.length, 'day')} here ({dates.map((d) => `day ${dayNo(d)}`).join(', ')}). “Plan my days” groups favourites by area, fits them to your
-                    pace and what's already planned, and builds a walking tour for each day. Days you pick yourself are kept.
-                  </p>
-                  <div className="row wrap">
-                    <button className="btn-primary" disabled={!cityFavs.length || busy || !plannable.length} onClick={planMyDays}>
-                      {busy ? 'Planning…' : '✨ Plan my days'}
-                    </button>
-                    <Link className="btn btn-ghost" to="../plan">
-                      See the plan →
-                    </Link>
-                  </div>
-                </>
-              ) : (
-                <div className="notice info">No day of the trip is in {city} yet. Set the city on a day (Plan tab) to spread favourites over it — until then they're backup ideas.</div>
+              {source === 'ai' && (
+                <AiIdeas
+                  city={city}
+                  isFav={(i) => !!findFav(i.name)}
+                  onToggle={(i) => {
+                    const existing = findFav(i.name)
+                    if (existing) return removeFav(existing)
+                    const cat = CATEGORY_META[i.category] ? i.category : 'attraction'
+                    return addFav({ name: i.name, lat: i.lat, lon: i.lon, category: cat, visitMin: i.visitMin ?? categoryMeta(cat).visitMin, indoor: i.indoor, source: 'ai', notes: i.notes })
+                  }}
+                />
               )}
-              {cityFavs.length === 0 && <p className="small muted">Tap ⭐ on sights or ideas to collect them here.</p>}
-            </div>
-
-            {dates.map((d) => {
-              const list = cityFavs.filter((f) => f.date === d)
-              const cap = dayCapacity(trip, items, d)
-              const used = list.filter((f) => !f.itemId).reduce((s, f) => s + favMinutes(f), 0)
-              return (
-                <div key={d} className="card stack" style={{ gap: 6 }}>
-                  <div className="row between">
-                    <b>
-                      Day {dayNo(d)} · {formatDate(d)}
-                    </b>
-                    <span className={`small ${used > cap ? '' : 'muted'}`} style={used > cap ? { color: 'var(--danger)' } : undefined}>
-                      {d < today() ? 'past' : cap === 0 ? 'already full' : `${formatDuration(used * 60)} of ${formatDuration(cap * 60)} free`}
-                    </span>
-                  </div>
-                  <Progress value={used} max={cap || 1} over={used > cap} />
-                  {list.length === 0 && <span className="small muted">Nothing from favourites yet.</span>}
-                  {list.map((f) => (
-                    <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
-                  ))}
-                </div>
-              )
-            })}
-
-            {backups.length > 0 && (
-              <div className="card stack" style={{ gap: 6 }}>
-                <div className="row between">
-                  <b>🧺 Backup ideas</b>
-                  <span className="small muted">not on a day · shown on Today when plans change</span>
-                </div>
-                {backups.map((f) => (
-                  <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
-                ))}
-              </div>
-            )}
+              {source === 'own' && <OwnIdea city={city} onAdd={addFav} />}
+            </Section>
           </div>
         </div>
       )}

@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { db, touchTrip } from '../db'
 import type { Item } from '../types'
 import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin, nowHHMM, today } from '../lib/dates'
-import { country } from '../lib/countries'
 import { forecast, weatherEmoji } from '../lib/apis'
 import { useAsync, useNow } from '../lib/hooks'
 import { sortItems } from '../lib/hooks'
@@ -13,12 +12,11 @@ import { ItemEditor } from '../components/ItemEditor'
 import { KIND_META, isTransport, needsBooking } from '../components/kinds'
 import { copyText, Empty, Modal, toast } from '../components/ui'
 import LazyMap from '../components/LazyMap'
-import { QuickExpense } from '../components/QuickExpense'
 import { BackupIdeas } from '../components/BackupIdeas'
 import { tripPhase, useTripCtx } from './TripLayout'
 
 export default function TodayPage() {
-  const { trip, items, days, settings } = useTripCtx()
+  const { trip, items, days } = useTripCtx()
   const [params, setParams] = useSearchParams()
   const realToday = today()
   const ph = tripPhase(trip)
@@ -222,7 +220,6 @@ export default function TodayPage() {
               {tonight.status !== 'booked' && <span className="badge danger">Not booked yet</span>}
             </div>
           )}
-          <QuickExpense tripId={trip.id} date={date} home={settings.homeCurrency} local={country(trip.countryCodes[0])?.currency ?? settings.homeCurrency} />
           {trip.countryCodes.length > 0 && (
             <Link to="../essentials" className="card tight row trip-card">
               <span style={{ fontSize: '1.4rem' }}>🧭</span>

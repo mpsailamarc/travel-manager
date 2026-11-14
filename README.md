@@ -16,12 +16,12 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Checklist**: generated from your destinations, nationality, travellers and itinerary. It covers passports, visas/ETAs/ESTA, insurance, EHIC,
   vaccines, unbooked transport, nights with no accommodation, online check-in, cash, eSIM, plug adapters, kids' items and packing.
   "Suggest items" updates it as the plan changes and never touches what you ticked.
-- **Budget**: per-category budget (with a rough automatic estimate), costs in the plan, money spent (bookings paid ahead + logged expenses)
+- **Budget**: log spends in any currency (the date defaults to today on your device), tap one to edit it; per-category budget (with a rough automatic estimate), costs in the plan, money spent (bookings paid ahead + logged expenses)
   and what's left per day.
 
 **During the trip**
 - **Today**: what's happening now or next, with a countdown, today's travel with booking refs, tonight's accommodation and the weather.
-  Tick, skip, reorder or push an item to the next day, get directions, and log spending in any currency.
+  Tick, skip, reorder or push an item to the next day, and get directions.
 - **Replan**: "it's raining" / "kids are tired" → a prompt for a free chatbot → paste back a new plan for the rest of the day
   (keeps what's booked or done).
 - **Favourites per city**: browse sights (OpenStreetMap + Wikipedia), AI ideas (restaurants, experiences, day trips, kid-friendly places)

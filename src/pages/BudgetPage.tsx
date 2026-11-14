@@ -149,16 +149,10 @@ export default function BudgetPage() {
         </div>
 
         <div className="stack">
-          <QuickExpense
-            tripId={trip.id}
-            date={now < trip.startDate ? trip.startDate : now > trip.endDate ? trip.endDate : now}
-            home={home}
-            local={country(trip.countryCodes[0])?.currency ?? home}
-            budgetLink={false}
-          />
+          <QuickExpense tripId={trip.id} home={home} local={country(trip.countryCodes[0])?.currency ?? home} />
           <div className="card">
             <h3 style={{ marginBottom: 8 }}>Expenses</h3>
-            {byDate.length === 0 && <p className="small muted">Nothing logged yet. Log spends as you go from the Today tab.</p>}
+            {byDate.length === 0 && <p className="small muted">Nothing logged yet. Log what you spend above as you go.</p>}
             <table>
               <tbody>
                 {byDate.map((e) => (
@@ -200,7 +194,7 @@ export default function BudgetPage() {
           </div>
         </div>
       </div>
-      {editing && <ExpenseEditor expense={editing} tripDates={[trip.startDate, trip.endDate]} home={home} onClose={() => setEditing(null)} />}
+      {editing && <ExpenseEditor expense={editing} home={home} onClose={() => setEditing(null)} />}
     </div>
   )
 }

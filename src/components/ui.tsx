@@ -41,6 +41,24 @@ export function Empty({ emoji, title, children }: { emoji: string; title: string
   )
 }
 
+/** A card whose header folds the content away: for long pages where you only want some parts open. */
+export function Section({ title, summary, open, onToggle, children, className = '' }: { title: ReactNode; summary?: ReactNode; open: boolean; onToggle: () => void; children: ReactNode; className?: string }) {
+  return (
+    <section className={`card section ${open ? 'open' : ''} ${className}`}>
+      <button type="button" className="section-head" onClick={onToggle} aria-expanded={open}>
+        <span className="grow" style={{ textAlign: 'left' }}>
+          <b>{title}</b>
+          {summary && <span className="small muted"> {summary}</span>}
+        </span>
+        <span className="chev" aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open && <div className="stack section-body">{children}</div>}
+    </section>
+  )
+}
+
 export function Counter({ value, onChange, min = 0, max = 20 }: { value: number; onChange: (n: number) => void; min?: number; max?: number }) {
   return (
     <div className="counter">
