@@ -10,4 +10,4 @@ export default function LazyMap(props: ComponentProps<typeof MapView>) {
     </Suspense>
   )
 }
-export type { MapMarker } from './MapView'
+export type { MapMarker, MapViewState } from './MapView'

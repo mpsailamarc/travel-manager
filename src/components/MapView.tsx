@@ -19,6 +19,15 @@ export interface MapMarker {
   onClick?: () => void
 }
 
+/** Where the map is looking: its centre, zoom, and the radius of a circle that covers what is on screen. */
+export interface MapViewState {
+  lat: number
+  lon: number
+  zoom: number
+  radiusM: number
+  user: boolean // moved by the person (drag, pinch, zoom buttons), not by the app fitting markers
+}
+
 interface Props {
   markers: MapMarker[]
   line?: [number, number][]
@@ -30,7 +39,7 @@ interface Props {
   fitKey?: string
   center?: { lat: number; lon: number }
   zoom?: number
-  onMoveEnd?: (center: { lat: number; lon: number }) => void
+  onMoveEnd?: (view: MapViewState) => void
   locate?: boolean
 }
 
@@ -78,9 +87,9 @@ export default function MapView({ markers, line, dashed, segments, className = '
         })
       }
     })
-    m.on('moveend', () => {
+    m.on('moveend', (e) => {
       const c = m.getCenter()
-      moveCb.current?.({ lat: c.lat, lon: c.lng })
+      moveCb.current?.({ lat: c.lat, lon: c.lng, zoom: m.getZoom(), radiusM: c.distanceTo(m.getBounds().getNorthEast()), user: !!(e as { originalEvent?: unknown }).originalEvent })
     })
     map.current = m
     return () => {

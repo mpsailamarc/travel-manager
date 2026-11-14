@@ -144,20 +144,22 @@ export async function fetchPois(center: LatLon, radiusM = 2500): Promise<Poi[]> 
 async function overpassPois(center: LatLon, radiusM: number): Promise<Poi[]> {
 
   const a = `around:${radiusM},${center.lat},${center.lon}`
-  const query = `[out:json][timeout:25];
+  // Far from the centre only places with a Wikidata entry (the notable ones) are asked for, so a wide search stays light.
+  const wide = radiusM > 5000 ? '["wikidata"]' : ''
+  const query = `[out:json][timeout:${radiusM > 5000 ? 40 : 25}];
 (
-  nwr(${a})["tourism"~"^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$"]["name"];
+  nwr(${a})["tourism"~"^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$"]["name"]${wide};
   nwr(${a})["historic"~"^(monument|memorial|castle|palace|fort|ruins|archaeological_site|city_gate|church|monastery|tower|building)$"]["name"]["wikidata"];
   nwr(${a})["amenity"="place_of_worship"]["name"]["wikidata"];
   nwr(${a})["leisure"~"^(park|garden)$"]["name"]["wikidata"];
   nwr(${a})["man_made"~"^(tower|lighthouse)$"]["name"]["wikidata"];
 );
-out center tags 400;`
+out center tags 600;`
 
   type El = { type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }
   // Try the mirrors in parallel and take the first that answers.
   const data = await Promise.any(
-    OVERPASS.map((url) => getJSON<{ elements: El[] }>(url, { method: 'POST', body: new URLSearchParams({ data: query }) }, 10000)),
+    OVERPASS.map((url) => getJSON<{ elements: El[] }>(url, { method: 'POST', body: new URLSearchParams({ data: query }) }, radiusM > 5000 ? 15000 : 10000)),
   )
 
   const seen = new Set<string>()
@@ -190,7 +192,7 @@ out center tags 400;`
     })
   }
   pois.sort((x, y) => y.score - x.score)
-  return pois.slice(0, 150)
+  return pois.slice(0, radiusM > 5000 ? 250 : 150)
 }
 
 const WIKI_KEEP: [RegExp, string][] = [
@@ -215,7 +217,7 @@ async function wikipediaPois(center: LatLon, radiusM: number): Promise<Poi[]> {
     pageprops?: { wikibase_item?: string }
   }
   const r = await getJSON<{ query?: { pages: Record<string, P> } }>(
-    `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${center.lat}|${center.lon}&ggsradius=${Math.min(10000, radiusM)}&ggslimit=100&prop=coordinates|pageimages|description|pageprops&colimit=max&pilimit=max&piprop=thumbnail&pithumbsize=160&ppprop=wikibase_item`,
+    `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggscoord=${center.lat}|${center.lon}&ggsradius=${Math.min(10000, radiusM)}&ggslimit=${radiusM > 2500 ? 500 : 100}&prop=coordinates|pageimages|description|pageprops&colimit=max&pilimit=max&piprop=thumbnail&pithumbsize=160&ppprop=wikibase_item`,
   )
   const out: Poi[] = []
   for (const p of Object.values(r.query?.pages ?? {})) {

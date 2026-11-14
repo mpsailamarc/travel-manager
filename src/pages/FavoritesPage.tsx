@@ -14,7 +14,7 @@ import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
 import { Empty, Progress, Section, Stars, toast } from '../components/ui'
 import { PlaceModal, type PlaceSubject } from '../components/PlaceModal'
-import LazyMap, { type MapMarker } from '../components/LazyMap'
+import LazyMap, { type MapMarker, type MapViewState } from '../components/LazyMap'
 import { tripadvisorSearch } from '../lib/links'
 import { PromptBox } from './IdeasPage'
 import { useTripCtx } from './TripLayout'
@@ -118,7 +118,25 @@ export default function FavoritesPage() {
   const isScheduled = (f: Favorite) => !!f.date && (dates.includes(f.date) || !!f.itemId)
   const backups = cityFavs.filter((f) => !isScheduled(f))
 
-  const sights = useAsync(() => (center && source === 'sights' ? fetchPois(center, 2500) : Promise.resolve([] as Poi[])), [center?.lat, center?.lon, source])
+  // Sights come from the part of the map you chose: the city centre at first, then wherever you pan and zoom to and tap "Search this area".
+  const [searched, setSearched] = useState<{ lat: number; lon: number; radiusM: number }>()
+  const [view, setView] = useState<MapViewState>()
+  useEffect(() => {
+    setSearched(undefined)
+    setView(undefined)
+  }, [city])
+  const area = searched ?? (center ? { ...center, radiusM: 2500 } : undefined)
+  const moved = !!(view?.user && area && (haversineM(view, area) > area.radiusM * 0.3 || view.radiusM > area.radiusM * 1.4 || view.radiusM < area.radiusM * 0.6))
+  const sights = useAsync(
+    () => (area && source === 'sights' ? fetchPois({ lat: area.lat, lon: area.lon }, Math.round(Math.min(25000, Math.max(500, area.radiusM)))) : Promise.resolve([] as Poi[])),
+    [area?.lat, area?.lon, area?.radiusM, source],
+  )
+  function searchHere() {
+    if (!view) return
+    setSearched({ lat: view.lat, lon: view.lon, radiusM: view.radiusM })
+    setSource('sights')
+    setFindOpen(true)
+  }
 
   // How interesting each sight is (Wikipedia language editions); the list can then put the best first.
   const rated = useAsync(
@@ -165,7 +183,7 @@ export default function FavoritesPage() {
   }, [sights.data, favs, source, city])
 
   // Re-fit when the city, the sights or the day plan change — not on every star, which would jump while browsing.
-  const fitKey = `${city}-${source}-${sights.data?.length ?? 0}-${cityFavs.filter((f) => f.date).map((f) => f.id + f.date).join()}`
+  const fitKey = `${city}-${source}-${cityFavs.filter((f) => f.date).map((f) => f.id + f.date).join()}`
 
   // What's folded: the sights/ideas search (once you have favourites), days (when there are many), the map (small by default).
   const [findOpen, setFindOpen] = useState<boolean>()
@@ -300,7 +318,23 @@ export default function FavoritesPage() {
                     ))}
                   </div>
                 </div>
-                {mapSize !== 'hidden' && <LazyMap key={mapSize} markers={markers} center={center} zoom={13} fitKey={fitKey} className={mapSize === 'large' ? 'tall' : 'short'} locate />}
+                {mapSize !== 'hidden' && (
+                  <div className="row wrap" style={{ gap: 6 }}>
+                    {moved ? (
+                      <button className="btn-primary btn-sm" onClick={searchHere}>
+                        🔎 Search this area
+                      </button>
+                    ) : (
+                      <span className="tiny muted">{searched ? 'Sights shown are from the area you searched.' : 'Move or zoom the map, then tap “Search this area” to find sights there.'}</span>
+                    )}
+                    {searched && (
+                      <button className="btn-sm" onClick={() => setSearched(undefined)}>
+                        ↩ Back to the city centre
+                      </button>
+                    )}
+                  </div>
+                )}
+                {mapSize !== 'hidden' && <LazyMap key={mapSize} markers={markers} center={center} zoom={13} fitKey={fitKey} className={mapSize === 'large' ? 'tall' : 'short'} locate onMoveEnd={setView} />}
               </div>
             )}
 
@@ -326,7 +360,7 @@ export default function FavoritesPage() {
                   isFav={(p) => !!findFav(p.name, p.wikidata)}
                   onToggle={toggleSight}
                   onOpen={openPoi}
-                  center={center}
+                  center={area}
                   interest={interest}
                   rating={rated.loading}
                 />

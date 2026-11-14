@@ -54,6 +54,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   practical facts and a **star rating**. **Plan my days** groups the wishlist by area, fits it to your pace and what's already planned
   (booked tickets, travel days), and builds a walking tour per day. Move any place to another day yourself and it stays there.
   What doesn't fit becomes a backup idea.
+- **Sights follow the map**: the sights list covers the part of the map you chose. Pan or zoom the map, tap **Search this area**, and the list
+  (and its distances) refreshes for what's on screen; "Back to the city centre" resets it. Wide views list well-known places only (a free-service limit).
 - **Level of interest (stars)**: no free source has visitor reviews, so the stars show how widely a place is written about: the number of
   Wikipedia language editions with an article on it (Wikidata), from 1★ (a village chapel) to 5★ (Eiffel Tower, 170+ languages). Sights can be
   sorted most interesting first; the place window also shows Wikipedia page views per month. Tripadvisor stays a link out.
