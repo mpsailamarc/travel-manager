@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
 import { db, touchTrip } from '../db'
 import type { Item, ItemKind, ItemStatus, Trip } from '../types'
@@ -11,6 +12,7 @@ import { itemSubtitle } from './ItemRow'
 import { PlaceSearch } from './PlaceSearch'
 import { PlaceInfo } from './PlaceInfo'
 import { localWiki } from '../lib/apis'
+import { planRipple } from '../lib/ripple'
 import { useSettings } from '../lib/hooks'
 
 interface Props {
@@ -28,6 +30,11 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
   const [it, setIt] = useState<Partial<Item> & { date: string }>({ kind: 'activity', status: 'planned', ...item })
   const set = <K extends keyof Item>(k: K, v: Item[K] | undefined) => setIt((s) => ({ ...s, [k]: v }))
   const kind = (it.kind ?? 'activity') as ItemKind
+
+  // A later end time can push the rest of the day back: work out what would move, and let the user decide.
+  const dayItems = useLiveQuery(() => db.items.where({ tripId: trip.id, date: it.date }).toArray(), [trip.id, it.date])
+  const [push, setPush] = useState(true)
+  const ripple = planRipple(dayItems ?? [], { id: it.id, startTime: it.startTime || undefined, endTime: it.endTime || undefined }, isNew ? undefined : { startTime: item.startTime, endTime: item.endTime })
   const dates = dateRange(trip.startDate, trip.endDate)
   const [editOpen, setEditOpen] = useState(isNew)
 
@@ -63,8 +70,11 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       walk: it.walk,
     }
     await db.items.put(full)
+    if (push && ripple.moves.length) {
+      await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.start, endTime: m.end } })))
+    }
     await touchTrip(trip.id)
-    toast(isNew ? 'Added' : 'Saved')
+    toast(push && ripple.moves.length ? `Saved · pushed ${ripple.moves.length} later item${ripple.moves.length > 1 ? 's' : ''} back` : isNew ? 'Added' : 'Saved')
     onClose()
   }
 
@@ -124,6 +134,33 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
             </select>
           </label>
         </div>
+
+        {(ripple.moves.length > 0 || ripple.blockedBy) && (
+          <div className="notice info stack" style={{ gap: 6 }}>
+            {ripple.moves.length > 0 && (
+              <>
+                <label className="inline" style={{ alignItems: 'flex-start' }}>
+                  <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span>
+                    <b>Push back the next {ripple.moves.length === 1 ? 'item' : `${ripple.moves.length} items`}</b> so they don't overlap
+                  </span>
+                </label>
+                {ripple.moves.map((m) => (
+                  <div key={m.item.id} className="small">
+                    {KIND_META[m.item.kind].emoji} {m.item.title}: {m.item.startTime}
+                    {m.item.endTime && `–${m.item.endTime}`} → <b>{m.start}</b>
+                    {m.end && <b>–{m.end}</b>}
+                  </div>
+                ))}
+              </>
+            )}
+            {ripple.blockedBy && (
+              <div className="small">
+                🔒 <b>{ripple.blockedBy.title}</b> is booked for {ripple.blockedBy.startTime}, so items can't be pushed past it. {ripple.moves.length ? 'The ones above fit before it; the rest stay' : 'Nothing is moved'} — check your day still works.
+              </div>
+            )}
+          </div>
+        )}
 
         {isTransport(kind) ? (
           <div className="form-grid">
