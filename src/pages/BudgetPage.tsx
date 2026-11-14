@@ -100,7 +100,7 @@ export default function BudgetPage() {
       return
     const { lines: next, basis } = await estimateBudgetLines(trip, settings.nationality, home, items)
     // A fresh estimate replaces everything: categories it has no lines for (e.g. flights) are cleared.
-    await db.trips.update(trip.id, { budgetLines: next, budgetBasis: basis, budget: budgetFromLines(next, {}, []) })
+    await db.trips.update(trip.id, { budgetLines: next, budgetBasis: basis, planBudget: undefined, budget: budgetFromLines(next, {}, []) })
     await touchTrip(trip.id)
     setBasisOpen(true)
     toast('Estimate filled in — see “How this was estimated” below the table')
@@ -123,7 +123,8 @@ export default function BudgetPage() {
   }
 
   async function setBudget(c: BudgetCategory, v: number) {
-    await db.trips.update(trip.id, { budget: { ...trip.budget, [c]: v || undefined } })
+    // A figure you type is yours: switching itinerary idea won't remove it.
+    await db.trips.update(trip.id, { budget: { ...trip.budget, [c]: v || undefined }, planBudget: trip.planBudget?.filter((x) => x !== c) })
   }
 
   const byDate = [...expenses].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt)
@@ -132,7 +133,18 @@ export default function BudgetPage() {
     <div className="stack-lg">
       <div className="info-grid">
         <Kpi k="Budget" v={money(totalBudget, home)} />
-        <Kpi k="In the plan" v={money(totalPlanned, home)} sub="costs on itinerary items" />
+        <Kpi
+          k="In the plan"
+          v={money(totalPlanned, home)}
+          sub={
+            totalBudget > 0
+              ? totalPlanned > totalBudget
+                ? `${money(totalPlanned - totalBudget, home)} over the budget`
+                : `${money(totalBudget - totalPlanned, home)} of the budget isn't in the plan yet`
+              : 'prices on itinerary items'
+          }
+          warn={totalPlanned > totalBudget && totalBudget > 0}
+        />
         <Kpi k="Spent" v={money(totalSpent, home)} sub={`${money(prepaid, home)} booked ahead · ${money(onTrip, home)} on the trip`} />
         <Kpi
           k="Left"
@@ -202,6 +214,13 @@ export default function BudgetPage() {
                       {b > 0 && (
                         <div style={{ marginTop: 4 }}>
                           <Progress value={Math.max(spent[c], 0)} max={b} over={spent[c] > b} />
+                        </div>
+                      )}
+                      {(b > 0 || planned[c] > 0) && (
+                        <div className="tiny muted" style={{ marginTop: 3, color: planned[c] > b && b > 0 ? 'var(--danger)' : undefined }}>
+                          {planned[c] > 0 ? `In plan ${money(planned[c], home)}` : 'Nothing priced in the plan'}
+                          {b > 0 && planned[c] < b && ` · ${money(b - planned[c], home)} not planned yet`}
+                          {b > 0 && planned[c] > b && ` · ${money(planned[c] - b, home)} over budget`}
                         </div>
                       )}
                     </td>
@@ -355,6 +374,24 @@ export default function BudgetPage() {
               </ul>
             </details>
           )}
+          <details className="card tight" style={{ marginTop: 10 }}>
+            <summary className="small strong" style={{ cursor: 'pointer' }}>
+              ❓ Why is there a gap between Budget and In the plan?
+            </summary>
+            <ul className="small" style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+              <li style={{ marginBottom: 4 }}>
+                <b>Budget</b> is what you expect the whole trip to cost: your estimate or the figures you typed.
+              </li>
+              <li style={{ marginBottom: 4 }}>
+                <b>In the plan</b> only adds up itinerary items that have a <b>price</b> (a flight or a hotel with a cost). Meals, local transport and activities you
+                haven't priced aren't counted, so most of the gap is spending that's in the budget but not in the plan yet.
+              </li>
+              <li style={{ marginBottom: 4 }}>
+                A category in red means the prices in the plan add up to <b>more</b> than its budget: raise the budget or lower a price.
+              </li>
+              <li>To shrink the gap, open an item in the plan → Edit details → Cost. Items you skip aren't counted.</li>
+            </ul>
+          </details>
           <p className="tiny muted" style={{ marginTop: 8 }}>
             <b>Spent</b> = bookings that have a booking reference (paid ahead) + expenses you log.
           </p>

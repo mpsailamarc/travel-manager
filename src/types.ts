@@ -55,6 +55,8 @@ export interface Trip {
   budget: Partial<Record<BudgetCategory, number>> // in home currency
   budgetLines?: BudgetLine[] // the estimate's breakdown; per-category totals in `budget` follow these
   budgetBasis?: string[] // plain-words notes on how the estimate was made
+  planBudget?: BudgetCategory[] // categories whose budget came from an itinerary idea (so switching idea can replace them)
+  userEndDate?: ISODate // the end date you chose, when an itinerary idea made the trip longer
   startPlace?: Place // where the trip starts (e.g. home city or airport)
   endPlace?: Place // where it ends; the start place when not set
   coverEmoji: string

@@ -22,6 +22,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   importing twice changes nothing, and the Plan warns if the same thing appears twice, with a one-tap merge.
 - **Day timeline**: the day laid out on an hour scale, each block as tall as the activity is long (overlaps side by side, a "now" line), with a bar
   showing how the day divides between travel, activities and meals. Switch to the plain list any time.
+- **Switching itinerary idea is a clean swap**: the previous idea's items, to-dos (ticked ones stay), budget figures, tips and favourite-to-day links go;
+  your own notes, figures and the end date you chose stay.
+- **Budget vs In the plan**: each category shows what's priced in the plan and what isn't yet ("not planned yet" / "over budget"), with an explanation.
 - **Plan**: day-by-day itinerary with a map. Add or edit flights, trains, buses, stays, activities, meals, walks and notes. You can also print it.
 - **Checklist**: generated from your destinations, nationality, travellers and itinerary. It covers passports, visas/ETAs/ESTA, insurance, EHIC,
   vaccines, unbooked transport, nights with no accommodation, online check-in, cash, eSIM, plug adapters, kids' items and packing.

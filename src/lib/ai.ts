@@ -381,25 +381,44 @@ function toItem(a: AiItem & { bookingRef?: string; provider?: string }, tripId: 
   }
 }
 
+/** Drops the "Tips from …" blocks an earlier itinerary idea added to the notes; your own notes stay. */
+function withoutPlanTips(notes?: string) {
+  return (notes ?? '').split(/\n\n+/).filter((b) => !b.startsWith('Tips from "')).join('\n\n')
+}
+
 export async function applyPlan(trip: Trip, option: AiOption, currency: string, replace: boolean) {
   const maxDay = Math.max(...option.days.map((d) => d.day), 1)
-  const endDate = addDays(trip.startDate, maxDay - 1)
-  await db.transaction('rw', [db.trips, db.days, db.items, db.checklist], async () => {
+  const planEnd = addDays(trip.startDate, maxDay - 1)
+  // The end date you chose is kept; an idea only makes the trip longer, and switching idea undoes that.
+  const userEnd = trip.userEndDate ?? trip.endDate
+  const keepEnd = replace ? userEnd : trip.endDate
+  const newEnd = planEnd > keepEnd ? planEnd : keepEnd
+  await db.transaction('rw', [db.trips, db.days, db.items, db.checklist, db.favorites], async () => {
     if (replace) {
       await db.items.where('tripId').equals(trip.id).delete()
       await db.days.where('tripId').equals(trip.id).delete()
+      // Everything the previous idea brought goes with it: its to-dos (ticked ones stay: that's your progress),
+      // and favourites go back to the backup list, since the walks they were on are gone.
+      await db.checklist.where('tripId').equals(trip.id).filter((c) => !!c.ruleId?.startsWith('ai:') && !c.done && !c.dismissed).delete()
+      const favs = await db.favorites.where('tripId').equals(trip.id).toArray()
+      await db.favorites.bulkUpdate(favs.filter((f) => f.date || f.itemId).map((f) => ({ key: f.id, changes: { date: undefined, itemId: undefined, pinned: false } })))
     }
     const budget: Partial<Record<BudgetCategory, number>> = { ...trip.budget }
-    for (const c of BUDGET_CATEGORIES) if (typeof option.budget[c] === 'number') budget[c] = option.budget[c]
+    // Budget figures the previous idea set (and you haven't changed) go too, unless the new idea sets them again.
+    if (replace) for (const c of trip.planBudget ?? []) if (typeof option.budget[c] !== 'number') delete budget[c]
+    const fromPlan = BUDGET_CATEGORIES.filter((c) => typeof option.budget[c] === 'number')
+    for (const c of fromPlan) budget[c] = option.budget[c]
     await db.trips.update(trip.id, {
-      endDate: endDate > trip.endDate ? endDate : trip.endDate,
+      endDate: newEnd,
+      userEndDate: newEnd > userEnd ? userEnd : undefined,
       cities: option.route.length ? option.route : trip.cities,
       budget,
+      planBudget: replace ? fromPlan : [...new Set([...(trip.planBudget ?? []), ...fromPlan])],
       ...(() => {
         const kept = trip.budgetLines?.filter((l) => typeof option.budget[l.category] !== 'number')
         return { budgetLines: kept?.length ? kept : undefined, budgetBasis: kept?.length ? trip.budgetBasis : undefined }
       })(),
-      notes: [trip.notes, option.tips.length ? `Tips from "${option.title}":\n• ${option.tips.join('\n• ')}` : ''].filter(Boolean).join('\n\n') || undefined,
+      notes: [replace ? withoutPlanTips(trip.notes) : trip.notes, option.tips.length ? `Tips from "${option.title}":\n• ${option.tips.join('\n• ')}` : ''].filter(Boolean).join('\n\n') || undefined,
     })
     for (const d of option.days) {
       const date = addDays(trip.startDate, d.day - 1)

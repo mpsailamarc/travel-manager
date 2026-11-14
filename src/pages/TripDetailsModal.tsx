@@ -21,7 +21,8 @@ export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () =>
     // A start/return typed without tapping "Find" still gets located, so it shows on the map.
     const startPlace = await locatePlace(draft.startPlace)
     const endPlace = draft.endPlace?.name ? await locatePlace(draft.endPlace) : undefined
-    await db.trips.put({ ...draft, startPlace, endPlace, updatedAt: Date.now() })
+    // The dates saved here are yours: an itinerary idea no longer counts as having stretched them.
+    await db.trips.put({ ...draft, startPlace, endPlace, userEndDate: undefined, updatedAt: Date.now() })
     toast('Trip saved')
     onClose()
   }
