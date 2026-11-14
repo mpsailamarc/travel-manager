@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
-import type { Favorite, Place } from '../types'
+import type { Day, Favorite, Place } from '../types'
 import { fetchPois, interestOf, interestTier, type Interest, type Poi } from '../lib/apis'
 import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
 import { applyCityPlan, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
-import { daysBetween, formatDate, formatDuration, today } from '../lib/dates'
+import { addDays, daysBetween, formatDate, formatDuration, today } from '../lib/dates'
 import { distance, plural } from '../lib/format'
 import { haversineM, type LatLon } from '../lib/geo'
 import { useAsync, useOnline } from '../lib/hooks'
@@ -249,7 +249,7 @@ export default function FavoritesPage() {
           <div className="stack">
             <div className="card stack">
               <div className="row between wrap">
-                <h3>🎯 Wishlist for {city}</h3>
+                <h3>🗺️ {city}: wishlist & days</h3>
                 <span className="small muted">{plural(cityFavs.length, 'place')}</span>
               </div>
               {dates.length > 0 ? (
@@ -288,6 +288,19 @@ export default function FavoritesPage() {
                   summary={`· ${plural(list.length, 'place')} · ${status}`}
                 >
                   <Progress value={used} max={cap || 1} over={used > cap} />
+                  {list.some((f) => f.lat != null && !f.itemId) && (
+                    <WalkSettings
+                      key={d + (days.find((x) => x.date === d)?.walkStart?.name ?? '')}
+                      day={days.find((x) => x.date === d)}
+                      stay={items.find((i) => i.kind === 'stay' && i.date <= d && d < addDays(i.date, i.nights ?? 1) && i.location?.lat != null)?.title}
+                      onSave={async (changes) => {
+                        const day = days.find((x) => x.date === d)
+                        if (!day) return
+                        await db.days.update(day.id, changes)
+                        await rebuild([d])
+                      }}
+                    />
+                  )}
                   {list.length === 0 && <span className="small muted">Nothing from your wishlist yet.</span>}
                   {list.map((f) => (
                     <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onOpen={() => openFav(f)} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
@@ -412,6 +425,58 @@ export default function FavoritesPage() {
         />
       )}
     </div>
+  )
+}
+
+/** How the day's walking tour is built: where and when it starts, and whether it ends back at the start. Changing one rebuilds the walk. */
+function WalkSettings({ day, stay, onSave }: { day?: Day; stay?: string; onSave: (changes: Partial<Day>) => void }) {
+  const [place, setPlace] = useState<Place | undefined>(day?.walkStart)
+  const from = day?.walkStart?.name ?? stay ?? `${day?.city ?? 'city'} centre`
+  return (
+    <details className="card tight">
+      <summary className="small strong" style={{ cursor: 'pointer' }}>
+        🚶 Walk · {day?.walkStartTime ? `starts ${day.walkStartTime}` : 'starts after what is already planned'} · from {from}
+        {day?.walkRoundTrip ? ' · back to the start' : ''}
+      </summary>
+      <div className="stack" style={{ marginTop: 8, gap: 8 }}>
+        <div className="form-grid">
+          <label>
+            Start time
+            <input type="time" defaultValue={day?.walkStartTime ?? ''} onBlur={(e) => e.target.value !== (day?.walkStartTime ?? '') && onSave({ walkStartTime: e.target.value || undefined })} />
+          </label>
+          <label className="inline" style={{ alignSelf: 'end' }}>
+            <input type="checkbox" checked={!!day?.walkRoundTrip} onChange={(e) => onSave({ walkRoundTrip: e.target.checked || undefined })} /> End back at the start
+          </label>
+        </div>
+        <PlaceSearch
+          label="Start from"
+          value={place}
+          onChange={(p) => {
+            setPlace(p)
+            if (p?.lat != null) onSave({ walkStart: p })
+          }}
+          placeholder={`Default: ${stay ?? 'the city centre'}. Type a hotel or station, then Find`}
+        />
+        <div className="row wrap">
+          {day?.walkStart && (
+            <button
+              className="btn-sm"
+              onClick={() => {
+                setPlace(undefined)
+                onSave({ walkStart: undefined })
+              }}
+            >
+              ↩ Start from {stay ?? 'the city centre'}
+            </button>
+          )}
+          {day?.walkStartTime && (
+            <button className="btn-sm" onClick={() => onSave({ walkStartTime: undefined })}>
+              ↩ Start time automatic
+            </button>
+          )}
+        </div>
+      </div>
+    </details>
   )
 }
 

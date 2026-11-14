@@ -226,7 +226,7 @@ export default function PlanPage() {
                   </div>
                 </div>
                 <div className="row no-print">
-                  <Link to={`../walk?date=${date}`} className="btn btn-sm btn-ghost" title="Build a walking tour">
+                  <Link to={`../favorites${d?.city ? `?city=${encodeURIComponent(d.city)}` : ''}`} className="btn btn-sm btn-ghost" title="Plan this city's sights and walks">
                     🚶
                   </Link>
                   <button className="btn-sm" onClick={() => setEditing({ date })}>

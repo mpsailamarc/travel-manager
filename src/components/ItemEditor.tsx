@@ -341,8 +341,8 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
         )}
         {saved.kind === 'walk' && (
           <div>
-            <button type="button" onClick={() => navigate(`/trip/${trip.id}/walk?item=${saved.id}`)}>
-              🗺️ Open in the walk builder
+            <button type="button" onClick={() => navigate(saved.planner && city ? `/trip/${trip.id}/favorites?city=${encodeURIComponent(city)}` : `/trip/${trip.id}/walk?item=${saved.id}`)}>
+              {saved.planner ? '🗺️ Change in the City planner' : '🗺️ Open in the walk builder'}
             </button>
           </div>
         )}

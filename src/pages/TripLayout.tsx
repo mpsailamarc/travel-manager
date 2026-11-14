@@ -27,13 +27,12 @@ const TABS = [
   { to: 'plan', label: 'Plan', emoji: '🗓️', mobile: 1 },
   { to: 'today', label: 'Day by day', emoji: '📍', mobile: 2 },
   { to: 'ideas', label: 'Ideas (AI)', emoji: '✨', mobile: 6 },
-  { to: 'favorites', label: 'Wishlist', emoji: '🎯', mobile: 3 },
+  { to: 'favorites', label: 'City planner', emoji: '🗺️', mobile: 3 },
   { to: 'checklist', label: 'Checklist', emoji: '✅', mobile: 4 },
   { to: 'budget', label: 'Budget', emoji: '💶', mobile: 5 },
   { to: 'essentials', label: 'Essentials', emoji: '🧭', mobile: 7 },
-  { to: 'walk', label: 'Walks', emoji: '🚶', mobile: 8 },
-  { to: 'docs', label: 'Docs', emoji: '📄', mobile: 9 },
-  { to: 'share', label: 'Share', emoji: '📤', mobile: 10 },
+  { to: 'docs', label: 'Docs', emoji: '📄', mobile: 8 },
+  { to: 'share', label: 'Share', emoji: '📤', mobile: 9 },
 ]
 
 /** The phone's bottom bar: all sections, scrolling sideways. The next tab peeks in and an arrow fades in while there is more. */

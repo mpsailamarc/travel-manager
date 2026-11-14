@@ -74,6 +74,10 @@ export interface Day {
   title?: string
   notes?: string
   tz?: string // IANA time zone, when set by hand; otherwise worked out from the city's coordinates
+  // The day's walking tour in the City planner: where it starts (default: tonight's stay, else the city centre), when, and whether it ends back there.
+  walkStart?: Place
+  walkStartTime?: HHMM
+  walkRoundTrip?: boolean
 }
 
 export const TRANSPORT_KINDS = ['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi'] as const

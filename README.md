@@ -49,7 +49,7 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   Tick, skip, reorder or push an item to the next day, and get directions.
 - **Replan**: "it's raining" / "kids are tired" → a prompt for a free chatbot → paste back a new plan for the rest of the day
   (keeps what's booked or done).
-- **Wishlist per city** (was "Favourites"): browse sights (OpenStreetMap + Wikipedia), AI ideas (restaurants, experiences, day trips,
+- **City planner** (one tab; it replaces the separate Favourites and Walks tabs): per city, a wishlist and your days. Browse sights (OpenStreetMap + Wikipedia), AI ideas (restaurants, experiences, day trips,
   kid-friendly places) or add your own, and tap ＋ on the ones you want. Tap any place to open it in a window with its photo, description,
   practical facts and a **star rating**. **Plan my days** groups the wishlist by area, fits it to your pace and what's already planned
   (booked tickets, travel days), and builds a walking tour per day. Move any place to another day yourself and it stays there.
@@ -60,8 +60,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   Wikipedia language editions with an article on it (Wikidata), from 1★ (a village chapel) to 5★ (Eiffel Tower, 170+ languages). Sights can be
   sorted most interesting first; the place window also shows Wikipedia page views per month. Tripadvisor stays a link out.
 - **Backup ideas on Today**: unscheduled wishlist places near today's city, switching to indoor ones when rain is forecast. "+ Today" adds one to the plan.
-- **Walking tours**: pick sights in any city (OpenStreetMap + Wikipedia, with photos and descriptions). The app finds the best order,
-  gets the real walking route and builds a timeline with visit times. Save it to a day.
+- **Walking tours** are built in the City planner: each day gets one tour from its wishlist places, in the best order, with the real walking
+  route and a timeline of visit times. Per day you can set where it starts (default: tonight's hotel), what time, and whether it ends back at the start.
+  (A hand-made walk item still opens in the older walk builder.)
 - **About & links on every item**: tap an item on Today for its Wikipedia article (looked up automatically, also for
   AI-created activities), a map link, the city's Wikivoyage guide, and "Find on AllTrails" for hikes. Paste a trail,
   booking or ticket link into an item and it shows as a button (e.g. "Open in AllTrails").

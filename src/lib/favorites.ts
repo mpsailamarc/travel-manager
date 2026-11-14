@@ -196,31 +196,37 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
       const mine = favs.filter((f) => scheduled(f) && f.date === date)
       const day = days.find((d) => d.date === date)
       const dayItems = items.filter((i) => i.date === date && i.planner !== tag)
-      const startTime = firstFreeSlot(dayItems)
+      const startTime = day?.walkStartTime ?? firstFreeSlot(dayItems)
       let order = dayItems.reduce((m, i) => Math.max(m, i.order), -1) + 1
 
       const geo = mine.filter((f) => f.lat != null && f.lon != null && !isDayTrip(f))
       if (geo.length) {
         const stay = items.find((i) => i.kind === 'stay' && i.date <= date && date < addDays(i.date, i.nights ?? 1) && i.location?.lat != null)
-        const start = stay?.location?.lat != null ? { ...stay.location, name: stay.title } : day?.lat != null ? { name: `${city} centre`, lat: day.lat, lon: day.lon } : { name: geo[0].name, lat: geo[0].lat, lon: geo[0].lon }
+        const start =
+          day?.walkStart?.lat != null
+            ? day.walkStart
+            : stay?.location?.lat != null
+              ? { ...stay.location, name: stay.title }
+              : day?.lat != null ? { name: `${city} centre`, lat: day.lat, lon: day.lon } : { name: geo[0].name, lat: geo[0].lat, lon: geo[0].lon }
         const s = { lat: start.lat!, lon: start.lon! }
+        const roundTrip = !!day?.walkRoundTrip
         const stops = optimiseOrder(
           s,
           geo.map((f) => ({ id: f.id, name: f.name, lat: f.lat!, lon: f.lon!, category: f.category, visitMin: f.visitMin, wikipedia: f.wikipedia, wikidata: f.wikidata })),
-          false,
+          roundTrip,
         )
-        const pts = [s, ...stops]
+        const pts = [s, ...stops, ...(roundTrip ? [s] : [])]
         let walk: Item['walk']
         try {
           const r = await walkingRoute(pts)
-          walk = { start, roundTrip: false, stops, geometry: r.geometry, legs: r.legs.map((l) => ({ distanceM: l.distanceM, durationS: l.distanceM / speed })), distanceM: r.distanceM, walkS: r.distanceM / speed, routedBy: 'osrm' }
+          walk = { start, roundTrip, stops, geometry: r.geometry, legs: r.legs.map((l) => ({ distanceM: l.distanceM, durationS: l.distanceM / speed })), distanceM: r.distanceM, walkS: r.distanceM / speed, routedBy: 'osrm' }
         } catch {
           const legs = pts.slice(1).map((p, i) => {
             const d = haversineM(pts[i], p) * 1.3
             return { distanceM: d, durationS: d / speed }
           })
           const total = legs.reduce((a, l) => a + l.distanceM, 0)
-          walk = { start, roundTrip: false, stops, geometry: pts.map((p) => [p.lon, p.lat]), legs, distanceM: total, walkS: total / speed, routedBy: 'straight-line' }
+          walk = { start, roundTrip, stops, geometry: pts.map((p) => [p.lon, p.lat]), legs, distanceM: total, walkS: total / speed, routedBy: 'straight-line' }
         }
         const minutes = walk.walkS / 60 + stops.reduce((a, x) => a + x.visitMin, 0)
         built.push({
