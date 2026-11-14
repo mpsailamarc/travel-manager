@@ -8,7 +8,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 **Before the trip**
 - **New trip questionnaire**: where, when, who (kids' ages), pace, budget level and interests.
 - **Ideas (AI, free)**: the app writes a prompt. Paste it into any free chatbot (Claude, Gemini, ChatGPT) and paste the answer back.
-  You get 3 itinerary options side by side, each with a budget and tips, and pick one. The answer is validated before anything is saved.
+  Options come one per reply (free chatbots cut off long replies), then the full day-by-day detail of the one you pick, with
+  follow-up prompts for anything that was cut off. Answers are validated before anything is saved.
 - **Import booking emails**: paste confirmation emails and get booked flights, trains and stays in the plan (same copy-paste trick).
 - **Quick template**: a skeleton plan with no AI, fully offline.
 - **Plan**: day-by-day itinerary with a map. Add or edit flights, trains, buses, stays, activities, meals, walks and notes. You can also print it.
@@ -30,6 +31,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Backup ideas on Today**: unscheduled favourites near today's city, switching to indoor ones when rain is forecast. "+ Today" adds one to the plan.
 - **Walking tours**: pick sights in any city (OpenStreetMap + Wikipedia, with photos and descriptions). The app finds the best order,
   gets the real walking route and builds a timeline with visit times. Save it to a day.
+- **About & links on every item**: tap an item on Today for its Wikipedia article (looked up automatically, also for
+  AI-created activities), a map link, the city's Wikivoyage guide, and "Find on AllTrails" for hikes. Paste a trail,
+  booking or ticket link into an item and it shows as a button (e.g. "Open in AllTrails").
 - **Local essentials**: emergency number, plugs/voltage, currency and exchange rate, driving side, tipping.
 - **Docs**: passport scans, tickets and insurance stored on the device, available offline.
 

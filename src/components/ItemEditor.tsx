@@ -8,6 +8,7 @@ import { uid } from '../lib/ids'
 import { KIND_META, STATUS_LABEL, isTransport } from './kinds'
 import { Modal, toast } from './ui'
 import { PlaceSearch } from './PlaceSearch'
+import { PlaceInfo } from './PlaceInfo'
 import { useSettings } from '../lib/hooks'
 
 interface Props {
@@ -76,6 +77,16 @@ export function ItemEditor({ trip, item, city, onClose }: Props) {
   return (
     <Modal title={isNew ? 'Add to the plan' : 'Edit'} onClose={onClose}>
       <div className="stack">
+        {!isNew && it.kind !== 'note' && (
+          <details open={kind === 'activity' || kind === 'walk'} className="card tight">
+            <summary className="small strong" style={{ cursor: 'pointer' }}>
+              ℹ️ About & links
+            </summary>
+            <div style={{ marginTop: 8 }}>
+              <PlaceInfo item={{ ...(item as Item), ...it } as Item} city={city} />
+            </div>
+          </details>
+        )}
         <div className="chips">
           {(Object.keys(KIND_META) as ItemKind[]).map((k) => (
             <button key={k} type="button" className={`chip ${kind === k ? 'on' : ''}`} onClick={() => set('kind', k)}>
@@ -169,7 +180,7 @@ export function ItemEditor({ trip, item, city, onClose }: Props) {
           )}
           <label className="full">
             Link
-            <input type="url" value={it.url ?? ''} onChange={(e) => set('url', e.target.value)} placeholder="https://…" />
+            <input type="url" value={it.url ?? ''} onChange={(e) => set('url', e.target.value)} placeholder="https://… e.g. an AllTrails trail, booking or ticket page" />
           </label>
           <label className="full">
             Notes

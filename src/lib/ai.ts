@@ -107,38 +107,53 @@ const ITEM_SCHEMA = `{ "kind": one of ${KINDS.map((k) => `"${k}"`).join('|')},
 
 const CHECKLIST_SCHEMA = `{ "title": string, "category": one of ${CHECKLIST_CATEGORIES.map((c) => `"${c}"`).join('|')} }`
 
-/** Step 1: three short outlines. Kept small on purpose — free chatbots cut off long replies. */
+const OPTION_SHAPE = `{
+  "option": {
+    "title": string,
+    "summary": string (1–2 sentences),
+    "route": [city names in order],
+    "days": [ { "day": 1, "city": string, "title": string, "highlights": [string, ...] } ],
+    "budget": { "flights": number, "transport": number, "stays": number, "food": number, "activities": number, "other": number },
+    "tips": [up to 3 strings]
+  }
+}`
+
+/**
+ * Step 1: three outlines, one per reply. Free chatbots cut off long replies, so asking for a single option
+ * at a time keeps each answer short; the follow-ups go in the same chat so the options differ.
+ */
 export function outlinePrompt(trip: Trip, settings: Settings) {
-  return `You are an experienced travel planner. Suggest 3 different itinerary options for this trip, as short outlines.
+  return `You are an experienced travel planner. I'd like 3 genuinely different itinerary options for this trip (different route, rhythm or focus) as short outlines. To keep replies short we'll do one option per reply: reply now with ONLY option 1.
 
 ${tripBrief(trip, settings)}
 
 Guidelines:
-- Make the 3 options genuinely different (e.g. route, rhythm, focus).
 - Respect the pace and the children's ages.
-- Keep it short: per day only the city, a title and 2–4 highlights of a few words each.
+- Keep it short: per day only the city, a title and 2–3 highlights of a few words each.
 - Budget totals are for the whole group in ${settings.homeCurrency}, using categories: ${BUDGET_CATEGORIES.join(', ')}.
+- Write compact JSON: one line per day.
 
 Reply with ONLY a JSON code block, no other text, using exactly this shape:
-{
-  "options": [
-    {
-      "title": string,
-      "summary": string (2 sentences),
-      "route": [city names in order],
-      "days": [ { "day": 1, "city": string, "title": string, "highlights": [string, ...] } ],
-      "budget": { "flights": number, "transport": number, "stays": number, "food": number, "activities": number, "other": number },
-      "tips": [up to 3 strings]
-    }
-  ]
-}`
+${OPTION_SHAPE}`
+}
+
+/** Follow-up in the same chat: the next option, or the same one again (shorter) after a cut-off reply. */
+export function nextOptionPrompt(n: number, retry: boolean) {
+  return retry
+    ? `Your reply was cut off. Send option ${n} again in the same JSON format, shorter: at most 2 highlights per day of 2–4 words each, a 1-sentence summary and at most 2 tips. Compact JSON, one line per day. Only option ${n}.`
+    : `Now option ${n} of 3: clearly different from the previous option${n > 2 ? 's' : ''} (route, rhythm or focus). Same JSON format { "option": … } with only this option, compact (one line per day).`
 }
 
 /** Step 2: the full plan for the chosen option — or, when continuing, only the days still missing. */
 export function detailPrompt(trip: Trip, settings: Settings, option: AiOption, days: number[], continuing: boolean) {
-  const outline = option.days
-    .filter((d) => days.includes(d.day))
-    .map((d) => `Day ${d.day} (${addDays(trip.startDate, d.day - 1)}) — ${d.city ?? ''}: ${d.title ?? ''}${d.highlights.length ? ` [${d.highlights.join('; ')}]` : ''}`)
+  const outline = days
+    .map((n) => {
+      const d = option.days.find((x) => x.day === n)
+      const date = addDays(trip.startDate, n - 1)
+      return d
+        ? `Day ${n} (${date}) — ${d.city ?? ''}: ${d.title ?? ''}${d.highlights.length ? ` [${d.highlights.join('; ')}]` : ''}`
+        : `Day ${n} (${date}) — not in the outline: continue the route sensibly until the trip ends`
+    })
     .join('\n')
   const range = days.length > 1 ? `days ${days[0]} to ${days[days.length - 1]}` : `day ${days[0]}`
   const intro = continuing
@@ -261,9 +276,9 @@ function extractJSON(text: string): { value: unknown; truncated: boolean } {
   }
 }
 
-function friendly<T>(schema: z.ZodType<T>, text: string): { data: T; truncated: boolean } {
+function friendly<T>(schema: z.ZodType<T>, text: string, normalise: (v: unknown) => unknown = (v) => v): { data: T; truncated: boolean } {
   const { value, truncated } = extractJSON(text)
-  const parsed = schema.safeParse(value)
+  const parsed = schema.safeParse(normalise(value))
   if (!parsed.success) {
     const first = parsed.error.issues[0]
     throw new Error(
@@ -275,8 +290,17 @@ function friendly<T>(schema: z.ZodType<T>, text: string): { data: T; truncated: 
   return { data: parsed.data, truncated }
 }
 
+/** Accepts { "option": … } (one per reply), { "options": [ … ] } (older prompt) or a bare option. */
 export function parsePlan(text: string) {
-  const { data, truncated } = friendly(PlanResponse, text)
+  const { data, truncated } = friendly(PlanResponse, text, (v) => {
+    const o = v as { option?: unknown; options?: unknown; days?: unknown }
+    if (o && typeof o === 'object' && !Array.isArray(o)) {
+      if (o.options) return o
+      if (o.option) return { options: [o.option] }
+      if (o.days) return { options: [o] }
+    }
+    return v
+  })
   return { options: data.options.filter((o) => o.days.length), truncated }
 }
 const CityIdea = z.object({

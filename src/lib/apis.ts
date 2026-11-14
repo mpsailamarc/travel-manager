@@ -308,6 +308,63 @@ export async function wikiSummary(poi: { wikipedia?: string; wikidata?: string }
   return out
 }
 
+// Words that say what you do, not where: they shouldn't decide which article matches.
+const GENERIC = new Set(
+  'the and with from for tour walk walking hike hiking trek visit trip day half full lunch dinner breakfast brunch evening morning afternoon night sunset sunrise view views tickets ticket guided free early late around near into over via los las del des der die das dos old new'.split(' '),
+)
+
+function keyWords(s: string) {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2 && !GENERIC.has(w))
+}
+
+// "Oceanário" ≈ "Oceanarium", "Basilica" ≈ "Basílica": compare word starts, not whole words.
+const sameWord = (a: string, b: string) => a === b || (a.length >= 5 && b.length >= 5 && a.slice(0, 6) === b.slice(0, 6))
+
+/** How many of the item's distinctive words (city words don't count) appear in an article title. */
+function matches(nameWords: string[], title: string) {
+  if (/\(disambiguation\)|^list of /i.test(title)) return 0 // pages that list meanings, not a place
+  const t = keyWords(title)
+  return nameWords.filter((w) => t.some((x) => sameWord(w, x))).length
+}
+
+/**
+ * Finds the Wikipedia article for a plan item that has no link yet (e.g. created by the AI). With coordinates,
+ * it takes the closest article within 500 m that shares a word with the name; otherwise it searches by name and
+ * city and needs at least two matching words (or the only one). Better no article than a wrong one.
+ */
+export async function findWikipedia(name: string, near?: LatLon, city?: string): Promise<WikiSummary | undefined> {
+  const key = `wikifind2:${name.toLowerCase()}|${near ? `${near.lat.toFixed(3)},${near.lon.toFixed(3)}` : ''}|${city ?? ''}`
+  const cached = cacheGet<{ title?: string }>(key, 30 * 864e5)
+  let title = cached?.title
+  if (!cached) {
+    const cityWords = city ? keyWords(city) : []
+    const words = keyWords(name).filter((w) => !cityWords.some((c) => sameWord(w, c)))
+    if (!words.length) return undefined
+    if (near) {
+      type G = { query?: { geosearch: { title: string }[] } }
+      const g = await getJSON<G>(
+        `https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=geosearch&gscoord=${near.lat}|${near.lon}&gsradius=500&gslimit=50`,
+      )
+      title = g.query?.geosearch.find((x) => matches(words, x.title) >= 1)?.title // sorted by distance
+    }
+    if (!title) {
+      type S = { query?: { search: { title: string }[] } }
+      const q = encodeURIComponent(city && !name.toLowerCase().includes(city.toLowerCase()) ? `${name} ${city}` : name)
+      const r = await getJSON<S>(`https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=search&srlimit=5&srsearch=${q}`)
+      const need = Math.min(2, words.length)
+      title = r.query?.search.find((x) => matches(words, x.title) >= need)?.title
+    }
+    cacheSet(key, { title })
+  }
+  const summary = title ? await wikiSummary({ wikipedia: `en:${title}` }) : undefined
+  return summary && !/may refer to:?$/i.test(summary.extract.trim()) ? summary : undefined
+}
+
 /* --------------------------------- Weather -------------------------------- */
 
 export interface DayWeather {

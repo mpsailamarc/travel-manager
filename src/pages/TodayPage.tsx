@@ -11,6 +11,7 @@ import { sortItems } from '../lib/hooks'
 import { applyDayReplan, CHATBOTS, parseDayItems, replanPrompt } from '../lib/ai'
 import { ItemRow, itemSubtitle } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
+import { ItemDetails } from '../components/ItemDetails'
 import { KIND_META, isTransport, needsBooking } from '../components/kinds'
 import { copyText, Empty, Modal, toast } from '../components/ui'
 import LazyMap from '../components/LazyMap'
@@ -30,6 +31,7 @@ export default function TodayPage() {
   const day = days.find((d) => d.date === date)
   const dayItems = useMemo(() => sortItems(items.filter((i) => i.date === date)), [items, date])
   const [editing, setEditing] = useState<(Partial<Item> & { date: string }) | null>(null)
+  const [viewing, setViewing] = useState<Item | null>(null)
   const [replan, setReplan] = useState(false)
   const dayNo = daysBetween(trip.startDate, date) + 1
   const dates = dateRange(trip.startDate, trip.endDate)
@@ -170,7 +172,7 @@ export default function TodayPage() {
                 <div key={it.id}>
                   <ItemRow
                     item={it}
-                    onClick={() => setEditing(it)}
+                    onClick={() => setViewing(it)}
                     actions={
                       <>
                         <button className="icon-btn" title="Done" onClick={() => setStatus(it, 'done')}>
@@ -230,6 +232,17 @@ export default function TodayPage() {
         </div>
       </div>
 
+      {viewing && (
+        <ItemDetails
+          item={items.find((i) => i.id === viewing.id) ?? viewing}
+          city={day?.city}
+          onClose={() => setViewing(null)}
+          onEdit={() => {
+            setEditing(viewing)
+            setViewing(null)
+          }}
+        />
+      )}
       {editing && <ItemEditor trip={trip} item={editing} city={day?.city} onClose={() => setEditing(null)} />}
       {replan && <ReplanModal date={date} dayItems={dayItems} onClose={() => setReplan(false)} />}
     </div>

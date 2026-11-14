@@ -1,9 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { applyBookings, applyPlan, applyTemplate, bookingPrompt, CHATBOTS, detailPrompt, mergeDetail, outlinePrompt, parseBookings, parseDetail, parsePlan, type AiOption } from '../lib/ai'
+import { applyBookings, applyPlan, applyTemplate, bookingPrompt, CHATBOTS, detailPrompt, mergeDetail, nextOptionPrompt, outlinePrompt, parseBookings, parseDetail, parsePlan, type AiOption } from '../lib/ai'
 import { refreshChecklist } from '../lib/checklist'
 import { BUDGET_LABELS } from '../lib/budget'
-import { addDays, formatDate } from '../lib/dates'
+import { addDays, daysBetween, formatDate } from '../lib/dates'
 import { money } from '../lib/format'
 import { countryLabel } from '../lib/countries'
 import { KIND_META } from '../components/kinds'
@@ -75,28 +75,73 @@ export function PromptBox({ prompt }: { prompt: string }) {
   )
 }
 
+interface OutlineRound {
+  n: number // which option this reply is for
+  prompt: string
+  text: string
+  error?: string
+  truncated?: boolean
+  parsed: boolean
+}
+
+/**
+ * Walks the pasted replies in order: each one should hold the next option. A cut-off reply keeps whatever
+ * complete days it had (marked incomplete) and the next round asks for the same option again, shorter.
+ */
+function outlineRounds(replies: string[], firstPrompt: string) {
+  const rounds: OutlineRound[] = []
+  const options: { option: AiOption; incomplete: boolean }[] = []
+  let n = 1
+  let retry = false
+  for (let i = 0; i <= replies.length && n <= 3; i++) {
+    if (i > 0 && !rounds[i - 1].parsed) break
+    const text = replies[i] ?? ''
+    const round: OutlineRound = { n, prompt: i === 0 ? firstPrompt : nextOptionPrompt(n, retry), text, parsed: false }
+    rounds.push(round)
+    if (!text.trim()) break
+    try {
+      const r = parsePlan(text)
+      round.parsed = true
+      round.truncated = r.truncated
+      r.options.forEach((option, k) => {
+        const incomplete = r.truncated && k === r.options.length - 1
+        options[n - 1] = { option, incomplete }
+        if (!incomplete) n++
+      })
+      retry = r.truncated
+    } catch (e) {
+      round.error = (e as Error).message
+    }
+  }
+  return { rounds, options: options.filter(Boolean), done: n > 3 }
+}
+
 function ItineraryIdeas() {
   const { trip, items, settings } = useTripCtx()
   const navigate = useNavigate()
-  const storeKey = `tm-ideas:${trip.id}`
-  const [answer, setAnswer] = useState(() => localStorage.getItem(storeKey) ?? '')
+  const storeKey = `tm-ideas2:${trip.id}`
+  const [replies, setReplies] = useState<string[]>(() => {
+    const saved = localStorage.getItem(storeKey)
+    if (saved) return JSON.parse(saved)
+    const legacy = localStorage.getItem(`tm-ideas:${trip.id}`) // single answer from the earlier version
+    return legacy ? [legacy] : []
+  })
   const [replace, setReplace] = useState(true)
   const [chosen, setChosen] = useState<AiOption>()
-  const prompt = outlinePrompt(trip, settings)
+  const { rounds, options, done } = useMemo(() => outlineRounds(replies, outlinePrompt(trip, settings)), [replies, trip, settings])
 
-  const parsed = useMemo((): { options?: AiOption[]; truncated?: boolean; error?: string } => {
-    if (!answer.trim()) return {}
-    try {
-      return parsePlan(answer)
-    } catch (e) {
-      return { error: (e as Error).message }
-    }
-  }, [answer])
-
-  function onAnswer(text: string) {
-    setAnswer(text)
+  function setReply(i: number, text: string) {
+    // Editing an earlier reply invalidates the follow-ups that were built from it.
+    const next = [...replies.slice(0, i), text]
+    setReplies(next)
     setChosen(undefined)
-    localStorage.setItem(storeKey, text)
+    localStorage.setItem(storeKey, JSON.stringify(next))
+  }
+
+  function startOver() {
+    if (!confirm('Clear the pasted answers and start again?')) return
+    setReplies([])
+    localStorage.removeItem(storeKey)
   }
 
   async function use(o: AiOption) {
@@ -137,27 +182,61 @@ function ItineraryIdeas() {
           <span className="muted"> — change it with “Trip details” above.</span>
         </div>
         <Steps />
-        <p className="small muted">You'll get 3 short outlines first; then the app asks for the full detail of the one you pick (free chatbots cut off very long replies).</p>
-        <PromptBox prompt={prompt} />
-        <label>
-          Paste the chatbot's answer
-          <textarea className="code" value={answer} onChange={(e) => onAnswer(e.target.value)} placeholder='```json&#10;{ "options": [ … ] }&#10;```' />
-        </label>
-        {parsed.error && <div className="notice error">{parsed.error}</div>}
-        {parsed.truncated && (
-          <div className="notice">The answer was cut off by the chatbot. Everything complete before the cut is shown below — the last option may be missing days.</div>
+        <p className="small muted">
+          Free chatbots cut off long replies, so the options come one per reply: paste option 1, then copy the short follow-up for option 2 into the <b>same chat</b>, and so
+          on. You can stop as soon as you like one. Then the app asks for the full detail of the option you pick.
+        </p>
+        {rounds.map((r, i) => (
+          <div key={i} className="stack" style={{ gap: 8 }}>
+            {i === 0 ? (
+              <p className="small">
+                <b>Option 1 ·</b> copy this prompt into a new chat, then paste the answer below.
+              </p>
+            ) : rounds[i - 1].truncated ? (
+              <div className="notice">
+                The reply for option {r.n} was cut off — its complete days are kept below. To get all of it, paste this follow-up into the same chat:
+              </div>
+            ) : (
+              <div className="notice info">
+                <b>Option {r.n} ·</b> copy this follow-up into the <b>same chat</b> and paste the answer below — or skip it and pick from the options you have.
+              </div>
+            )}
+            <PromptBox prompt={r.prompt} />
+            <label>
+              {i === 0 ? "Paste the chatbot's answer" : `Answer for option ${r.n}`}
+              <textarea className="code" style={{ minHeight: 90 }} value={r.text} onChange={(e) => setReply(i, e.target.value)} placeholder='```json&#10;{ "option": { … } }&#10;```' />
+            </label>
+            {r.error && <div className="notice error">{r.error}</div>}
+          </div>
+        ))}
+        {done && <p className="small muted">✓ All 3 options received.</p>}
+        {replies.length > 0 && (
+          <div>
+            <button className="btn-sm btn-ghost" onClick={startOver}>
+              Start over
+            </button>
+          </div>
         )}
       </div>
 
-      {parsed.options && (
+      {options.length > 0 && (
         <>
           <div className="row wrap between">
             <h2>Pick an option</h2>
             {replaceChoice}
           </div>
           <div className="grid-3">
-            {parsed.options.map((o, i) => (
-              <OptionCard key={i} option={o} start={trip.startDate} currency={settings.homeCurrency} onUse={() => use(o)} onDetail={() => setChosen(o)} />
+            {options.map(({ option, incomplete }, i) => (
+              <OptionCard
+                key={i}
+                option={option}
+                incomplete={incomplete}
+                start={trip.startDate}
+                end={trip.endDate}
+                currency={settings.homeCurrency}
+                onUse={() => use(option)}
+                onDetail={() => setChosen(option)}
+              />
             ))}
           </div>
         </>
@@ -166,7 +245,24 @@ function ItineraryIdeas() {
   )
 }
 
-function OptionCard({ option: o, start, currency, onUse, onDetail }: { option: AiOption; start: string; currency: string; onUse: () => void; onDetail: () => void }) {
+function OptionCard({
+  option: o,
+  incomplete,
+  start,
+  end,
+  currency,
+  onUse,
+  onDetail,
+}: {
+  option: AiOption
+  incomplete?: boolean
+  start: string
+  end: string
+  currency: string
+  onUse: () => void
+  onDetail: () => void
+}) {
+  const tripDays = daysBetween(start, end) + 1
   const total = Object.values(o.budget).reduce((s, v) => s + (v || 0), 0)
   const detailed = o.days.some((d) => d.items.length)
   return (
@@ -174,6 +270,11 @@ function OptionCard({ option: o, start, currency, onUse, onDetail }: { option: A
       <div>
         <h3>{o.title}</h3>
         {o.route.length > 0 && <div className="small muted">{o.route.join(' → ')}</div>}
+        {incomplete && (
+          <span className="badge planned" style={{ marginTop: 4 }}>
+            Cut off · {o.days.length} of {tripDays} days
+          </span>
+        )}
       </div>
       <p className="small">{o.summary}</p>
       <ul className="option-days" style={{ paddingLeft: 18, margin: 0 }}>
@@ -234,7 +335,9 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
   const { trip, settings } = useTripCtx()
   const storeKey = `tm-detail:${trip.id}:${option.title}`
   const [replies, setReplies] = useState<string[]>(() => JSON.parse(localStorage.getItem(storeKey) ?? '[]'))
-  const expected = option.days.map((d) => d.day)
+  // Every day of the trip, even ones a cut-off outline never reached.
+  const tripDays = daysBetween(trip.startDate, trip.endDate) + 1
+  const expected = Array.from({ length: Math.max(tripDays, ...option.days.map((d) => d.day)) }, (_, i) => i + 1)
 
   const setReply = (i: number, text: string) => {
     const next = [...replies]

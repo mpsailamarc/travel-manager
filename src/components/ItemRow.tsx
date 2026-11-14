@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { Item } from '../types'
 import { KIND_META, isTransport, needsBooking } from './kinds'
 import { StatusBadge } from './ui'
+import { linkLabel } from './PlaceInfo'
 import { money, distance, plural } from '../lib/format'
 import { formatDuration } from '../lib/dates'
 
@@ -33,6 +34,11 @@ export function ItemRow({ item, onClick, actions, showStatus = true }: { item: I
         </div>
         {itemSubtitle(item) && <div className="item-sub">{itemSubtitle(item)}</div>}
         {item.notes && <div className="item-sub">{item.notes}</div>}
+        {item.url && (
+          <a className="item-sub" href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block', marginTop: 2 }}>
+            {linkLabel(item.url)}
+          </a>
+        )}
       </div>
       {actions && <div className="item-actions">{actions}</div>}
     </div>
