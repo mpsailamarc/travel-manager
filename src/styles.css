@@ -1116,6 +1116,26 @@ hr {
   margin: 4px 0;
 }
 
+.wiki-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wiki-hero {
+  display: block;
+}
+
+.wiki-hero img {
+  display: block;
+  width: 100%;
+  min-height: 160px;
+  max-height: 340px;
+  object-fit: cover;
+  border-radius: 14px;
+  background: var(--soft);
+}
+
 .maplibregl-popup-content {
   border-radius: 12px !important;
   font-family: inherit;
@@ -1140,4 +1160,14 @@ hr {
   .page {
     padding: 0;
   }
+}
+
+.edit-panel > summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style-position: inside;
+}
+
+.edit-panel[open] > summary {
+  margin-bottom: 4px;
 }

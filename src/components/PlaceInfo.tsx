@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Item } from '../types'
 import { findWikipedia, wikiSummary } from '../lib/apis'
 import { useAsync, useOnline } from '../lib/hooks'
@@ -47,7 +48,7 @@ export function PlaceInfo({ item, city }: { item: Item; city?: string }) {
   return (
     <div className="stack" style={{ gap: 10 }}>
       {lookUp && wiki.loading && <p className="small muted">Looking it up on Wikipedia…</p>}
-      {wiki.data && <WikiCard title={wiki.data.title} extract={wiki.data.extract} thumbnail={wiki.data.thumbnail} url={wiki.data.url} />}
+      {wiki.data && <WikiCard key={wiki.data.title} title={wiki.data.title} extract={wiki.data.extract} image={wiki.data.image ?? wiki.data.thumbnail} thumbnail={wiki.data.thumbnail} url={wiki.data.url} />}
       {lookUp && !wiki.loading && !wiki.data && (
         <p className="small muted">
           {online ? 'No matching Wikipedia article found.' : 'Wikipedia lookups need an internet connection.'}{' '}
@@ -95,16 +96,24 @@ export function PlaceInfo({ item, city }: { item: Item; city?: string }) {
   )
 }
 
-function WikiCard({ title, extract, thumbnail, url }: { title: string; extract: string; thumbnail?: string; url: string }) {
+function WikiCard({ title, extract, image, thumbnail, url }: { title: string; extract: string; image?: string; thumbnail?: string; url: string }) {
+  const [src, setSrc] = useState(image)
   return (
-    <div className="row-top">
-      {thumbnail && <img src={thumbnail} alt="" style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 10, flex: 'none' }} />}
-      <div className="grow">
-        <div className="strong">{title}</div>
-        <p className="small">{extract.length > 360 ? extract.slice(0, 360) + '…' : extract}</p>
-        <a className="small" href={url} target="_blank" rel="noreferrer">
-          Read more on Wikipedia ↗
+    <div className="wiki-card">
+      {src && (
+        <a href={url} target="_blank" rel="noreferrer" className="wiki-hero">
+          {/* If the large size isn't available, fall back to the small thumbnail. */}
+          <img src={src} alt={title} onError={() => setSrc(src !== thumbnail ? thumbnail : undefined)} />
         </a>
+      )}
+      <div className="stack" style={{ gap: 8 }}>
+        <h3 style={{ fontSize: '1.2rem' }}>{title}</h3>
+        <p style={{ lineHeight: 1.5 }}>{extract}</p>
+        <div>
+          <a className="btn btn-primary" href={url} target="_blank" rel="noreferrer">
+            📖 Read on Wikipedia ↗
+          </a>
+        </div>
       </div>
     </div>
   )

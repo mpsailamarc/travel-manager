@@ -266,6 +266,7 @@ export interface WikiSummary {
   title: string
   extract: string
   thumbnail?: string
+  image?: string // ~900 px wide, for the large card
   url: string
 }
 
@@ -293,15 +294,27 @@ export async function wikiSummary(poi: { wikipedia?: string; wikidata?: string }
     }
   }
   if (!title) return undefined
-  const key = `wiki:${lang}:${title}`
+  const key = `wiki2:${lang}:${title}`
   const cached = cacheGet<WikiSummary>(key, 30 * 864e5)
   if (cached) return cached
-  type S = { title: string; extract: string; thumbnail?: { source: string }; content_urls?: { desktop: { page: string } } }
+  type S = {
+    title: string
+    extract: string
+    thumbnail?: { source: string }
+    originalimage?: { source: string; width: number }
+    content_urls?: { desktop: { page: string } }
+  }
   const s = await getJSON<S>(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`)
+  // Wikimedia only serves thumbnails in standard widths (500, 960, 1280… — 900 is refused): use 960 px, or 500 for smaller originals.
+  const thumb = s.thumbnail?.source
+  const ow = s.originalimage?.width ?? 0
+  const width = ow > 960 ? 960 : ow > 500 ? 500 : 0
+  const big = width && thumb && /\/\d+px-/.test(thumb) ? thumb.replace(/\/\d+px-/, `/${width}px-`) : s.originalimage?.source
   const out = {
     title: s.title,
     extract: s.extract,
-    thumbnail: s.thumbnail?.source,
+    thumbnail: thumb,
+    image: big ?? thumb,
     url: s.content_urls?.desktop.page ?? `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`,
   }
   cacheSet(key, out)

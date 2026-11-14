@@ -5,8 +5,9 @@ import type { Item, ItemKind, ItemStatus, Trip } from '../types'
 import { dateRange, formatDate } from '../lib/dates'
 import { CURRENCIES } from '../lib/countries'
 import { uid } from '../lib/ids'
-import { KIND_META, STATUS_LABEL, isTransport } from './kinds'
-import { Modal, toast } from './ui'
+import { KIND_META, STATUS_LABEL, isTransport, needsBooking } from './kinds'
+import { Modal, StatusBadge, toast } from './ui'
+import { itemSubtitle } from './ItemRow'
 import { PlaceSearch } from './PlaceSearch'
 import { PlaceInfo } from './PlaceInfo'
 import { useSettings } from '../lib/hooks'
@@ -26,6 +27,7 @@ export function ItemEditor({ trip, item, city, onClose }: Props) {
   const set = <K extends keyof Item>(k: K, v: Item[K] | undefined) => setIt((s) => ({ ...s, [k]: v }))
   const kind = (it.kind ?? 'activity') as ItemKind
   const dates = dateRange(trip.startDate, trip.endDate)
+  const [editOpen, setEditOpen] = useState(isNew)
 
   async function save() {
     if (!it.title?.trim()) {
@@ -74,19 +76,9 @@ export function ItemEditor({ trip, item, city, onClose }: Props) {
     onClose()
   }
 
-  return (
-    <Modal title={isNew ? 'Add to the plan' : 'Edit'} onClose={onClose}>
-      <div className="stack">
-        {!isNew && it.kind !== 'note' && (
-          <details open={kind === 'activity' || kind === 'walk'} className="card tight">
-            <summary className="small strong" style={{ cursor: 'pointer' }}>
-              ℹ️ About & links
-            </summary>
-            <div style={{ marginTop: 8 }}>
-              <PlaceInfo item={{ ...(item as Item), ...it } as Item} city={city} />
-            </div>
-          </details>
-        )}
+  const saved = item as Item // what's stored; the form below edits a draft copy
+  const formAndActions = (
+    <>
         <div className="chips">
           {(Object.keys(KIND_META) as ItemKind[]).map((k) => (
             <button key={k} type="button" className={`chip ${kind === k ? 'on' : ''}`} onClick={() => set('kind', k)}>
@@ -188,11 +180,6 @@ export function ItemEditor({ trip, item, city, onClose }: Props) {
           </label>
         </div>
 
-        {kind === 'walk' && it.id && (
-          <button type="button" onClick={() => navigate(`/trip/${trip.id}/walk?item=${it.id}`)}>
-            🗺️ Open in the walk builder
-          </button>
-        )}
 
         <div className="row between">
           {!isNew ? (
@@ -211,8 +198,77 @@ export function ItemEditor({ trip, item, city, onClose }: Props) {
             </button>
           </div>
         </div>
+    </>
+  )
+
+  if (isNew) {
+    return (
+      <Modal title="Add to the plan" onClose={onClose}>
+        <div className="stack">{formAndActions}</div>
+      </Modal>
+    )
+  }
+
+  // Existing item: what it is and where first (Wikipedia, links); the form stays folded until you want it.
+  return (
+    <Modal
+      title={
+        <span>
+          {KIND_META[saved.kind].emoji} {saved.title}
+        </span>
+      }
+      onClose={onClose}
+    >
+      <div className="stack">
+        <ItemSummary item={saved} />
+        {saved.kind !== 'note' && <PlaceInfo item={saved} city={city} />}
+        {saved.kind === 'walk' && (
+          <div>
+            <button type="button" onClick={() => navigate(`/trip/${trip.id}/walk?item=${saved.id}`)}>
+              🗺️ Open in the walk builder
+            </button>
+          </div>
+        )}
+        <details className="card tight edit-panel" open={editOpen} onToggle={(e) => setEditOpen(e.currentTarget.open)}>
+          <summary>✏️ Edit details</summary>
+          <div className="stack" style={{ marginTop: 12 }}>
+            {formAndActions}
+          </div>
+        </details>
+        {!editOpen && (
+          <div className="row" style={{ justifyContent: 'flex-end' }}>
+            <button type="button" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        )}
       </div>
     </Modal>
+  )
+}
+
+/** Time, status, booking reference and notes at a glance. */
+function ItemSummary({ item }: { item: Item }) {
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <div className="row wrap" style={{ gap: 8 }}>
+        {item.startTime && (
+          <b>
+            {formatDate(item.date)} · {item.startTime}
+            {item.endTime && `–${item.endTime}`}
+          </b>
+        )}
+        {!item.startTime && <b>{formatDate(item.date)}</b>}
+        {(item.status !== 'planned' || needsBooking(item.kind)) && <StatusBadge status={item.status} />}
+        {item.bookingRef && (
+          <span className="small">
+            Ref <b style={{ fontFamily: 'ui-monospace, monospace', letterSpacing: '0.05em' }}>{item.bookingRef}</b>
+          </span>
+        )}
+      </div>
+      {itemSubtitle(item) && <p className="small muted">{itemSubtitle(item)}</p>}
+      {item.notes && <p className="small">{item.notes}</p>}
+    </div>
   )
 }
 
