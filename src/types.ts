@@ -7,6 +7,7 @@ export interface Place {
   name: string
   lat?: number
   lon?: number
+  country?: string // ISO alpha-2, when it came from a place search
 }
 
 export interface Money {
@@ -29,6 +30,13 @@ export type BudgetLevel = 'shoestring' | 'mid' | 'comfort' | 'luxury'
 export const BUDGET_CATEGORIES = ['flights', 'transport', 'stays', 'food', 'activities', 'other'] as const
 export type BudgetCategory = (typeof BUDGET_CATEGORIES)[number]
 
+export interface BudgetLine {
+  id: string
+  category: BudgetCategory
+  label: string
+  amount: number // home currency
+}
+
 export interface Trip {
   id: string
   name: string
@@ -42,6 +50,9 @@ export interface Trip {
   interests: string[]
   notes?: string
   budget: Partial<Record<BudgetCategory, number>> // in home currency
+  budgetLines?: BudgetLine[] // the estimate's breakdown; per-category totals in `budget` follow these
+  startPlace?: Place // where the trip starts (e.g. home city or airport)
+  endPlace?: Place // where it ends; the start place when not set
   coverEmoji: string
   createdAt: number
   updatedAt: number

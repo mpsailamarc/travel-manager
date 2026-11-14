@@ -79,6 +79,16 @@ const BookingResponse = z.object({ items: lenientArray(AiItem.extend({ date: z.s
 
 /* ------------------------------- Prompts ---------------------------------- */
 
+/** "Starting and ending in X": the AI should plan from there, and skip flights if X is next to the destination. */
+function startLine(trip: Trip) {
+  const start = trip.startPlace?.name
+  if (!start) return undefined
+  const end = trip.endPlace?.name
+  return end && end !== start
+    ? `Starting in ${start} and returning to ${end} (include only the transport actually needed from and to these places; no flights if they are close to the destination)`
+    : `Starting and ending in ${start} (include only the transport actually needed from and back to there; no flights if it is close to the destination)`
+}
+
 function tripBrief(trip: Trip, settings: Settings) {
   const nights = daysBetween(trip.startDate, trip.endDate)
   const kids = trip.travellers.filter((t) => t.type === 'child')
@@ -92,7 +102,7 @@ function tripBrief(trip: Trip, settings: Settings) {
     `Budget level: ${trip.budgetLevel}`,
     trip.interests.length ? `Interests: ${trip.interests.join(', ')}` : '',
     settings.nationality ? `Nationality: ${country(settings.nationality)?.name ?? settings.nationality}` : '',
-    settings.homeAirport ? `Departing from: ${settings.homeAirport}` : '',
+    startLine(trip) ?? (settings.homeAirport ? `Departing from: ${settings.homeAirport}` : ''),
     `Currency for costs: ${settings.homeCurrency}`,
     trip.notes ? `Other wishes: ${trip.notes}` : '',
   ]
@@ -381,6 +391,7 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
       endDate: endDate > trip.endDate ? endDate : trip.endDate,
       cities: option.route.length ? option.route : trip.cities,
       budget,
+      budgetLines: trip.budgetLines?.filter((l) => typeof option.budget[l.category] !== 'number'),
       notes: [trip.notes, option.tips.length ? `Tips from "${option.title}":\n• ${option.tips.join('\n• ')}` : ''].filter(Boolean).join('\n\n') || undefined,
     })
     for (const d of option.days) {

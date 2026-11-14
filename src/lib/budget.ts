@@ -1,9 +1,12 @@
 // Rough, offline budget estimate. Deliberately simple: it's a starting point you then edit,
 // or replace with the AI-generated budget.
 
-import type { BudgetCategory, BudgetLevel, Trip } from '../types'
+import type { BudgetCategory, BudgetLevel, BudgetLine, Trip } from '../types'
+import { BUDGET_CATEGORIES } from '../types'
 import { daysBetween } from './dates'
 import { fxRate } from './apis'
+import { plural } from './format'
+import { uid } from './ids'
 
 // Relative daily cost vs. Western Europe (1.0). Approximate.
 const COST_INDEX: Record<string, number> = {
@@ -26,36 +29,64 @@ const LEVEL: Record<BudgetLevel, number> = { shoestring: 0.5, mid: 1, comfort: 1
 const PER_PERSON_DAY = { food: 45, transport: 12, activities: 22, other: 8 }
 const ROOM_NIGHT = 120
 
-export async function estimateBudget(trip: Trip, homeCountry: string, homeCurrency: string) {
+/**
+ * A rough estimate as a list of lines you can change or remove (e.g. "Accommodation · 3 nights × 1 room").
+ * Flights are left out when the trip starts in the same country as the destination: a "getting there" line
+ * (fuel, parking or transit) takes their place.
+ */
+export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeCurrency: string): Promise<BudgetLine[]> {
   const nights = Math.max(1, daysBetween(trip.startDate, trip.endDate))
   const days = nights + 1
-  const idx = trip.countryCodes.length
-    ? trip.countryCodes.reduce((s, c) => s + (COST_INDEX[c] ?? 0.9), 0) / trip.countryCodes.length
-    : 1
+  const idx = trip.countryCodes.length ? trip.countryCodes.reduce((s, c) => s + (COST_INDEX[c] ?? 0.9), 0) / trip.countryCodes.length : 1
   const lvl = LEVEL[trip.budgetLevel]
   const adults = trip.travellers.filter((t) => t.type === 'adult').length || 1
   const kids = trip.travellers.filter((t) => t.type === 'child').length
   const people = adults + kids * 0.6
   const rooms = Math.max(1, Math.ceil(adults / 2))
   const roomFactor = rooms + kids * 0.2
+  const group = `${plural(adults, 'adult')}${kids ? ` + ${plural(kids, 'child', 'children')}` : ''}`
 
-  const homeCont = CONTINENT[homeCountry]
-  const longHaul = trip.countryCodes.some((c) => CONTINENT[c] && homeCont && CONTINENT[c] !== homeCont)
-  const domestic = trip.countryCodes.every((c) => c === homeCountry)
-  const flightPP = domestic ? 0 : longHaul ? 850 : 180
-  const internalHops = Math.max(0, trip.cities.length - 1)
+  // Where the trip starts decides whether flights are needed (the place's country when known, else your nationality).
+  const startCountry = trip.startPlace?.country ?? homeCountry
+  const startCont = CONTINENT[startCountry]
+  const domestic = !!startCountry && trip.countryCodes.length > 0 && trip.countryCodes.every((c) => c === startCountry)
+  const longHaul = trip.countryCodes.some((c) => CONTINENT[c] && startCont && CONTINENT[c] !== startCont)
+  const flightPP = longHaul ? 850 : 180
+  const hops = Math.max(0, trip.cities.length - 1)
 
-  const eur: Record<BudgetCategory, number> = {
-    flights: (adults + kids * 0.9) * flightPP * Math.sqrt(lvl),
-    transport: (PER_PERSON_DAY.transport * days * people + internalHops * 40 * people) * idx * lvl,
-    stays: ROOM_NIGHT * nights * roomFactor * idx * lvl,
-    food: PER_PERSON_DAY.food * days * people * idx * lvl,
-    activities: PER_PERSON_DAY.activities * days * people * idx * lvl,
-    other: PER_PERSON_DAY.other * days * people * idx * lvl,
+  const eur: { category: BudgetCategory; label: string; amount: number }[] = []
+  const add = (category: BudgetCategory, label: string, amount: number) => eur.push({ category, label, amount })
+  if (!domestic) {
+    add('flights', `Flights · ${plural(adults, 'adult')}`, adults * flightPP * Math.sqrt(lvl))
+    if (kids) add('flights', `Flights · ${plural(kids, 'child', 'children')}`, kids * 0.9 * flightPP * Math.sqrt(lvl))
+  } else {
+    add('transport', `Getting there and back (fuel, parking or transit) from ${trip.startPlace?.name ?? 'home'}`, 70 * idx * lvl)
   }
+  add('transport', `Local transport · ${plural(days, 'day')}`, PER_PERSON_DAY.transport * days * people * idx * lvl)
+  if (hops) add('transport', `Moving between places · ${plural(hops, 'move')}`, hops * 40 * people * idx * lvl)
+  add('stays', `Accommodation · ${plural(nights, 'night')} × ${plural(rooms, 'room')}`, ROOM_NIGHT * nights * roomFactor * idx * lvl)
+  add('food', `Food & drink · ${plural(days, 'day')}, ${group}`, PER_PERSON_DAY.food * days * people * idx * lvl)
+  add('activities', `Activities & tickets · ${plural(days, 'day')}`, PER_PERSON_DAY.activities * days * people * idx * lvl)
+  add('other', 'Other & contingency', PER_PERSON_DAY.other * days * people * idx * lvl)
+
   const rate = (await fxRate('EUR', homeCurrency)) ?? 1
-  const round = (n: number) => Math.round((n * rate) / 10) * 10
-  return Object.fromEntries(Object.entries(eur).map(([k, v]) => [k, round(v)])) as Record<BudgetCategory, number>
+  const round = (n: number) => {
+    const v = n * rate
+    const step = v >= 1000 ? 50 : v >= 100 ? 10 : 1
+    return Math.round(v / step) * step
+  }
+  return eur.map((l) => ({ id: uid(), ...l, amount: round(l.amount) })).filter((l) => l.amount > 0)
+}
+
+/** Category totals for a trip: lines win where a category has them, manual amounts stay for the others. */
+export function budgetFromLines(lines: BudgetLine[], previous: Trip['budget'], previousLines: BudgetLine[] = []): Trip['budget'] {
+  const budget = { ...previous }
+  for (const c of BUDGET_CATEGORIES) {
+    const mine = lines.filter((l) => l.category === c)
+    if (mine.length) budget[c] = mine.reduce((s, l) => s + (l.amount || 0), 0)
+    else if (previousLines.some((l) => l.category === c)) delete budget[c] // its last line was removed
+  }
+  return budget
 }
 
 export const BUDGET_LABELS: Record<BudgetCategory, { label: string; emoji: string }> = {

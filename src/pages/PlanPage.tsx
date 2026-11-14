@@ -34,6 +34,19 @@ export default function PlanPage() {
         }
       }
     })
+    // The trip's start and return places close the route.
+    const start = trip.startPlace?.lat != null && trip.startPlace.lon != null ? trip.startPlace : undefined
+    const endP = trip.endPlace?.name ? trip.endPlace : trip.startPlace
+    const end = endP?.lat != null && endP.lon != null ? endP : undefined
+    if (start) {
+      line.unshift([start.lon!, start.lat!])
+      markers.push({ id: 'trip-start', lat: start.lat!, lon: start.lon!, label: 'S', variant: 'start', title: `Start: ${start.name}` })
+    }
+    if (end) {
+      line.push([end.lon!, end.lat!])
+      const same = start && start.lat === end.lat && start.lon === end.lon
+      if (!same) markers.push({ id: 'trip-end', lat: end.lat!, lon: end.lon!, label: 'E', variant: 'start', title: `Return: ${end.name}` })
+    }
     // Item dots go first so the numbered day markers are drawn on top of them.
     const dots: MapMarker[] = []
     for (const it of items) {
@@ -42,12 +55,26 @@ export default function PlanPage() {
     }
     return { markers: [...dots, ...markers], line }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, days, trip.startDate, trip.endDate])
+  }, [items, days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace])
 
   const estimated = items.reduce((s, i) => s + (i.cost?.amount ?? 0), 0)
   const currency = items.find((i) => i.cost)?.cost?.currency
 
-  const map = markers.length > 0 && <LazyMap markers={markers} line={line} dashed fitKey={`${markers.length}`} className="tall" />
+  const map = markers.length > 0 && (
+    <div className="stack" style={{ gap: 6 }}>
+      <LazyMap markers={markers} line={line} dashed fitKey={`${markers.length}-${trip.startPlace?.lat}-${trip.endPlace?.lat}`} className="tall" />
+      <p className="tiny muted">
+        {trip.startPlace?.lat != null && <>🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} · </>}
+        Numbers = the first day you are in each place · small grey dots = individual activities
+        {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
+      </p>
+    </div>
+  )
+
+  // "San Francisco → Yosemite → San Francisco": the shape of the trip at a glance.
+  const places: string[] = []
+  for (const d of days) if (d.city && places[places.length - 1] !== d.city) places.push(d.city)
+  const routeLine = [trip.startPlace?.name, ...places, trip.endPlace?.name || trip.startPlace?.name].filter((x, i, a): x is string => !!x && a[i - 1] !== x)
 
   return (
     <div className="grid-2 wide-left">
@@ -68,6 +95,12 @@ export default function PlanPage() {
             </button>
           </div>
         </div>
+
+        {routeLine.length > 1 && (
+          <div className="card tight small">
+            📍 <b>{routeLine.join(' → ')}</b>
+          </div>
+        )}
 
         {showMap && <div className="hide-desktop">{map}</div>}
 

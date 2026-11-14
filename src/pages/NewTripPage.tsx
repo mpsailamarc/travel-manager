@@ -7,7 +7,7 @@ import { country, countryLabel, flag } from '../lib/countries'
 import { uid } from '../lib/ids'
 import { plural } from '../lib/format'
 import { useSettings } from '../lib/hooks'
-import { BUDGET_LEVELS, ChipToggle, ChoiceGrid, CitiesInput, CountryPicker, INTERESTS, STYLES, TravellersEditor } from './TripFields'
+import { BUDGET_LEVELS, ChipToggle, ChoiceGrid, CitiesInput, CountryPicker, INTERESTS, StartEndFields, STYLES, TravellersEditor } from './TripFields'
 
 const STEPS = ['Where', 'When', 'Who', 'What', 'Review']
 
@@ -93,6 +93,7 @@ export default function NewTripPage() {
                 Cities or regions (optional, comma separated)
                 <CitiesInput value={t.cities} onChange={(v) => set('cities', v)} placeholder="e.g. Lisbon, Sintra, Porto" />
               </label>
+              <StartEndFields value={t} onChange={(v) => setT((s) => ({ ...s, ...v }))} />
               <label>
                 Or describe it
                 <textarea

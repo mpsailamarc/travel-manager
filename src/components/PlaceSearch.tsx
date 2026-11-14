@@ -63,7 +63,7 @@ export function PlaceSearch({ label, value, onChange, placeholder, near }: Props
               className="btn-ghost"
               style={{ justifyContent: 'flex-start', textAlign: 'left' }}
               onClick={() => {
-                onChange({ name: value?.name || r.name, lat: r.lat, lon: r.lon })
+                onChange({ name: value?.name || r.name, lat: r.lat, lon: r.lon, country: r.countryCode })
                 setResults(undefined)
               }}
             >

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { BudgetLevel, Traveller, Trip, TripStyle } from '../types'
 import { COUNTRIES, countryLabel, flag } from '../lib/countries'
 import { uid } from '../lib/ids'
+import { PlaceSearch } from '../components/PlaceSearch'
 
 export const INTERESTS = [
   'history', 'museums', 'architecture', 'food', 'markets', 'nature', 'hiking', 'beaches', 'wildlife', 'art',
@@ -70,6 +71,30 @@ export function CitiesInput({ value, onChange, placeholder }: { value: string[];
         onChange(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))
       }}
     />
+  )
+}
+
+/** Where the trip starts and ends (often the same place): drawn on the map and told to the AI. */
+export function StartEndFields({ value, onChange }: { value: Pick<Trip, 'startPlace' | 'endPlace'>; onChange: (v: Pick<Trip, 'startPlace' | 'endPlace'>) => void }) {
+  const sameEnd = !value.endPlace
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <PlaceSearch label="Starting from (optional)" value={value.startPlace} onChange={(p) => onChange({ ...value, startPlace: p })} placeholder="e.g. San Francisco" />
+      {value.startPlace && (
+        <>
+          <label className="inline small">
+            <input
+              type="checkbox"
+              checked={sameEnd}
+              onChange={(e) => onChange({ ...value, endPlace: e.target.checked ? undefined : { name: value.startPlace?.name ?? '' } })}
+            />{' '}
+            Return to the same place
+          </label>
+          {!sameEnd && <PlaceSearch label="Returning to" value={value.endPlace} onChange={(p) => onChange({ ...value, endPlace: p ?? { name: '' } })} placeholder="e.g. Los Angeles" />}
+          <p className="tiny muted">Tap “Find” so it appears on the map. Starting in the same country as your destination also means no flights in the budget estimate.</p>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -171,6 +196,7 @@ export function TripFields({ value: t, onChange }: { value: Trip; onChange: (t: 
         Places / cities (comma separated, in order)
         <CitiesInput value={t.cities} onChange={(v) => set('cities', v)} />
       </label>
+      <StartEndFields value={t} onChange={(v) => onChange({ ...t, ...v })} />
       <label>Travellers</label>
       <TravellersEditor value={t.travellers} onChange={(v) => set('travellers', v)} />
       <label>Pace</label>
