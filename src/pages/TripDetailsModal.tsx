@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { db, deleteTrip } from '../db'
+import { db, deleteTrip, extendTripDays } from '../db'
 import type { Trip } from '../types'
 import { Modal, toast } from '../components/ui'
 import { locatePlace } from '../lib/apis'
@@ -23,6 +23,7 @@ export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () =>
     const endPlace = draft.endPlace?.name ? await locatePlace(draft.endPlace) : undefined
     // The dates saved here are yours: an itinerary idea no longer counts as having stretched them.
     await db.trips.put({ ...draft, startPlace, endPlace, userEndDate: undefined, updatedAt: Date.now() })
+    await extendTripDays(trip.id, trip, draft)
     toast('Trip saved')
     onClose()
   }

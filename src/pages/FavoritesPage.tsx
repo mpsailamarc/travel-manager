@@ -6,7 +6,7 @@ import type { Day, Favorite, Place } from '../types'
 import { fetchPois, interestOf, interestTier, type Interest, type Poi } from '../lib/apis'
 import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
 import { applyCityPlan, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
-import { addDays, daysBetween, formatDate, formatDuration, today } from '../lib/dates'
+import { addDays, dateRange, daysBetween, formatDate, formatDuration, today } from '../lib/dates'
 import { distance, plural } from '../lib/format'
 import { haversineM, type LatLon } from '../lib/geo'
 import { useAsync, useOnline } from '../lib/hooks'
@@ -115,6 +115,16 @@ export default function FavoritesPage() {
   }
 
   const dayNo = (d: string) => daysBetween(trip.startDate, d) + 1
+  // Days of the trip with no city (for instance after stretching the trip): offered to this city.
+  const unassigned = dateRange(trip.startDate, trip.endDate).filter((d) => !days.find((x) => x.date === d)?.city)
+  async function assignDays() {
+    if (!city) return
+    for (const date of unassigned) {
+      const cur = days.find((x) => x.date === date)
+      await db.days.put({ ...(cur ?? { id: `${trip.id}:${date}`, tripId: trip.id, date }), city, lat: cityInfo?.lat, lon: cityInfo?.lon })
+    }
+    toast(`${plural(unassigned.length, 'day')} added to ${city}`)
+  }
   const isScheduled = (f: Favorite) => !!f.date && (dates.includes(f.date) || !!f.itemId)
   const backups = cityFavs.filter((f) => !isScheduled(f))
 
@@ -234,6 +244,17 @@ export default function FavoritesPage() {
   return (
     <div className="stack">
       {cityPicker}
+
+      {city && unassigned.length > 0 && (
+        <div className="notice info row wrap between">
+          <span>
+            {unassigned.length === 1 ? 'Day' : 'Days'} {unassigned.map((d) => dayNo(d)).join(', ')} {unassigned.length === 1 ? 'has' : 'have'} no city yet, so {unassigned.length === 1 ? 'it is' : 'they are'} not listed below.
+          </span>
+          <button className="btn-sm" onClick={assignDays}>
+            Spend {unassigned.length === 1 ? 'it' : 'them'} in {city}
+          </button>
+        </div>
+      )}
 
       {!city && (
         <div className="card">
