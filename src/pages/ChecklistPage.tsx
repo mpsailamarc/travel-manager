@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
 import type { ChecklistCategory, ChecklistItem } from '../types'
@@ -10,11 +10,33 @@ import { Empty, Modal, Progress, toast } from '../components/ui'
 import { useTripCtx } from './TripLayout'
 
 export default function ChecklistPage() {
-  const { trip, settings } = useTripCtx()
+  const { trip, items, settings } = useTripCtx()
   const list = useLiveQuery(() => db.checklist.where('tripId').equals(trip.id).toArray(), [trip.id])
   const [hideDone, setHideDone] = useState(false)
   const [editing, setEditing] = useState<Partial<ChecklistItem> | null>(null)
+  // Booked something on the Plan tab? Tick its "Book: …" entry here.
+  useEffect(() => {
+    if (!list) return
+    const booked = new Set(items.filter((i) => i.status === 'booked' || i.status === 'done').map((i) => i.id))
+    const toTick = list.filter((c) => !c.done && c.ruleId?.startsWith('book:') && booked.has(c.ruleId.slice(5)))
+    if (toTick.length) db.checklist.bulkUpdate(toTick.map((c) => ({ key: c.id, changes: { done: true } })))
+  }, [list, items])
+
   if (!list) return null
+
+  /** Ticking "Book: <stay or train>" marks that plan item as booked; unticking puts it back to "to book". */
+  async function toggle(c: ChecklistItem) {
+    await db.checklist.update(c.id, { done: !c.done })
+    const itemId = c.ruleId?.startsWith('book:') ? c.ruleId.slice(5) : undefined
+    const it = itemId && items.find((i) => i.id === itemId)
+    if (!it) return
+    if (!c.done && (it.status === 'idea' || it.status === 'planned')) {
+      await db.items.update(it.id, { status: 'booked' })
+      toast(`${it.title} is now marked as booked in your plan`)
+    } else if (c.done && it.status === 'booked') {
+      await db.items.update(it.id, { status: 'planned' })
+    }
+  }
 
   const done = list.filter((c) => c.done).length
   const now = today()
@@ -81,7 +103,7 @@ export default function ChecklistPage() {
             const overdue = !c.done && c.dueDate && c.dueDate < now
             return (
               <div key={c.id} className={`check ${c.done ? 'done' : ''}`}>
-                <input type="checkbox" checked={c.done} onChange={() => db.checklist.update(c.id, { done: !c.done })} aria-label={c.title} />
+                <input type="checkbox" checked={c.done} onChange={() => toggle(c)} aria-label={c.title} />
                 <div className="grow clickable" onClick={() => setEditing(c)}>
                   <div className="check-title">{c.title}</div>
                   {c.notes && <div className="small muted">{c.notes}</div>}
@@ -89,7 +111,7 @@ export default function ChecklistPage() {
                     {c.dueDate && <span className={`badge ${overdue ? 'danger' : ''}`}>{overdue ? 'Overdue · ' : 'By '}{formatDate(c.dueDate)}</span>}
                     {c.link && (
                       <a className="small" href={c.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-                        More info ↗
+                        {c.link.includes('booking.com/searchresults') ? '🔎 Find a place on Booking.com ↗' : 'More info ↗'}
                       </a>
                     )}
                   </div>

@@ -140,7 +140,7 @@ export async function createDemoTrip(): Promise<string> {
     fav('Porto', 'Serralves Museum & Park', 'museum', 150, 41.1597, -8.6598),
   ]
 
-  const checklist = draftsToItems(id, generateChecklist(trip, items, settings), []).map((c) =>
+  const checklist = draftsToItems(id, generateChecklist(trip, items, settings, days), []).map((c) =>
     // Most things are done by the time the trip has started.
     ({ ...c, done: !c.ruleId?.startsWith('stay-gap') && !c.ruleId?.startsWith('checkin') && !c.ruleId?.startsWith('ticket') }),
   )

@@ -1,7 +1,7 @@
 // Rule engine that turns a trip (destinations, travellers, itinerary) into a pre-trip checklist.
 // Each rule has a stable ruleId so regenerating only adds what's new and never touches your ticks.
 
-import type { ChecklistCategory, ChecklistItem, Item, Settings, Trip } from '../types'
+import type { ChecklistCategory, ChecklistItem, Day, Item, Settings, Trip } from '../types'
 import { db } from '../db'
 import { addDays, dateRange, formatDate } from './dates'
 import { country, needsAdapter, travelAdvice, visaWikipediaUrl } from './countries'
@@ -20,7 +20,7 @@ const LOW_HEALTH_RISK = new Set([
   'US', 'CA', 'AU', 'NZ', 'JP', 'KR', 'SG', 'AE',
 ])
 
-export function generateChecklist(trip: Trip, items: Item[], settings: Settings): ChecklistDraft[] {
+export function generateChecklist(trip: Trip, items: Item[], settings: Settings, days: Day[] = []): ChecklistDraft[] {
   const out: ChecklistDraft[] = []
   const add = (d: ChecklistDraft) => out.push(d)
   const before = (days: number) => addDays(trip.startDate, -days)
@@ -161,31 +161,51 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings)
     }
   }
 
-  // Nights with no accommodation booked.
+  // One entry per accommodation still to book. Its rule id points at the stay, so ticking it marks the stay as
+  // booked (and booking the stay in the plan ticks it).
+  const cityOn = (date: string) => days.find((d) => d.date === date)?.city
+  const groupAdults = Math.max(1, adults.length)
+  const childAges = children.map((k) => k.age ?? 8)
+  for (const st of items.filter((i) => i.kind === 'stay' && (i.status === 'idea' || i.status === 'planned'))) {
+    const nights = st.nights ?? 1
+    const city = cityOn(st.date) ?? st.location?.name
+    add({
+      ruleId: `book:${st.id}`,
+      title: `Book: ${st.title}`,
+      category: 'bookings',
+      dueDate: before(45),
+      notes: [city, `${formatDate(st.date)} · ${nights} night${nights > 1 ? 's' : ''}`, st.cost?.amount ? `budgeted ${st.cost.amount} ${st.cost.currency}` : ''].filter(Boolean).join(' · '),
+      link: st.url ?? bookingSearch(city ?? st.title, st.date, addDays(st.date, nights), groupAdults, childAges),
+    })
+  }
+
+  // Nights with no accommodation at all: one entry per stretch, split when the city changes.
   const covered = new Set<string>()
   for (const s of items.filter((i) => i.kind === 'stay')) {
     for (let n = 0; n < (s.nights ?? 1); n++) covered.add(addDays(s.date, n))
   }
-  const nights = dateRange(trip.startDate, addDays(trip.endDate, -1))
   let run: string[] = []
   const flush = () => {
     if (!run.length) return
+    const city = cityOn(run[0])
     add({
       ruleId: `stay-gap:${run[0]}`,
-      title: `Find accommodation: ${formatDate(run[0])}${run.length > 1 ? ` → ${run.length} nights` : ' (1 night)'}`,
+      title: `Find accommodation${city ? ` in ${city}` : ''}: ${formatDate(run[0])}${run.length > 1 ? ` → ${run.length} nights` : ' (1 night)'}`,
       category: 'bookings',
       dueDate: before(45),
+      notes: 'No accommodation in the plan for these nights yet. Add it on the Plan tab once booked.',
+      link: city ? bookingSearch(city, run[0], addDays(run[run.length - 1], 1), groupAdults, childAges) : undefined,
     })
     run = []
   }
-  for (const n of nights) {
+  for (const n of dateRange(trip.startDate, addDays(trip.endDate, -1))) {
     if (covered.has(n)) flush()
-    else run.push(n)
+    else {
+      if (run.length && cityOn(n) !== cityOn(run[0])) flush()
+      run.push(n)
+    }
   }
   flush()
-  if (items.some((i) => i.kind === 'stay' && i.status !== 'booked')) {
-    add({ ruleId: 'stays-booked', title: 'Confirm all accommodation bookings', category: 'bookings', dueDate: before(30) })
-  }
 
   /* Money */
   const foreignCurrencies = [...new Set(dests.map((d) => d.currency))].filter((c) => c !== settings.homeCurrency)
@@ -256,6 +276,13 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings)
   return out.filter((d) => !seen.has(d.ruleId) && !!seen.add(d.ruleId))
 }
 
+/** A Booking.com search for the city and dates, pre-filled with the group (a plain link: no account, no tracking). */
+function bookingSearch(city: string, checkin: string, checkout: string, adults: number, childAges: number[]) {
+  const p = new URLSearchParams({ ss: city, checkin, checkout, group_adults: String(adults), no_rooms: '1', group_children: String(childAges.length) })
+  for (const a of childAges) p.append('age', String(a))
+  return `https://www.booking.com/searchresults.html?${p}`
+}
+
 export function draftsToItems(tripId: string, drafts: ChecklistDraft[], existing: ChecklistItem[]): ChecklistItem[] {
   const have = new Set(existing.map((e) => e.ruleId).filter(Boolean))
   let order = existing.reduce((m, e) => Math.max(m, e.order), 0)
@@ -272,8 +299,9 @@ export async function refreshChecklist(tripId: string, settings: Settings) {
   const trip = await db.trips.get(tripId)
   if (!trip) return { added: 0, removed: 0 }
   const items = await db.items.where('tripId').equals(tripId).toArray()
+  const days = await db.days.where('tripId').equals(tripId).toArray()
   const existing = await db.checklist.where('tripId').equals(tripId).toArray()
-  const drafts = generateChecklist(trip, items, settings)
+  const drafts = generateChecklist(trip, items, settings, days)
   const wanted = new Set(drafts.map((d) => d.ruleId))
   const itemIds = new Set(items.map((i) => i.id))
   const stale = existing.filter((e) => e.ruleId && !e.done && !e.ruleId.startsWith('ai:') && !wanted.has(e.ruleId))
