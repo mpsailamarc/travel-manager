@@ -8,7 +8,7 @@ import { fxRate } from '../lib/apis'
 import { country } from '../lib/countries'
 import { daysBetween, formatDate, today } from '../lib/dates'
 import { money, plural } from '../lib/format'
-import { useAsync, useMediaQuery } from '../lib/hooks'
+import { useAsync } from '../lib/hooks'
 import { Progress, toast } from '../components/ui'
 import { uid } from '../lib/ids'
 import { QuickExpense } from '../components/QuickExpense'
@@ -34,7 +34,7 @@ export default function BudgetPage() {
   const { trip, items, settings } = useTripCtx()
   const home = settings.homeCurrency
   const [editing, setEditing] = useState<Expense | null>(null)
-  const cols = useMediaQuery('(min-width: 721px)') ? 4 : 3 // the 'In plan' column is hidden on phones
+  const cols = 3
   const [basisOpen, setBasisOpen] = useState(false)
   const [folded, setFolded] = useState<Partial<Record<BudgetCategory, boolean>>>({})
   const [assumptions, setAssumptions] = useState<Set<string>>(new Set()) // lines whose quantity × price editor is open
@@ -73,7 +73,15 @@ export default function BudgetPage() {
   }
   for (const e of expenses) spent[e.category] += e.amountHome
 
-  const totalBudget = BUDGET_CATEGORIES.reduce((s, c) => s + (trip.budget[c] ?? 0), 0)
+  // One budget per category. With lines (an estimate, or your own): the prices already on plan items (they follow the plan)
+  // + the lines for the rest (meals, local transport…). With a single figure typed in (or from an itinerary idea): that's the
+  // category's total, unless the plan's prices already add up to more.
+  const pricedIn = (c: BudgetCategory) => items.filter((i) => i.cost?.amount && i.status !== 'skipped' && KIND_TO_CATEGORY[i.kind] === c)
+  const inHome = (i: (typeof items)[number]) => i.cost!.amount * (rates?.[i.cost!.currency] ?? 1)
+  const own = (c: BudgetCategory) => trip.budget[c] ?? 0
+  const lined = (c: BudgetCategory) => (trip.budgetLines ?? []).some((l) => l.category === c)
+  const catTotal = (c: BudgetCategory) => (lined(c) ? planned[c] + own(c) : Math.max(planned[c], own(c)))
+  const totalBudget = BUDGET_CATEGORIES.reduce((s, c) => s + catTotal(c), 0)
   const totalPlanned = BUDGET_CATEGORIES.reduce((s, c) => s + planned[c], 0)
   const totalSpent = BUDGET_CATEGORIES.reduce((s, c) => s + spent[c], 0)
   const onTrip = totalSpent - prepaid
@@ -98,7 +106,18 @@ export default function BudgetPage() {
       )
     )
       return
-    const { lines: next, basis } = await estimateBudgetLines(trip, settings.nationality, home, items)
+    const est = await estimateBudgetLines(trip, settings.nationality, home, items)
+    // What the plan already prices isn't estimated again: no flight estimate when the flights have prices, fewer nights when hotels do.
+    const pricedNights = items.filter((i) => i.kind === 'stay' && i.cost?.amount && i.status !== 'skipped').reduce((n, i) => n + (i.nights ?? 1), 0)
+    const next = est.lines.flatMap((l) => {
+      if (l.category === 'flights' && planned.flights > 0) return []
+      if (l.category === 'stays' && pricedNights && l.qty && /night/i.test(l.unit ?? '')) {
+        const qty = l.qty - pricedNights
+        return qty > 0 ? [{ ...l, qty, amount: lineAmount({ ...l, qty }) }] : []
+      }
+      return [l]
+    })
+    const basis = [...est.basis, ...(totalPlanned > 0 ? ['Prices already on plan items (flights, hotels, tickets) are counted as they are and not estimated again.'] : [])]
     // A fresh estimate replaces everything: categories it has no lines for (e.g. flights) are cleared.
     await db.trips.update(trip.id, { budgetLines: next, budgetBasis: basis, planBudget: undefined, budget: budgetFromLines(next, {}, []) })
     await touchTrip(trip.id)
@@ -132,19 +151,7 @@ export default function BudgetPage() {
   return (
     <div className="stack-lg">
       <div className="info-grid">
-        <Kpi k="Budget" v={money(totalBudget, home)} />
-        <Kpi
-          k="In the plan"
-          v={money(totalPlanned, home)}
-          sub={
-            totalBudget > 0
-              ? totalPlanned > totalBudget
-                ? `${money(totalPlanned - totalBudget, home)} over the budget`
-                : `${money(totalBudget - totalPlanned, home)} of the budget isn't in the plan yet`
-              : 'prices on itinerary items'
-          }
-          warn={totalPlanned > totalBudget && totalBudget > 0}
-        />
+        <Kpi k="Budget" v={money(totalBudget, home)} sub={totalPlanned > 0 ? `incl. ${money(totalPlanned, home)} priced in the plan` : undefined} />
         <Kpi k="Spent" v={money(totalSpent, home)} sub={`${money(prepaid, home)} booked ahead · ${money(onTrip, home)} on the trip`} />
         <Kpi
           k="Left"
@@ -183,20 +190,20 @@ export default function BudgetPage() {
               <tr>
                 <th>Category</th>
                 <th className="num">Budget ({home})</th>
-                <th className="num hide-mobile">In plan</th>
                 <th className="num" title="Bookings paid ahead + expenses">Spent</th>
               </tr>
             </thead>
             <tbody>
               {BUDGET_CATEGORIES.flatMap((c) => {
-                const b = trip.budget[c] ?? 0
+                const b = catTotal(c)
                 const catLines = lines.filter((l) => l.category === c)
+                const fromPlan = pricedIn(c)
                 const isFolded = !!folded[c]
                 const main = (
                   <tr key={c}>
                     <td>
                       <div className="row" style={{ gap: 4 }}>
-                        {catLines.length > 0 ? (
+                        {catLines.length > 0 || fromPlan.length > 0 ? (
                           <button className="icon-btn" aria-expanded={!isFolded} aria-label={`${isFolded ? 'Expand' : 'Collapse'} ${BUDGET_LABELS[c].label}`} onClick={() => setFolded((f) => ({ ...f, [c]: !isFolded }))}>
                             {isFolded ? '▸' : '▾'}
                           </button>
@@ -205,7 +212,7 @@ export default function BudgetPage() {
                         )}
                         <span className="grow">
                           {BUDGET_LABELS[c].emoji} {BUDGET_LABELS[c].label}
-                          {isFolded && <span className="tiny muted"> · {plural(catLines.length, 'line')}</span>}
+                          {isFolded && <span className="tiny muted"> · {plural(catLines.length + fromPlan.length, 'line')}</span>}
                         </span>
                         <button className="icon-btn" aria-label={`Add a line to ${BUDGET_LABELS[c].label}`} title="Add a line" onClick={() => addLine(c)}>
                           ＋
@@ -216,33 +223,45 @@ export default function BudgetPage() {
                           <Progress value={Math.max(spent[c], 0)} max={b} over={spent[c] > b} />
                         </div>
                       )}
-                      {(b > 0 || planned[c] > 0) && (
-                        <div className="tiny muted" style={{ marginTop: 3, color: planned[c] > b && b > 0 ? 'var(--danger)' : undefined }}>
-                          {planned[c] > 0 ? `In plan ${money(planned[c], home)}` : 'Nothing priced in the plan'}
-                          {b > 0 && planned[c] < b && ` · ${money(b - planned[c], home)} not planned yet`}
-                          {b > 0 && planned[c] > b && ` · ${money(planned[c] - b, home)} over budget`}
-                        </div>
-                      )}
                     </td>
                     <td className="num">
                       {catLines.length ? (
                         <b title="Adds up the lines underneath">{money(b, home)}</b>
                       ) : (
-                        <input
-                          type="number"
-                          min={0}
-                          style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
-                          defaultValue={b || ''}
-                          key={`${c}-${b}`}
-                          onBlur={(e) => setBudget(c, Number(e.target.value))}
-                        />
+                        <>
+                          <input
+                            type="number"
+                            min={0}
+                            style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
+                            defaultValue={own(c) || ''}
+                            placeholder={planned[c] ? String(Math.round(planned[c])) : undefined}
+                            aria-label={`${BUDGET_LABELS[c].label} budget`}
+                            key={`${c}-${own(c)}`}
+                            onBlur={(e) => setBudget(c, Number(e.target.value))}
+                          />
+                          {planned[c] > 0 && (
+                            <div className="tiny muted" style={{ color: planned[c] > own(c) && own(c) > 0 ? 'var(--danger)' : undefined }}>
+                              {planned[c] > own(c) ? `the plan's prices: ${money(planned[c], home)}` : `incl. ${money(planned[c], home)} in the plan`}
+                            </div>
+                          )}
+                        </>
                       )}
                     </td>
-                    <td className="num hide-mobile muted">{planned[c] ? money(planned[c], home) : '—'}</td>
                     <td className="num">{spent[c] ? money(spent[c], home) : '—'}</td>
                   </tr>
                 )
                 // The breakdown sits right under its category. Each line: a name, an amount — or a quantity × price assumption.
+                const planRows = isFolded
+                  ? []
+                  : fromPlan.map((i) => (
+                      <tr key={'plan-' + i.id} className="budget-line">
+                        <td style={{ paddingLeft: 14 }}>
+                          <span className="small">📌 {i.title}</span> <span className="tiny muted">· in the plan, follows it</span>
+                        </td>
+                        <td className="num small">{money(inHome(i), home)}</td>
+                        <td />
+                      </tr>
+                    ))
                 const sub = isFolded
                   ? []
                   : catLines.flatMap((l) => {
@@ -300,7 +319,6 @@ export default function BudgetPage() {
                               />
                             )}
                           </td>
-                          <td className="hide-mobile" />
                           <td className="num">
                             <button className="icon-btn" aria-label={`Remove ${l.label}`} onClick={() => saveLines(lines.filter((x) => x.id !== l.id))}>
                               ✕
@@ -356,7 +374,7 @@ export default function BudgetPage() {
                         )
                       return rows
                     })
-                return [main, ...sub]
+                return [main, ...planRows, ...sub]
               })}
             </tbody>
           </table>
@@ -374,24 +392,10 @@ export default function BudgetPage() {
               </ul>
             </details>
           )}
-          <details className="card tight" style={{ marginTop: 10 }}>
-            <summary className="small strong" style={{ cursor: 'pointer' }}>
-              ❓ Why is there a gap between Budget and In the plan?
-            </summary>
-            <ul className="small" style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-              <li style={{ marginBottom: 4 }}>
-                <b>Budget</b> is what you expect the whole trip to cost: your estimate or the figures you typed.
-              </li>
-              <li style={{ marginBottom: 4 }}>
-                <b>In the plan</b> only adds up itinerary items that have a <b>price</b> (a flight or a hotel with a cost). Meals, local transport and activities you
-                haven't priced aren't counted, so most of the gap is spending that's in the budget but not in the plan yet.
-              </li>
-              <li style={{ marginBottom: 4 }}>
-                A category in red means the prices in the plan add up to <b>more</b> than its budget: raise the budget or lower a price.
-              </li>
-              <li>To shrink the gap, open an item in the plan → Edit details → Cost. Items you skip aren't counted.</li>
-            </ul>
-          </details>
+          <p className="tiny muted" style={{ marginTop: 8 }}>
+            <b>Budget</b> counts the prices on plan items (📌, they follow the plan: add a cost to a flight or hotel and it shows up here), plus your
+            lines for everything else, such as meals and local transport. A single figure typed for a category is that category's total.
+          </p>
           <p className="tiny muted" style={{ marginTop: 8 }}>
             <b>Spent</b> = bookings that have a booking reference (paid ahead) + expenses you log.
           </p>

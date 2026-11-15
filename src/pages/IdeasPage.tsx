@@ -95,11 +95,8 @@ export function PromptBox({ prompt, history, onAnswer }: { prompt: string; histo
         </div>
         {error && <div className="notice error">{error}</div>}
         <details>
-          <summary className="small muted">Or copy the prompt / see it</summary>
-          <div className="stack" style={{ gap: 8, marginTop: 8 }}>
-            {copyRow}
-            <pre className="prompt">{prompt}</pre>
-          </div>
+          <summary className="small muted">What is sent</summary>
+          <pre className="prompt">{prompt}</pre>
         </details>
       </div>
     )
@@ -112,6 +109,34 @@ export function PromptBox({ prompt, history, onAnswer }: { prompt: string; histo
       </details>
     </div>
   )
+}
+
+/**
+ * Where the chatbot's answer goes. With copy and paste it's the box you paste into. With ChatGPT set up the answer is
+ * filled in for you, so the box stays folded away ("Show the answer") and only appears once there is one.
+ */
+export function AnswerBox({ label, value, onChange, placeholder, minHeight }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; minHeight?: number }) {
+  const api = aiReady(useAiConfig())
+  const box = <textarea className="code" style={minHeight ? { minHeight } : undefined} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+  if (!api)
+    return (
+      <label>
+        {label}
+        {box}
+      </label>
+    )
+  if (!value.trim()) return null
+  return (
+    <details>
+      <summary className="small muted">Show ChatGPT's answer (you can edit it)</summary>
+      {box}
+    </details>
+  )
+}
+
+/** The wording of a step: "copy this into the chatbot…" with copy and paste, "Ask ChatGPT…" with a key. */
+export function useAiWords() {
+  return aiReady(useAiConfig())
 }
 
 interface OutlineRound {
@@ -156,6 +181,7 @@ function outlineRounds(replies: string[], firstPrompt: string) {
 }
 
 function ItineraryIdeas() {
+  const api = useAiWords()
   const { trip, items, settings } = useTripCtx()
   const navigate = useNavigate()
   const storeKey = `tm-ideas2:${trip.id}`
@@ -221,30 +247,31 @@ function ItineraryIdeas() {
           <span className="muted"> — change it with “Trip details” above.</span>
         </div>
         <Steps />
-        <p className="small muted">
-          Free chatbots cut off long replies, so the options come one per reply: paste option 1, then copy the short follow-up for option 2 into the <b>same chat</b>, and so
-          on. You can stop as soon as you like one. Then the app asks for the full detail of the option you pick.
-        </p>
+        {api ? (
+          <p className="small muted">The options come one at a time: ask for option 1, then option 2 and 3 if you like. Then the app asks for the full detail of the option you pick.</p>
+        ) : (
+          <p className="small muted">
+            Free chatbots cut off long replies, so the options come one per reply: paste option 1, then copy the short follow-up for option 2 into the <b>same chat</b>, and so
+            on. You can stop as soon as you like one. Then the app asks for the full detail of the option you pick.
+          </p>
+        )}
         {rounds.map((r, i) => (
           <div key={i} className="stack" style={{ gap: 8 }}>
             {i === 0 ? (
               <p className="small">
-                <b>Option 1 ·</b> copy this prompt into a new chat, then paste the answer below.
+                <b>Option 1 ·</b> {api ? 'ask ChatGPT for the first option.' : 'copy this prompt into a new chat, then paste the answer below.'}
               </p>
             ) : rounds[i - 1].truncated ? (
               <div className="notice">
-                The reply for option {r.n} was cut off — its complete days are kept below. To get all of it, paste this follow-up into the same chat:
+                The reply for option {r.n} was cut off — its complete days are kept below. {api ? 'Ask again to get the rest:' : 'To get all of it, paste this follow-up into the same chat:'}
               </div>
             ) : (
               <div className="notice info">
-                <b>Option {r.n} ·</b> copy this follow-up into the <b>same chat</b> and paste the answer below — or skip it and pick from the options you have.
+                <b>Option {r.n} ·</b> {api ? 'ask for another option' : <>copy this follow-up into the <b>same chat</b> and paste the answer below</>} — or skip it and pick from the options you have.
               </div>
             )}
             <PromptBox prompt={r.prompt} history={rounds.slice(0, i).map((x) => ({ prompt: x.prompt, reply: x.text }))} onAnswer={(t) => setReply(i, t)} />
-            <label>
-              {i === 0 ? "Paste the chatbot's answer" : `Answer for option ${r.n}`}
-              <textarea className="code" style={{ minHeight: 90 }} value={r.text} onChange={(e) => setReply(i, e.target.value)} placeholder='```json&#10;{ "option": { … } }&#10;```' />
-            </label>
+            <AnswerBox label={i === 0 ? "Paste the chatbot's answer" : `Answer for option ${r.n}`} value={r.text} onChange={(t) => setReply(i, t)} minHeight={90} placeholder={'```json\n{ "option": { … } }\n```'} />
             {r.error && <div className="notice error">{r.error}</div>}
           </div>
         ))}
@@ -371,6 +398,7 @@ function OptionCard({
  * and a follow-up prompt asks for the missing ones, in as many rounds as needed.
  */
 function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption; onBack: () => void; onUse: (o: AiOption) => void; replaceChoice: ReactNode }) {
+  const api = useAiWords()
   const { trip, settings } = useTripCtx()
   const storeKey = `tm-detail:${trip.id}:${option.title}`
   const [replies, setReplies] = useState<string[]>(() => JSON.parse(localStorage.getItem(storeKey) ?? '[]'))
@@ -426,19 +454,16 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
           <div key={i} className="stack" style={{ gap: 8 }}>
             {i === 0 ? (
               <p className="small">
-                <b>1 ·</b> Copy this prompt into the chatbot (the same chat is fine), then paste its answer below.
+                <b>1 ·</b> {api ? 'Ask ChatGPT for the day-by-day detail.' : 'Copy this prompt into the chatbot (the same chat is fine), then paste its answer below.'}
               </p>
             ) : (
               <div className="notice info">
-                {i === 1 ? 'The answer stopped early' : 'Still some days missing'}: days {r.missingBefore.join(', ')} have no detail yet. Copy this follow-up prompt into the{' '}
-                <b>same chat</b> and paste the answer below.
+                {i === 1 ? 'The answer stopped early' : 'Still some days missing'}: days {r.missingBefore.join(', ')} have no detail yet.{' '}
+                {api ? 'Ask again for the rest.' : <>Copy this follow-up prompt into the <b>same chat</b> and paste the answer below.</>}
               </div>
             )}
             <PromptBox prompt={r.prompt} history={rounds.slice(0, i).map((x) => ({ prompt: x.prompt, reply: x.text }))} onAnswer={(t) => setReply(i, t)} />
-            <label>
-              {i === 0 ? "Paste the chatbot's answer" : `Answer ${i + 1}`}
-              <textarea className="code" value={r.text} onChange={(e) => setReply(i, e.target.value)} placeholder='{"days": [ … ]}' />
-            </label>
+            <AnswerBox label={i === 0 ? "Paste the chatbot's answer" : `Answer ${i + 1}`} value={r.text} onChange={(t) => setReply(i, t)} placeholder='{"days": [ … ]}' />
             {r.error && <div className="notice error">{r.error}</div>}
             {r.result && (
               <p className="small muted">
@@ -514,10 +539,7 @@ function BookingImport() {
         <textarea value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Paste one or more confirmation emails…" />
       </label>
       {email.trim() && <PromptBox prompt={bookingPrompt(trip, settings, email)} onAnswer={setAnswer} />}
-      <label>
-        2 · Paste the chatbot's answer
-        <textarea className="code" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder='{"items": [ … ]}' />
-      </label>
+      <AnswerBox label="2 · Paste the chatbot's answer" value={answer} onChange={setAnswer} placeholder='{"items": [ … ]}' />
       {parsed.error && <div className="notice error">{parsed.error}</div>}
       {parsed.items && (
         <div className="stack" style={{ gap: 6 }}>

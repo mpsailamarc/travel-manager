@@ -34,7 +34,8 @@ const scheduled = (f: Favorite) => !!f.date && !f.itemId
 
 /* ------------------------------ Day capacity ------------------------------ */
 
-const PACE_MIN: Record<TripStyle, number> = { relaxed: 240, balanced: 360, packed: 510 }
+// Sightseeing minutes per day, out of a 9:00–21:00 day: relaxed about a third, balanced half, packed about 90%.
+const PACE_MIN: Record<TripStyle, number> = { relaxed: 240, balanced: 360, packed: 650 }
 const STOP_OVERHEAD = 15 // minutes of walking/queuing per stop, before the real route is known
 
 function itemMinutes(it: Item): number {

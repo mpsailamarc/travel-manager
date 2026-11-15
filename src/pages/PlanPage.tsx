@@ -97,21 +97,31 @@ export default function PlanPage() {
     push(endP?.name ?? '', endP?.lat, endP?.lon, trip.endDate)
     return out
   }, [days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace])
-  const legs = stops.slice(1).map((to, i) => ({ from: stops[i], to, byCar: !!carFrom && to.arrive >= carFrom && to.arrive <= carTo }))
-  const carLegKey = legs.filter((l) => l.byCar).map((l) => `${l.from.lat},${l.from.lon}>${l.to.lat},${l.to.lon}`).join('|')
-  const roads = useAsync(
-    () => Promise.all(legs.filter((l) => l.byCar).map((l) => drivingRoute(l.from, l.to).catch(() => undefined))),
-    [carLegKey],
-  )
-  let carIdx = 0
-  const drawn = legs.map((l) => {
-    const route = l.byCar ? roads.data?.[carIdx++] : undefined
-    return { ...l, route }
+  // How each leg is travelled: a flight or a boat stays a straight dashed line; everything else follows the roads
+  // (a train or bus line roughly does too). Colours: car orange, public transport blue, flights grey, boats cyan.
+  const legMode = (date: string, byCar: boolean): 'flight' | 'ferry' | 'car' | 'public' => {
+    const journeys = items.filter((i) => i.date === date && i.status !== 'skipped' && ['flight', 'ferry', 'train', 'bus', 'car', 'drive'].includes(i.kind))
+    if (journeys.some((i) => i.kind === 'flight')) return 'flight'
+    if (journeys.some((i) => i.kind === 'ferry')) return 'ferry'
+    if (byCar || journeys.some((i) => i.kind === 'car' || i.kind === 'drive')) return 'car'
+    return 'public'
+  }
+  const legs = stops.slice(1).map((to, i) => {
+    const byCar = !!carFrom && to.arrive >= carFrom && to.arrive <= carTo
+    return { from: stops[i], to, mode: legMode(to.arrive, byCar) }
   })
-  const segments = drawn.map((l) => ({
-    coords: l.route ? l.route.geometry : ([[l.from.lon, l.from.lat], [l.to.lon, l.to.lat]] as [number, number][]),
-    dashed: !l.route,
-  }))
+  const roadLegs = legs.filter((l) => l.mode === 'car' || l.mode === 'public')
+  const roadKey = roadLegs.map((l) => `${l.from.lat},${l.from.lon}>${l.to.lat},${l.to.lon}`).join('|')
+  const roads = useAsync(() => Promise.all(roadLegs.map((l) => drivingRoute(l.from, l.to).catch(() => undefined))), [roadKey])
+  const LEG_STYLE = { car: '#ea580c', public: '#2563eb', flight: '#64748b', ferry: '#0891b2' } as const
+  const segments = legs.map((l) => {
+    const route = l.mode === 'car' || l.mode === 'public' ? roads.data?.[roadLegs.indexOf(l)] : undefined
+    return {
+      coords: route ? route.geometry : ([[l.from.lon, l.from.lat], [l.to.lon, l.to.lat]] as [number, number][]),
+      dashed: !route,
+      color: LEG_STYLE[l.mode],
+    }
+  })
 
   const estimated = items.reduce((s, i) => s + (i.cost?.amount ?? 0), 0)
   const currency = items.find((i) => i.cost)?.cost?.currency
@@ -137,25 +147,32 @@ export default function PlanPage() {
             fitKey={`${markers.length}-${segments.length}-${roads.data?.filter(Boolean).length ?? 0}-${trip.startPlace?.lat}-${trip.endPlace?.lat}`}
             className={mapSize === 'large' ? 'tall' : 'short'}
           />
-          {drawn.some((l) => l.byCar) && (
+          {legs.some((l) => l.mode === 'car') && (
             <div className="stack" style={{ gap: 2 }}>
-              {drawn
-                .filter((l) => l.byCar)
-                .map((l, i) => (
-                  <div key={i} className="small">
-                    🚗 {l.from.name || 'Start'} → {l.to.name || 'End'}
-                    {l.route ? ` · ${distance(l.route.distanceM)} · ${formatDuration(l.route.durationS)} driving` : roads.loading ? ' · finding the road…' : ' · straight line (no road route available)'}
-                  </div>
-                ))}
+              {legs
+                .filter((l) => l.mode === 'car')
+                .map((l, i) => {
+                  const route = roads.data?.[roadLegs.indexOf(l)]
+                  return (
+                    <div key={i} className="small">
+                      🚗 {l.from.name || 'Start'} → {l.to.name || 'End'}
+                      {route ? ` · ${distance(route.distanceM)} · ${formatDuration(route.durationS)} driving` : roads.loading ? ' · finding the road…' : ' · straight line (no road route available)'}
+                    </div>
+                  )
+                })}
             </div>
           )}
+          <p className="tiny muted">
+            <span style={{ color: LEG_STYLE.car }}>━</span> by car · <span style={{ color: LEG_STYLE.public }}>━</span> train / bus ·{' '}
+            <span style={{ color: LEG_STYLE.flight }}>┅</span> flight · <span style={{ color: LEG_STYLE.ferry }}>┅</span> boat
+          </p>
           <p className="tiny muted">
             {trip.startPlace?.lat != null && (
               <>
                 🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} ·{' '}
               </>
             )}
-            Numbers = the first day you are in each place · solid line = by car (road route), dashed = flights and other legs · grey dots = activities
+            Numbers = the first day you are in each place · lines follow the roads, except flights and boats (dashed) · grey dots = activities
             {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
           </p>
         </>

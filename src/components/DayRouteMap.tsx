@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { Item } from '../types'
 import type { DayRoute } from '../lib/dayroute'
-import { legText } from '../lib/legs'
+import { legText, MODE_COLOR } from '../lib/legs'
 import { distance } from '../lib/format'
 import LazyMap, { type MapMarker } from './LazyMap'
 import { useMapSize } from '../lib/hooks'
@@ -29,6 +29,12 @@ export function DayRouteMap({ route, loading, onOpen, sizeKey = 'tm-day-route-ma
       </div>
       {size !== 'hidden' && (
         <LazyMap key={size} className={size === 'large' ? 'tall' : 'short'} markers={markers} segments={route.segments} fitKey={route.stops.map((s) => s.item.id + s.item.startTime).join()} locate />
+      )}
+      {size !== 'hidden' && (
+        <p className="tiny muted" style={{ margin: 0 }}>
+          <span style={{ color: MODE_COLOR.walk }}>━</span> walk · <span style={{ color: MODE_COLOR.transit }}>┅</span> public transport (approximate path) ·{' '}
+          <span style={{ color: MODE_COLOR.taxi }}>━</span> taxi
+        </p>
       )}
       <ol className="route-list">
         {route.stops.map((s, n) => (

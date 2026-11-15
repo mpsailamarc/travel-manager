@@ -20,6 +20,10 @@ export const GET_AROUND_LABEL: Record<GetAround, string> = {
 
 export const MODE_EMOJI = { walk: '🚶', transit: '🚇', taxi: '🚕' } as const
 
+/** Map colours: walking green, public transport blue (dashed: its path is approximate), taxi orange. */
+export const MODE_COLOR = { walk: '#16a34a', transit: '#2563eb', taxi: '#ea580c' } as const
+export const MODE_DASHED = { walk: false, transit: true, taxi: false } as const
+
 async function walkLeg(a: LatLon, b: LatLon, speedKmh: number): Promise<Leg> {
   const speed = (speedKmh * 1000) / 3600
   try {
@@ -41,9 +45,18 @@ async function taxiLeg(a: LatLon, b: LatLon): Promise<Leg> {
   }
 }
 
-/** Public transport has no free router: street distance at an average speed, plus the wait. Drawn as a straight dashed line. */
-function transitLeg(a: LatLon, b: LatLon, streetM: number): Leg {
-  return { mode: 'transit', distanceM: streetM, minutes: Math.round(TRANSIT_WAIT_MIN + (streetM / 1000 / TRANSIT_KMH) * 60), geometry: [[a.lon, a.lat], [b.lon, b.lat]], estimated: true }
+/**
+ * Public transport has no free router: street distance at an average speed, plus the wait. It's drawn along the roads
+ * (the way a bus or tram would roughly go) rather than as a straight line.
+ */
+async function transitLeg(a: LatLon, b: LatLon, streetM: number): Promise<Leg> {
+  let geometry: [number, number][] = [[a.lon, a.lat], [b.lon, b.lat]]
+  try {
+    geometry = (await drivingRoute(a, b)).geometry
+  } catch {
+    /* offline or busy: a straight line */
+  }
+  return { mode: 'transit', distanceM: streetM, minutes: Math.round(TRANSIT_WAIT_MIN + (streetM / 1000 / TRANSIT_KMH) * 60), geometry, estimated: true }
 }
 
 /** The way to get from a to b under the chosen rule. Short hops are always walked (unless you chose taxi/transit everywhere). */
@@ -52,7 +65,7 @@ export async function planLeg(a: LatLon, b: LatLon, pref: GetAround, walkMaxMin 
   if (pref === 'walk' || walk.minutes <= walkMaxMin) return walk
   if (pref === 'transit') return transitLeg(a, b, walk.distanceM)
   if (pref === 'taxi') return taxiLeg(a, b)
-  const [taxi, transit] = [await taxiLeg(a, b), transitLeg(a, b, walk.distanceM)]
+  const [taxi, transit] = [await taxiLeg(a, b), await transitLeg(a, b, walk.distanceM)]
   return [walk, transit, taxi].reduce((best, l) => (l.minutes < best.minutes ? l : best))
 }
 

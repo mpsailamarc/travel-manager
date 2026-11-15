@@ -20,7 +20,7 @@ import { OptimiseDayButton } from '../components/OptimiseDay'
 import { GET_AROUND_LABEL, legText } from '../lib/legs'
 import LazyMap, { type MapMarker, type MapViewState } from '../components/LazyMap'
 import { tripadvisorSearch } from '../lib/links'
-import { PromptBox } from './IdeasPage'
+import { AnswerBox, PromptBox, useAiWords } from './IdeasPage'
 import { useTripCtx } from './TripLayout'
 
 type Source = 'sights' | 'ai' | 'own'
@@ -757,6 +757,7 @@ function SightList(p: {
 function AiIdeas({ city, isFav, onToggle, onOpen }: { city: string; isFav: (i: CityIdea) => boolean; onToggle: (i: CityIdea) => void; onOpen: (i: CityIdea) => void }) {
   const { trip, settings } = useTripCtx()
   const key = `tm-cityideas:${trip.id}:${city.toLowerCase()}`
+  const api = useAiWords()
   const [answer, setAnswer] = useState(() => localStorage.getItem(key) ?? '')
   const parsed = useMemo(() => {
     if (!answer.trim()) return {}
@@ -768,7 +769,9 @@ function AiIdeas({ city, isFav, onToggle, onOpen }: { city: string; isFav: (i: C
   }, [answer])
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <p className="small muted">Restaurants, experiences, day trips and kid-friendly places that map data misses. Copy the prompt into a free chatbot and paste its answer.</p>
+      <p className="small muted">
+        Restaurants, experiences, day trips and kid-friendly places that map data misses.{api ? '' : ' Copy the prompt into a free chatbot and paste its answer.'}
+      </p>
       <PromptBox
         prompt={cityIdeasPrompt(trip, settings, city)}
         onAnswer={(t) => {
@@ -776,14 +779,14 @@ function AiIdeas({ city, isFav, onToggle, onOpen }: { city: string; isFav: (i: C
           localStorage.setItem(key, t)
         }}
       />
-      <textarea
-        className="code"
-        style={{ minHeight: 80 }}
+      <AnswerBox
+        label="Paste the chatbot's answer"
+        minHeight={80}
         value={answer}
         placeholder='{"ideas": [ … ]}'
-        onChange={(e) => {
-          setAnswer(e.target.value)
-          localStorage.setItem(key, e.target.value)
+        onChange={(t) => {
+          setAnswer(t)
+          localStorage.setItem(key, t)
         }}
       />
       {parsed.error && <div className="notice error">{parsed.error}</div>}

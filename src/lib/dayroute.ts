@@ -4,7 +4,7 @@
 import type { Day, GetAround, Item, Leg, Settings } from '../types'
 import { useAsync } from './hooks'
 import { haversineM } from './geo'
-import { DEFAULT_WALK_MAX_MIN, planLeg } from './legs'
+import { DEFAULT_WALK_MAX_MIN, MODE_COLOR, MODE_DASHED, planLeg } from './legs'
 
 export interface RouteStop {
   item: Item
@@ -14,7 +14,7 @@ export interface RouteStop {
 
 export interface DayRoute {
   stops: RouteStop[]
-  segments: { coords: [number, number][]; dashed: boolean }[]
+  segments: { coords: [number, number][]; dashed: boolean; color?: string }[]
   start?: { lat: number; lon: number; name?: string } // where the first leg begins, when known
 }
 
@@ -61,9 +61,9 @@ export async function buildRoute(stops: Item[], pref: GetAround, settings: Setti
     if (!prev && leg?.geometry?.length) start = { lat: leg.geometry[0][1], lon: leg.geometry[0][0], name: leg.fromName }
     out.push({ item: it, at: placeAt(it)!, leg })
   }
-  const segments = out.filter((s) => s.leg?.geometry?.length).map((s) => ({ coords: s.leg!.geometry!, dashed: s.leg!.mode === 'transit' }))
+  const segments = out.filter((s) => s.leg?.geometry?.length).map((s) => ({ coords: s.leg!.geometry!, dashed: MODE_DASHED[s.leg!.mode], color: MODE_COLOR[s.leg!.mode] }))
   // Old walking tours (one item with its own path) keep drawing that path.
-  for (const s of out) if (s.item.walk?.geometry?.length) segments.push({ coords: s.item.walk.geometry, dashed: s.item.walk.routedBy === 'straight-line' })
+  for (const s of out) if (s.item.walk?.geometry?.length) segments.push({ coords: s.item.walk.geometry, dashed: s.item.walk.routedBy === 'straight-line', color: MODE_COLOR.walk })
   return { stops: out, segments, start }
 }
 

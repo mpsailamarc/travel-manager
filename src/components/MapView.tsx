@@ -32,8 +32,8 @@ interface Props {
   markers: MapMarker[]
   line?: [number, number][]
   dashed?: boolean
-  /** Several pieces with their own style: road routes solid, flights and other straight legs dashed. */
-  segments?: { coords: [number, number][]; dashed: boolean }[]
+  /** Several pieces with their own style: road routes solid, flights and other straight legs dashed; a colour per way of travel. */
+  segments?: { coords: [number, number][]; dashed: boolean; color?: string }[]
   className?: string
   /** Change this to re-fit the view to the markers. */
   fitKey?: string
@@ -83,7 +83,7 @@ export default function MapView({ markers, line, dashed, segments, className = '
           type: 'line',
           source: dash ? 'seg-dashed' : 'seg-solid',
           layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': '#0f766e', 'line-width': dash ? 4 : 5, 'line-opacity': 0.85, ...(dash ? { 'line-dasharray': [1.5, 1.5] } : {}) },
+          paint: { 'line-color': ['get', 'color'], 'line-width': dash ? 4 : 5, 'line-opacity': 0.85, ...(dash ? { 'line-dasharray': [1.5, 1.5] } : {}) },
         })
       }
     })
@@ -166,8 +166,12 @@ export default function MapView({ markers, line, dashed, segments, className = '
 }
 
 function segData(segments: Props['segments'], dashed: boolean) {
-  const lines = (segments ?? []).filter((s) => s.dashed === dashed && s.coords.length > 1).map((s) => s.coords)
-  return { type: 'Feature' as const, properties: {}, geometry: { type: 'MultiLineString' as const, coordinates: lines } }
+  return {
+    type: 'FeatureCollection' as const,
+    features: (segments ?? [])
+      .filter((s) => s.dashed === dashed && s.coords.length > 1)
+      .map((s) => ({ type: 'Feature' as const, properties: { color: s.color ?? '#0f766e' }, geometry: { type: 'LineString' as const, coordinates: s.coords } })),
+  }
 }
 
 function lineData(line?: [number, number][]) {

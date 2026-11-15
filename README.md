@@ -79,6 +79,15 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   **📌 Locks** say what never moves: booked items, journeys and stays always; anything you place by hand (dragged on the calendar, time changed
   in the form, moved up/down) is locked automatically, and any item can be locked or unlocked from its ⋯ menu or form. "Plan my days" uses the
   same engine, so both screens agree.
+- **Maps show real paths**: everything follows the streets and roads (walks, taxis, public transport, trains, buses, drives), except flights
+  and boats, which stay straight dashed lines. Colours say how you travel: walking green, public transport blue (dashed: its exact line isn't
+  known), taxi orange; on the trip map car orange, train/bus blue, flights grey, boats cyan.
+- **One budget**: each category's budget counts the prices already on plan items (listed with 📌, they follow the plan) plus your own lines
+  for the rest (meals, local transport…). "Estimate for me" no longer estimates what the plan already prices. A single figure typed for a
+  category is that category's total. There's no separate "In the plan" figure any more.
+- **Packed pace** fills about 90% of a 9:00–21:00 day.
+- **With ChatGPT set up** (Settings → AI assistant) the copy-and-paste way is hidden: each AI step is one "Ask ChatGPT" button, and the
+  answer box only appears, folded, once there is an answer.
 - **Opening hours**: sights are kept within their likely opening hours where possible: the published ones when OpenStreetMap has them
   ("Tu-Su 10:00-18:00", closed days included), otherwise 9:00–17:00 (shops 10:00–19:00; parks, viewpoints, markets, walks, meals and evening
   shows have no limit). It's a guess, so it only steers the order and warns ("🕘 may be closed then") on the item and in the Optimise preview.

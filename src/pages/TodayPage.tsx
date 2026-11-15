@@ -22,7 +22,7 @@ import { useDayRoute } from '../lib/dayroute'
 import LazyMap from '../components/LazyMap'
 import { BackupIdeas } from '../components/BackupIdeas'
 import { tripPhase, useTripCtx } from './TripLayout'
-import { PromptBox } from './IdeasPage'
+import { AnswerBox, PromptBox } from './IdeasPage'
 
 export default function TodayPage() {
   const { trip, items, days, settings } = useTripCtx()
@@ -491,10 +491,7 @@ function ReplanModal({ date, dayItems, onClose }: { date: string; dayItems: Item
           </label>
         </div>
         <PromptBox prompt={prompt} onAnswer={setAnswer} />
-        <label>
-          2 · Paste the answer here
-          <textarea className="code" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder='{"items": [ ... ]}' />
-        </label>
+        <AnswerBox label="2 · Paste the answer here" value={answer} onChange={setAnswer} placeholder='{"items": [ ... ]}' />
         {error && <div className="notice error">{error}</div>}
         <p className="tiny muted">
           Keeps {keep.length} item(s) that are done, booked or before {from}; the rest of the day is replaced.
