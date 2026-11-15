@@ -73,6 +73,11 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **The day's path, everywhere**: every item with a place (planned by the City planner or added or edited by hand) is numbered in time order, with
   the way to get between them. Day by day has a "🗺️ Day on the map" card (the numbers in the list match the map; tap one to jump to it), and the
   City planner's day chips draw the same path, with links between the two.
+- **Always in step**: whatever changes (a day moved to another city in the Plan, the trip made shorter, a day replanned by the chatbot, an item moved,
+  merged or deleted, an edit synced from another device), the wishlist and Day by day are brought back in line a moment later: places on a day
+  that's no longer in their city go back to the backup ideas (with a note saying so), the calendar loses what the planner had put there, places linked
+  to your own items follow them, and days still waiting for their places are filled in. Planned places also leave from wherever you are after
+  something already fixed (the museum you booked), not from the hotel.
 - **Getting between places**: per day (default in Settings) walk everywhere, walk short hops (up to N minutes) and go **public transport** or
   **taxi** for longer ones, or pick **whatever is quickest**. Walking and taxi use real routes (OSRM); public transport has no free routing service, so
   it's an estimate (wait + average speed), clearly labelled, with links to real timetables (Google Maps) and Uber on each place.

@@ -138,7 +138,7 @@ export default function FavoritesPage() {
     }
     toast(`${plural(unassigned.length, 'day')} added to ${city}`)
   }
-  const isScheduled = (f: Favorite) => !!f.date && (dates.includes(f.date) || !!f.itemId)
+  const isScheduled = (f: Favorite) => !!f.date && dates.includes(f.date)
   const backups = cityFavs.filter((f) => !isScheduled(f))
 
   // Sights come from the part of the map you chose: the city centre at first, then wherever you pan and zoom to and tap "Search this area".
@@ -366,7 +366,7 @@ export default function FavoritesPage() {
                     />
                   )}
                   {items
-                    .filter((i) => i.date === d && !i.planner && ['activity', 'meal', 'walk'].includes(i.kind) && i.status !== 'skipped')
+                    .filter((i) => i.date === d && !i.planner && ['activity', 'meal', 'walk'].includes(i.kind) && i.status !== 'skipped' && !cityFavs.some((f) => f.itemId === i.id))
                     .map((i) => (
                       <div key={i.id} className="tiny muted">
                         📌 In your plan{i.startTime ? ` · ${i.startTime}` : ''} · {i.title}
@@ -649,7 +649,7 @@ function FavRow({ fav: f, dates, dayNo, onOpen, onMove, onRemove }: { fav: Favor
           {isIndoor(f) && ' · indoor'}
           {f.lat == null && ' · no location'}
           {f.pinned && ' · 📌 your choice'}
-          {f.itemId && ' · in your plan'}
+          {f.itemId && ` · in your plan${f.date && !dates.includes(f.date) ? ` (day ${dayNo(f.date)})` : ''}`}
           {f.notes && ` · ${f.notes}`}
         </div>
       </div>

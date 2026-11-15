@@ -122,10 +122,12 @@ export async function mergeGroups(tripId: string, groups: DuplicateGroup[]) {
     for (const g of groups) {
       await db.items.put(mergeInto(g.keep, g.extras))
       await db.items.bulkDelete(g.extras.map((e) => e.id))
-      // Favourites that pointed at a removed copy follow the kept one.
+      // Wishlist places that pointed at (or built) a removed copy follow the kept one, which is then yours, not the planner's.
       const gone = new Set(g.extras.map((e) => e.id))
-      const favs = (await db.favorites.where('tripId').equals(tripId).toArray()).filter((f) => f.itemId && gone.has(f.itemId))
-      await db.favorites.bulkUpdate(favs.map((f) => ({ key: f.id, changes: { itemId: g.keep.id } })))
+      const built = new Set([g.keep, ...g.extras].map((e) => e.favId).filter(Boolean))
+      const favs = (await db.favorites.where('tripId').equals(tripId).toArray()).filter((f) => (f.itemId && gone.has(f.itemId)) || built.has(f.id))
+      await db.favorites.bulkUpdate(favs.map((f) => ({ key: f.id, changes: { itemId: g.keep.id, date: g.keep.date, pinned: true } })))
+      if (g.keep.planner) await db.items.update(g.keep.id, { planner: undefined })
     }
   })
   await touchTrip(tripId)

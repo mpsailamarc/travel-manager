@@ -452,10 +452,16 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
 }
 
 export async function applyDayReplan(trip: Trip, date: string, keep: Item[], items: AiItem[], currency: string) {
-  await db.transaction('rw', db.items, async () => {
+  await db.transaction('rw', [db.items, db.favorites], async () => {
     const existing = await db.items.where({ tripId: trip.id, date }).toArray()
     const keepIds = new Set(keep.map((k) => k.id))
-    await db.items.bulkDelete(existing.filter((e) => !keepIds.has(e.id)).map((e) => e.id))
+    const gone = existing.filter((e) => !keepIds.has(e.id))
+    await db.items.bulkDelete(gone.map((e) => e.id))
+    // Wishlist places that were on the replaced part of the day go back to the backups (not straight back onto the day).
+    const goneIds = new Set(gone.map((e) => e.id))
+    const goneFavs = new Set(gone.map((e) => e.favId).filter(Boolean))
+    const favs = (await db.favorites.where('tripId').equals(trip.id).toArray()).filter((f) => goneFavs.has(f.id) || (f.itemId && goneIds.has(f.itemId)))
+    await db.favorites.bulkUpdate(favs.map((f) => ({ key: f.id, changes: { date: undefined, pinned: false, itemId: undefined } })))
     // The chatbot repeats the booked items it was told to keep: those are already here.
     const kept = existing.filter((e) => keepIds.has(e.id))
     await db.items.bulkAdd(withoutDuplicates(items.map((a, i) => toItem(a, trip.id, date, keep.length + i, currency, 'planned')), kept))

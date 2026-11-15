@@ -79,16 +79,17 @@ export async function importTrip(text: string): Promise<string> {
   if (f.app !== 'travel-manager' || !f.trip) throw new Error('This is not a Travel Manager trip file.')
   const id = uid()
   const itemIds = new Map(f.items.map((i) => [i.id, uid()]))
+  const favIds = new Map((f.favorites ?? []).map((v) => [v.id, uid()])) // items point at their wishlist place, so both are remapped
   const docs: TripDocument[] = await Promise.all(
     (f.documents ?? []).map(async ({ dataUrl, ...rest }) => ({ ...rest, id: uid(), tripId: id, blob: await (await fetch(dataUrl)).blob() })),
   )
   await db.transaction('rw', [db.trips, db.days, db.items, db.checklist, db.expenses, db.documents, db.favorites], async () => {
     await db.trips.add({ ...f.trip, id, updatedAt: Date.now() })
     await db.favorites.bulkAdd(
-      (f.favorites ?? []).map((v) => ({ ...v, tripId: id, id: uid(), itemId: v.itemId ? itemIds.get(v.itemId) : undefined })),
+      (f.favorites ?? []).map((v) => ({ ...v, tripId: id, id: favIds.get(v.id)!, itemId: v.itemId ? itemIds.get(v.itemId) : undefined })),
     )
     await db.days.bulkAdd(f.days.map((d) => ({ ...d, tripId: id, id: `${id}:${d.date}` })))
-    await db.items.bulkAdd(f.items.map((i) => ({ ...i, tripId: id, id: itemIds.get(i.id)! })))
+    await db.items.bulkAdd(f.items.map((i) => ({ ...i, tripId: id, id: itemIds.get(i.id)!, favId: i.favId ? favIds.get(i.favId) : undefined })))
     await db.checklist.bulkAdd(
       f.checklist.map((c) => ({
         ...c,

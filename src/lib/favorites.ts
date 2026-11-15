@@ -1,12 +1,12 @@
 // Favourites per city and "Plan my days": spread them over the days you spend in that city,
 // grouped by neighbourhood and sized to your pace. Runs entirely in the browser.
 
-import { adoptPlannerItems, db, touchTrip } from '../db'
-import type { Day, Favorite, Item, Place, Settings, Trip, TripStyle } from '../types'
+import { adoptPlannerItems, db, getSettings, touchTrip } from '../db'
+import type { Day, Favorite, Item, Leg, Place, Settings, Trip, TripStyle } from '../types'
 import { POI_CATEGORIES } from './apis'
 import { matchesPlace } from './duplicates'
 import { DEFAULT_WALK_MAX_MIN, planLeg } from './legs'
-import { addDays, hhmmToMin, minToHHMM } from './dates'
+import { addDays, hhmmToMin, minToHHMM, today } from './dates'
 import { centroid, haversineM, optimiseOrder, type LatLon } from './geo'
 import { uid } from './ids'
 
@@ -238,15 +238,29 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
       // Time runs through the day: leave the start, travel, visit, travel… and step around anything fixed (booked tickets, lunch).
       const fixed = dayItems
         .filter((i) => i.startTime && i.status !== 'skipped' && i.kind !== 'stay')
-        .map((i) => ({ s: hhmmToMin(i.startTime!), e: i.endTime ? hhmmToMin(i.endTime) : hhmmToMin(i.startTime!) + itemMinutes(i) }))
+        .map((i) => {
+          const at = i.location?.lat != null && i.location.lon != null ? { lat: i.location.lat, lon: i.location.lon } : i.walk?.stops[0]
+          return { s: hhmmToMin(i.startTime!), e: i.endTime ? hhmmToMin(i.endTime) : hhmmToMin(i.startTime!) + itemMinutes(i), at, title: i.title }
+        })
         .sort((x, y) => x.s - y.s)
       let t = hhmmToMin(startTime)
       let prev: LatLon = s
       let prevName = start.name
+      // Starting after something already planned that morning (and no start place chosen): leave from there, not from the hotel.
+      const before = day?.walkStart ? undefined : [...fixed].filter((w) => w.at && w.e <= t).sort((x, y) => y.e - x.e)[0]
+      if (before?.at) {
+        prev = before.at
+        prevName = before.title
+      }
       for (const f of stops) {
-        const leg = { ...(await planLeg(prev, f, pref, walkMax, settings.walkSpeedKmh)), fromName: prevName }
+        let leg: Leg = { ...(await planLeg(prev, f, pref, walkMax, settings.walkSpeedKmh)), fromName: prevName }
         let from = t + leg.minutes
-        for (const w of fixed) if (from < w.e && from + f.visitMin > w.s) from = w.e
+        // Something fixed is in the way: go after it, and from where it is.
+        for (const w of fixed) {
+          if (!(from < w.e && from + f.visitMin > w.s)) continue
+          if (w.at) leg = { ...(await planLeg(w.at, f, pref, walkMax, settings.walkSpeedKmh)), fromName: w.title }
+          from = w.e + (w.at ? leg.minutes : 0)
+        }
         const to = from + f.visitMin
         built.push({
           id: uid(),
@@ -307,6 +321,115 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
     await db.items.bulkAdd(built)
   })
   await touchTrip(trip.id)
+}
+
+/* ------------------------------ Keeping it consistent ------------------------------ */
+
+const ACTIVE = new Set(['planned', 'idea'])
+
+/**
+ * The wishlist, the days and the plan items must tell the same story. This repairs whatever another change left behind
+ * (a day that moved to another city, a shorter trip, a day replanned by the chatbot, an item moved or deleted by hand,
+ * an edit synced from another device):
+ * - a wishlist place linked to a plan item follows that item (same day); if the item is gone it goes back to the backups;
+ * - a place planned on a day that is no longer in its city (or in the trip) goes back to the backups;
+ * - items the City planner built for a place that is no longer on that day are removed from the plan;
+ * - planner items you booked, ticked off or skipped become yours;
+ * - days that should show wishlist places but have none yet (or still have an old one-block walk) are rebuilt.
+ * Running it again changes nothing. It returns the names of places sent back because their day changed city.
+ */
+export function reconcileTrip(tripId: string): Promise<string[]> {
+  const run = rebuilding.then(() => reconcileNow(tripId))
+  rebuilding = run.catch(() => undefined)
+  return run
+}
+
+async function reconcileNow(tripId: string): Promise<string[]> {
+  const trip = await db.trips.get(tripId)
+  if (!trip) return []
+  const [favs, items, days] = await Promise.all([
+    db.favorites.where('tripId').equals(tripId).toArray(),
+    db.items.where('tripId').equals(tripId).toArray(),
+    db.days.where('tripId').equals(tripId).toArray(),
+  ])
+  const inTrip = (d: string) => d >= trip.startDate && d <= trip.endDate
+  const cityDayCache = new Map<string, Set<string>>()
+  const cityDays = (city: string) => {
+    const k = city.trim().toLowerCase()
+    if (!cityDayCache.has(k)) cityDayCache.set(k, new Set(days.filter((d) => sameCity(d.city, city) && inTrip(d.date)).map((d) => d.date)))
+    return cityDayCache.get(k)!
+  }
+  const itemById = new Map(items.map((i) => [i.id, i]))
+  const favChanges = new Map<string, Partial<Favorite>>()
+  const change = (f: Favorite, c: Partial<Favorite>) => {
+    favChanges.set(f.id, { ...favChanges.get(f.id), ...c })
+    Object.assign(f, c)
+  }
+  const released: string[] = []
+
+  // Planner items you have acted on are yours from now on.
+  const touched = items.filter((i) => i.planner && i.favId && !ACTIVE.has(i.status)).map((i) => i.id)
+
+  for (const f of favs) {
+    if (f.itemId) {
+      const it = itemById.get(f.itemId)
+      if (!it) change(f, { itemId: undefined, date: undefined, pinned: false })
+      else if (it.date !== f.date) change(f, { date: it.date, pinned: true })
+      continue
+    }
+    if (f.date && !cityDays(f.city).has(f.date) && !touched.some((id) => itemById.get(id)?.favId === f.id)) {
+      change(f, { date: undefined, pinned: false })
+      released.push(f.name)
+    }
+  }
+
+  const favById = new Map(favs.map((f) => [f.id, f]))
+  const remove = new Set<string>()
+  const dirty = new Map<string, { city: string; dates: Set<string> }>()
+  const markDirty = (city: string, date: string) => {
+    const k = city.trim().toLowerCase()
+    if (!dirty.has(k)) dirty.set(k, { city, dates: new Set() })
+    dirty.get(k)!.dates.add(date)
+  }
+  for (const it of items) {
+    if (!it.planner || touched.includes(it.id)) continue
+    if (it.favId) {
+      const f = favById.get(it.favId)
+      if (!f || f.itemId || f.date !== it.date || !cityDays(f.city).has(it.date)) remove.add(it.id)
+    } else if (it.kind === 'walk') {
+      // A tour from the earlier version (one block for the whole day): rebuilt as one item per place.
+      remove.add(it.id)
+      const city = days.find((d) => d.date === it.date)?.city
+      if (city && it.planner === plannerTag(city)) markDirty(city, it.date)
+    }
+  }
+  // "Back to the hotel" notes go when their day has no other planner item left.
+  for (const it of items) {
+    if (!it.planner || it.favId || it.kind === 'walk' || remove.has(it.id)) continue
+    if (!items.some((o) => o.id !== it.id && o.planner === it.planner && o.date === it.date && o.favId && !remove.has(o.id))) remove.add(it.id)
+  }
+
+  // Places due on a coming day that have nothing on the plan yet.
+  const now = today()
+  for (const f of favs) {
+    if (!f.date || f.itemId || f.date < now || !cityDays(f.city).has(f.date)) continue
+    const has = items.some((i) => i.favId === f.id && i.date === f.date && !remove.has(i.id))
+    if (!has) markDirty(f.city, f.date)
+  }
+
+  const wrote = favChanges.size > 0 || remove.size > 0 || touched.length > 0
+  if (favChanges.size || remove.size) {
+    await db.transaction('rw', [db.favorites, db.items], async () => {
+      if (favChanges.size) await db.favorites.bulkUpdate([...favChanges].map(([key, changes]) => ({ key, changes })))
+      if (remove.size) await db.items.bulkDelete([...remove])
+    })
+  }
+  if (touched.length) await adoptPlannerItems(touched)
+  if (dirty.size) {
+    const settings = await getSettings()
+    for (const { city, dates } of dirty.values()) await rebuildCityPlan(trip, city, [...dates].filter((d) => cityDays(city).has(d)), settings)
+  } else if (wrote) await touchTrip(tripId)
+  return released
 }
 
 /** Start the walk after whatever is already planned in the morning (or after arriving), never before 09:30. */

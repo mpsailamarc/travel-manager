@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigate, NavLink, Outlet, useLocation, useOutletContext, useParams } from 'react-router-dom'
+import { Navigate, NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '../db'
+import { reconcileTrip } from '../lib/favorites'
 import type { Day, Item, Settings, Trip } from '../types'
 import { useDays, useItems, useSettings, useTrip } from '../lib/hooks'
 import { daysBetween, formatRange, today } from '../lib/dates'
 import { plural } from '../lib/format'
-import { Empty } from '../components/ui'
+import { Empty, toast } from '../components/ui'
 import { TripDetailsModal } from './TripDetailsModal'
 
 export interface TripCtx {
@@ -95,6 +98,31 @@ export default function TripLayout() {
   const days = useDays(tripId)
   const settings = useSettings()
   const [editing, setEditing] = useState(false)
+  const navigate = useNavigate()
+
+  // Whatever changed (a day's city, the trip's dates, an item moved or deleted, a replan, a sync from another device),
+  // the wishlist and the plan are brought back in line a moment later. Nothing happens when they already agree.
+  const favSig = useLiveQuery(
+    async () => (tripId ? (await db.favorites.where('tripId').equals(tripId).toArray()).map((f) => `${f.id}:${f.date}:${f.itemId}:${f.city}`).join('|') : ''),
+    [tripId],
+  )
+  const sig =
+    trip && items && days && favSig !== undefined
+      ? [trip.startDate, trip.endDate, days.map((d) => `${d.date}:${d.city}`).join(), items.map((i) => `${i.id}:${i.date}:${i.status}:${i.planner ?? ''}:${i.favId ?? ''}:${i.kind}`).join(), favSig].join('#')
+      : ''
+  useEffect(() => {
+    if (!sig || !tripId) return
+    const t = setTimeout(async () => {
+      const released = await reconcileTrip(tripId)
+      if (released.length)
+        toast(`${released.length === 1 ? released[0] : `${released.length} wishlist places`} went back to the backup ideas: ${released.length === 1 ? 'its day' : 'their days'} changed city or left the trip.`, {
+          label: 'City planner',
+          run: () => navigate(`/trip/${tripId}/favorites`),
+        })
+    }, 500)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig])
 
   if (trip === undefined || !items || !days) {
     // Still loading or deleted: Dexie returns undefined for both, so show a neutral state.
