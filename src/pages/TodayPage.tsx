@@ -17,6 +17,7 @@ import { planRipple } from '../lib/ripple'
 import { KIND_META, isTransport, needsBooking } from '../components/kinds'
 import { Empty, Modal, Section, toast } from '../components/ui'
 import { DayRouteMap } from '../components/DayRouteMap'
+import { OptimiseDayButton } from '../components/OptimiseDay'
 import { useDayRoute } from '../lib/dayroute'
 import LazyMap from '../components/LazyMap'
 import { BackupIdeas } from '../components/BackupIdeas'
@@ -87,8 +88,8 @@ export default function TodayPage() {
     if (!other) return
     // Swap positions; if both are timed, swap times too so "do this first" just works.
     await db.items.bulkUpdate([
-      { key: it.id, changes: { order: other.order, startTime: other.startTime && it.startTime ? other.startTime : it.startTime, autoTime: undefined } },
-      { key: other.id, changes: { order: it.order, startTime: other.startTime && it.startTime ? it.startTime : other.startTime, autoTime: undefined } },
+      { key: it.id, changes: { order: other.order, startTime: other.startTime && it.startTime ? other.startTime : it.startTime, autoTime: undefined, locked: true } },
+      { key: other.id, changes: { order: it.order, startTime: other.startTime && it.startTime ? it.startTime : other.startTime, autoTime: undefined, locked: true } },
     ])
     await adoptPlannerItems([it.id, other.id])
   }
@@ -96,7 +97,7 @@ export default function TodayPage() {
   async function postpone(it: Item) {
     const tomorrow = addDays(it.date, 1)
     if (tomorrow > trip.endDate) return toast('That’s the last day of the trip')
-    await db.items.update(it.id, { date: tomorrow, startTime: undefined, autoTime: undefined })
+    await db.items.update(it.id, { date: tomorrow, startTime: undefined, autoTime: undefined, locked: undefined })
     await adoptPlannerItems([it.id])
     toast(`Moved to ${formatDate(tomorrow)}`)
   }
@@ -105,8 +106,8 @@ export default function TodayPage() {
   /** Dragged on the calendar: save the new times. If it now overlaps what follows, offer to push those back. */
   async function moveOnCalendar(it: Item, times: { startTime: string; endTime?: string }) {
     const before = { startTime: it.startTime, endTime: it.endTime }
-    // Placed by hand: the time is yours now, "Plan my days" leaves it there.
-    await db.items.update(it.id, { startTime: times.startTime, endTime: times.endTime ?? it.endTime, autoTime: undefined })
+    // Placed by hand: 📌 locked at that time, so planning and optimising leave it there (unlock it from its ⋯ menu).
+    await db.items.update(it.id, { startTime: times.startTime, endTime: times.endTime ?? it.endTime, autoTime: undefined, locked: true })
     await adoptPlannerItems([it.id])
     await touchTrip(trip.id)
     const ripple = planRipple(await db.items.where({ tripId: trip.id, date: it.date }).toArray(), { id: it.id, startTime: times.startTime, endTime: times.endTime }, before)
@@ -228,6 +229,7 @@ export default function TodayPage() {
                 <span className="small muted nowrap">
                   {dayItems.filter((i) => i.status === 'done').length}/{dayItems.length} done
                 </span>
+                {dayItems.length > 1 && <OptimiseDayButton tripId={trip.id} date={date} settings={settings} />}
                 {dayItems.length > 0 && (
                   <div className="chips" style={{ flexWrap: 'nowrap' }}>
                     <button className={`chip ${mode === 'timeline' ? 'on' : ''}`} onClick={() => setMode('timeline')}>
@@ -271,6 +273,13 @@ export default function TodayPage() {
                           onUp={() => move(it, -1)}
                           onDown={() => move(it, 1)}
                           onSkip={() => setStatus(it, 'skipped')}
+                          locked={it.locked}
+                          canLock={['activity', 'meal', 'walk', 'note'].includes(it.kind) && !!it.startTime}
+                          onLock={async () => {
+                            await db.items.update(it.id, { locked: it.locked ? undefined : true })
+                            await touchTrip(trip.id)
+                            toast(it.locked ? `${it.title} can move again when you optimise` : `📌 ${it.title} stays at ${it.startTime}`)
+                          }}
                           onTomorrow={() => postpone(it)}
                           navigateTo={it.location ?? it.to}
                         />
@@ -356,6 +365,9 @@ function DayItemMenu(p: {
   onSkip: () => void
   onTomorrow: () => void
   navigateTo?: { lat?: number; lon?: number }
+  locked?: boolean
+  canLock?: boolean
+  onLock?: () => void
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -381,6 +393,11 @@ function DayItemMenu(p: {
           <button className="btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} onClick={p.onSkip}>
             {p.skipped ? '↺ Un-skip' : '⤼ Skip'}
           </button>
+          {p.canLock && (
+            <button className="btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} onClick={p.onLock}>
+              {p.locked ? '🔓 Let it move' : '📌 Lock this time'}
+            </button>
+          )}
           {p.navigateTo?.lat != null && (
             <a className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} href={directionsUrl(p.navigateTo.lat, p.navigateTo.lon!, 'walking')} target="_blank" rel="noreferrer">
               🧭 Directions

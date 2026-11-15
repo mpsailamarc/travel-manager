@@ -146,6 +146,7 @@ export interface Item {
   planner?: string // set on items built from favourites ("fav:<city>") so they can be rebuilt
   favId?: string // the wishlist place this item came from
   legIn?: Leg // how to get here from the previous place of the day (set by the City planner)
+  locked?: boolean // 📌 keep this time: optimising and planning never move it (booked items, journeys and stays are always kept)
   autoTime?: boolean // its time was set by "Plan my days" (it had none): planning again may move it; editing it by hand makes the time yours
 }
 

@@ -65,6 +65,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
   const isNew = !item.id
   const [newId] = useState(uid) // fixed when the form opens: tapping Save twice saves one item
   const [saving, setSaving] = useState(false)
+  const [lockTouched, setLockTouched] = useState(false) // ticked or unticked 📌 yourself: that wins over the automatic lock
   const [it, setIt] = useState<Partial<Item> & { date: string }>({ kind: 'activity', status: 'planned', ...item })
   const set = <K extends keyof Item>(k: K, v: Item[K] | undefined) => setIt((s) => ({ ...s, [k]: v }))
   const kind = (it.kind ?? 'activity') as ItemKind
@@ -129,6 +130,8 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       planner: it.planner,
       favId: it.favId,
       legIn: it.legIn,
+      // Changing the time by hand pins it there; otherwise the lock is whatever the box says.
+      locked: (lockTouched ? it.locked : it.locked || (!isNew && (it.startTime !== item.startTime || it.endTime !== item.endTime) && !!it.startTime)) || undefined,
     }
     await db.items.put(full)
     if (full.planner) await adoptPlannerItems([full.id]) // changed by hand: it is yours now, the City planner leaves it alone
@@ -189,6 +192,14 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
             {isTransport(kind) ? `Arrives${zones.to ? ` · ${tzCity(zones.to)} time` : ''}` : 'Ends'}
             <input type="time" value={it.endTime ?? ''} onChange={(e) => set('endTime', e.target.value)} />
           </label>
+          {['activity', 'meal', 'walk', 'note'].includes(kind) && (
+            <label className="inline" style={{ alignSelf: 'end' }}>
+              <input type="checkbox" checked={!!it.locked} onChange={(e) => {
+                  setLockTouched(true)
+                  set('locked', e.target.checked || undefined)
+                }} /> 📌 Keep this time
+            </label>
+          )}
           <label>
             Status
             <select value={it.status} onChange={(e) => set('status', e.target.value as ItemStatus)}>

@@ -16,6 +16,7 @@ import { Empty, Progress, Section, Stars, toast } from '../components/ui'
 import { PlaceModal, type PlaceSubject } from '../components/PlaceModal'
 import { matchesPlace } from '../lib/duplicates'
 import { useDayRoute } from '../lib/dayroute'
+import { OptimiseDayButton } from '../components/OptimiseDay'
 import { GET_AROUND_LABEL, legText } from '../lib/legs'
 import LazyMap, { type MapMarker, type MapViewState } from '../components/LazyMap'
 import { tripadvisorSearch } from '../lib/links'
@@ -349,9 +350,12 @@ export default function FavoritesPage() {
                   <Progress value={used} max={cap || 1} over={used > cap} />
                   {list.some((f) => f.lat != null && !f.itemId) && (
                     <div>
-                      <button className="btn-sm" onClick={() => showOnMap(d)}>
-                        🗺️ Show this day on the map
-                      </button>
+                      <div className="row wrap">
+                        <button className="btn-sm" onClick={() => showOnMap(d)}>
+                          🗺️ Show this day on the map
+                        </button>
+                        <OptimiseDayButton tripId={trip.id} date={d} settings={settings} />
+                      </div>
                     </div>
                   )}
                   {list.some((f) => f.lat != null && !f.itemId) && (

@@ -73,10 +73,15 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **The day's path, everywhere**: every item with a place (planned by the City planner or added or edited by hand) is numbered in time order, with
   the way to get between them. Day by day has a "🗺️ Day on the map" card (the numbers in the list match the map; tap one to jump to it), and the
   City planner's day chips draw the same path, with links between the two.
+- **🔀 Optimise this day** (Day by day, and each day in the City planner): reorders everything that can move to cut travel. Fixed things with
+  a place split the day into stretches; each place goes where it adds the least travel and still fits, in the shortest order between the
+  stretch's two ends; lunch and dinner go in at their time of day. You see the new order and the travel saved first, then Apply or Keep as is.
+  **📌 Locks** say what never moves: booked items, journeys and stays always; anything you place by hand (dragged on the calendar, time changed
+  in the form, moved up/down) is locked automatically, and any item can be locked or unlocked from its ⋯ menu or form. "Plan my days" uses the
+  same engine, so both screens agree.
 - **Plan my days schedules the whole day**: besides the wishlist, it gives times to what the day already holds without one (an itinerary's
   "Tower of London", "Lunch at Borough Market"), and ties wishlist places to those items instead of adding them again on another day. Lunch
-  goes in around noon. Anything you timed yourself, booked, or a journey stays put and the rest fits around it, using free gaps before it.
-  Planning again gives the same result and can re-time what it timed before; a time you set by hand (form or calendar) is then yours.
+  goes in around noon. Anything 📌 locked, booked, or a journey stays put and the rest fits around it. Planning again gives the same result.
 - **Always in step**: whatever changes (a day moved to another city in the Plan, the trip made shorter, a day replanned by the chatbot, an item moved,
   merged or deleted, an edit synced from another device), the wishlist and Day by day are brought back in line a moment later: places on a day
   that's no longer in their city go back to the backup ideas (with a note saying so), the calendar loses what the planner had put there, places linked

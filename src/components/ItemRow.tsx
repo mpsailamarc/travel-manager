@@ -38,6 +38,7 @@ export function ItemRow({ item, onClick, actions, showStatus = true, zoneNote, p
           {showStatus && item.status !== 'planned' && <StatusBadge status={item.status} />}
           {showStatus && item.status === 'planned' && needsBooking(item.kind) && <StatusBadge status="planned" />}
           {item.kind === 'drive' && <span className="badge">Self-drive · no booking</span>}
+          {item.locked && <span className="badge" title="Locked: optimising and planning keep this time">📌</span>}
         </div>
         {itemSubtitle(item) && <div className="item-sub">{itemSubtitle(item)}</div>}
         {zoneNote && <div className="item-sub">🌏 {zoneNote}</div>}
