@@ -1,5 +1,6 @@
 // A day's path: where you slept, then every item with a place (planned by the City planner, added or edited by hand, and the
-// day's drives, trains, buses, boats and taxis), in time order, with how you get from each to the next. Shared by Day by day
+// day's drives, trains, buses, boats, taxis and flights), in time order, with how you get from each to the next. A flight is
+// the way to its airport, then a straight dashed line to where it lands. Shared by Day by day
 // and the City planner so both draw the same map.
 
 import type { Day, GetAround, Item, Leg, Place, Settings } from '../types'
@@ -11,6 +12,7 @@ import { DEFAULT_WALK_MAX_MIN, getAroundFor, MODE_COLOR, MODE_DASHED, planLeg } 
 
 export interface RouteStop {
   item: Item
+  access?: Leg // a flight: getting to the airport it leaves from
   at: { lat: number; lon: number } // where it is (a journey: where it takes you; an old walking tour: its first stop)
   leg?: Leg // how to get here from the previous stop (or from the start, for the first one)
 }
@@ -22,7 +24,7 @@ export interface DayRoute {
 }
 
 const PLACES = new Set(['activity', 'meal', 'walk', 'note'])
-const MOVES = new Set(['drive', 'car', 'train', 'bus', 'ferry', 'taxi']) // flights are left out: their ends are far away
+const MOVES = new Set(['drive', 'car', 'train', 'bus', 'ferry', 'taxi', 'flight'])
 
 const ll = (p?: Place) => {
   if (!p) return undefined
@@ -35,7 +37,7 @@ const ll = (p?: Place) => {
 /** Where an item is: its place; for a journey, where it takes you (a car pick-up: where you collect it); an old tour: its first stop. */
 export function placeAt(it: Item): { lat: number; lon: number } | undefined {
   if (MOVES.has(it.kind)) {
-    if (it.kind === 'car') return ll(it.location) ?? ll(it.from) ?? ll({ name: it.title })
+    if (it.kind === 'car') return ll(it.location) ?? ll(it.to) ?? ll(it.from) ?? ll({ name: it.title })
     return ll(it.to)
   }
   if (it.location?.lat != null && it.location.lon != null) return { lat: it.location.lat, lon: it.location.lon }
@@ -98,6 +100,21 @@ export async function buildRoute(stops: Item[], pref: GetAround, settings: Setti
       out.push({ item: it, at })
       continue
     }
+    if (it.kind === 'flight') {
+      // To the airport it leaves from (when that's known and not where you already are), then straight to where it lands.
+      const origin = prev ? placeAt(prev)! : begin
+      const dep = ll(it.from)
+      const access = origin && dep && haversineM(origin, dep) > 500 ? { ...(await planLeg(origin, dep, pref, walkMax, settings.walkSpeedKmh)), fromName: prev?.title ?? begin?.name } : undefined
+      // Without the departure airport, it flies from where you were — unless that's where it lands (arriving, the hotel is tonight's).
+      const a = dep ?? (origin && haversineM(origin, at) > 50_000 ? origin : undefined)
+      const km = a ? haversineM(a, at) / 1000 : 0
+      const flight: Leg | undefined = a
+        ? { mode: 'flight', minutes: Math.round((km / 800) * 60 + 30), distanceM: km * 1000, geometry: [[a.lon, a.lat], [at.lon, at.lat]], estimated: true, fromName: it.from?.name ?? prev?.title ?? begin?.name }
+        : undefined
+      out.push({ item: it, at, access, leg: flight })
+      prev = it
+      continue
+    }
     let l = storedLeg(it, prev)
     if (!l && prev) l = await leg(placeAt(prev)!, at, it, prev.title)
     if (!l && !prev && begin) l = await leg(begin, at, it, begin.name)
@@ -107,8 +124,8 @@ export async function buildRoute(stops: Item[], pref: GetAround, settings: Setti
   const first = out[0]?.leg?.geometry?.[0]
   const start = begin ?? (first ? { lat: first[1], lon: first[0], name: out[0].leg!.fromName } : undefined)
   const segments = out
-    .filter((s) => s.leg?.geometry?.length)
-    .map((s) => ({ coords: s.leg!.geometry!, dashed: s.item.kind === 'ferry' || MODE_DASHED[s.leg!.mode], color: s.item.kind === 'ferry' ? '#0891b2' : MODE_COLOR[s.leg!.mode] }))
+    .flatMap((s) => [s.access, s.leg].filter((l): l is Leg => !!l?.geometry?.length).map((l) => ({ l, ferry: s.item.kind === 'ferry' && l === s.leg })))
+    .map(({ l, ferry }) => ({ coords: l.geometry!, dashed: ferry || MODE_DASHED[l.mode], color: ferry ? '#0891b2' : MODE_COLOR[l.mode] }))
   // Old walking tours (one item with its own path) keep drawing that path.
   for (const s of out) if (s.item.walk?.geometry?.length) segments.push({ coords: s.item.walk.geometry, dashed: s.item.walk.routedBy === 'straight-line', color: MODE_COLOR.walk })
   return { stops: out, segments, start }

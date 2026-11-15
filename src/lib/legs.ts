@@ -35,11 +35,11 @@ export function getAroundFor(day: Day | undefined, settings: Settings, items: It
   return settings.getAround ?? 'transit'
 }
 
-export const MODE_EMOJI = { walk: '🚶', transit: '🚇', taxi: '🚕', drive: '🚗' } as const
+export const MODE_EMOJI = { walk: '🚶', transit: '🚇', taxi: '🚕', drive: '🚗', flight: '✈️' } as const
 
 /** Map colours: walking green, public transport blue (dashed: its path is approximate), taxi orange. */
-export const MODE_COLOR = { walk: '#16a34a', transit: '#2563eb', taxi: '#ea580c', drive: '#a16207' } as const
-export const MODE_DASHED = { walk: false, transit: true, taxi: false, drive: false } as const
+export const MODE_COLOR = { walk: '#16a34a', transit: '#2563eb', taxi: '#ea580c', drive: '#a16207', flight: '#64748b' } as const
+export const MODE_DASHED = { walk: false, transit: true, taxi: false, drive: false, flight: true } as const
 
 async function walkLeg(a: LatLon, b: LatLon, speedKmh: number): Promise<Leg> {
   const speed = (speedKmh * 1000) / 3600
@@ -94,7 +94,7 @@ export async function planLeg(a: LatLon, b: LatLon, pref: GetAround, walkMaxMin 
 /** "🚶 12 min · 900 m", "🚇 about 25 min (estimate)" */
 export function legText(l: Leg, fmtDistance: (m: number) => string): string {
   const mins = l.minutes < 60 ? `${l.minutes} min` : `${Math.floor(l.minutes / 60)} h ${String(l.minutes % 60).padStart(2, '0')}`
-  return `${MODE_EMOJI[l.mode]} ${l.mode === 'transit' ? `about ${mins} (estimate)` : mins} · ${fmtDistance(l.distanceM)}`
+  return `${MODE_EMOJI[l.mode]} ${l.mode === 'transit' || l.mode === 'flight' ? `about ${mins} (estimate)` : mins} · ${fmtDistance(l.distanceM)}`
 }
 
 /** Real timetables and fares live outside the app: these open the same trip there. */

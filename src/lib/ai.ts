@@ -292,7 +292,8 @@ Guidelines:
 - Each day's "city", "lat" and "lon" are the town where we sleep that night (on a day we fly in, where we land; not home, nor an excursion spot). Day trips and excursions are items of that day.
 - Flights: a real schedule for that route (usual departure time and flight time, with the time difference); if it lands the next day, say "arrives next day" in notes.
 - Things at sunrise or sunset start at that place's real sunrise or sunset time on that date.
-- Give real coordinates for each day's town, for places, and for where journeys leave from and arrive, whenever you can.
+- Give real coordinates for each day's town and for places. Every journey needs both ends: "fromLat"/"fromLon" where it leaves and "lat"/"lon" where it arrives — the actual airport, station, port or car-rental office, not the city centre.
+- On a travel day, list each step as its own item, in order: getting to the airport or station (drive, taxi…), returning the rental car, the flight or train, then getting from where it arrives to the next place.
 - Keep "notes" under 15 words.${continuing ? '' : `
 - Checklist: things to do before leaving that are specific to this plan (visas, vaccinations, bookings to make early…).`}
 - If the reply would be too long, stop after a complete day and close the JSON properly — I will ask for the rest.

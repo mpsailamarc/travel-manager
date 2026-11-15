@@ -34,6 +34,12 @@ export function DayRouteMap({ route, loading, onOpen, sizeKey = 'tm-day-route-ma
         <p className="tiny muted" style={{ margin: 0 }}>
           <span style={{ color: MODE_COLOR.walk }}>━</span> walk · <span style={{ color: MODE_COLOR.transit }}>┅</span> public transport (approximate path) ·{' '}
           <span style={{ color: MODE_COLOR.taxi }}>━</span> taxi · <span style={{ color: MODE_COLOR.drive }}>━</span> your car
+          {route.stops.some((s) => s.item.kind === 'flight') && (
+            <>
+              {' '}
+              · <span style={{ color: MODE_COLOR.flight }}>┅</span> flight
+            </>
+          )}
         </p>
       )}
       <ol className="route-list">
@@ -46,6 +52,11 @@ export function DayRouteMap({ route, loading, onOpen, sizeKey = 'tm-day-route-ma
                   {s.item.startTime && `${s.item.startTime} · `}
                   {s.item.title}
                 </b>
+                {s.access && (
+                  <span className="tiny muted" style={{ display: 'block' }}>
+                    {legText(s.access, distance)} to the airport{s.access.fromName ? ` from ${s.access.fromName}` : ''}
+                  </span>
+                )}
                 {s.leg && (
                   <span className="tiny muted" style={{ display: 'block' }}>
                     {legText(s.leg, distance)}

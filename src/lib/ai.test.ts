@@ -120,6 +120,8 @@ describe('the detailed plan asks for times the app can trust', () => {
     expect(p).toMatch(/real sunrise or sunset time/)
     expect(p).toMatch(/town where we sleep that night/)
     expect(p).toContain('A "note" has no time.')
+    expect(p).toMatch(/Every journey needs both ends/)
+    expect(p).toMatch(/getting to the airport or station .* the flight or train, then getting from where it arrives/)
   })
 
   it('keeps where a journey leaves from, and drops a time a chatbot gave a note', async () => {
