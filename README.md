@@ -18,6 +18,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   (ideas, day detail, replan, booking import, city ideas) then gets an "✨ Ask ChatGPT" button that sends the prompt and fills in the answer, with
   copy and paste still one tap away. The key stays on that device only (not synced, not in backups or shared files); calls go straight to
   api.openai.com. The API is billed by OpenAI separately from a ChatGPT subscription, so set a spending limit; the app shows rough token use.
+  Answers are streamed (they arrive as they're written, with progress shown), a request that drops or finds OpenAI busy
+  is retried by itself, and the detailed plan is asked for 3 days at a time and carries on until every day is done.
 - **Import booking emails**: paste confirmation emails and get booked flights, trains and stays in the plan (same copy-paste trick).
 - **Quick template**: a skeleton plan with no AI, fully offline.
 - **Push-back on time changes**: when you make an item end later (a landing at 06:28), the editor offers to push the overlapping items after it

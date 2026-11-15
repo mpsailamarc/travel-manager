@@ -275,9 +275,14 @@ export function detailPrompt(trip: Trip, settings: Settings, option: AiOption, d
     })
     .join('\n')
   const range = days.length > 1 ? `days ${days[0]} to ${days[days.length - 1]}` : `day ${days[0]}`
+  // A follow-up repeats the brief, so it also works on its own (asking ChatGPT a few days at a time, without the chat so far).
   const intro = continuing
-    ? `Continue the detailed plan for "${option.title}" with ${range} only, in exactly the same JSON format.`
-    : `Turn the itinerary option "${option.title}" into a detailed day-by-day plan.
+    ? `Continue the detailed plan for "${option.title}" with ${range} only, in exactly the same JSON format.
+
+${tripBrief(trip, settings)}
+
+Route: ${option.route.join(' → ')}`
+    : `Turn the itinerary option "${option.title}" into a detailed day-by-day plan${days.length < option.days.length ? ` — ${range} for now` : ''}.
 
 ${tripBrief(trip, settings)}
 

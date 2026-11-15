@@ -66,6 +66,7 @@ export function PromptBox({
 }) {
   const cfg = useAiConfig()
   const [busy, setBusy] = useState(false)
+  const [chars, setChars] = useState(0)
   const [error, setError] = useState<string>()
   const api = aiReady(cfg) && !!onAnswer
   const asked = useRef(false)
@@ -79,11 +80,12 @@ export function PromptBox({
 
   async function ask() {
     setBusy(true)
+    setChars(0)
     setError(undefined)
     try {
       // Follow-up prompts ("same chat") need the earlier questions and answers, as a chat window would keep them.
       const messages = [...(history ?? []).flatMap((h) => [{ role: 'user' as const, content: h.prompt }, { role: 'assistant' as const, content: h.reply }]), { role: 'user' as const, content: prompt }]
-      onAnswer!(await askAI(messages))
+      onAnswer!(await askAI(messages, setChars))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -109,7 +111,7 @@ export function PromptBox({
       <div className="stack" style={{ gap: 8 }}>
         <div className="row wrap">
           <button className="btn-primary" disabled={busy} onClick={ask}>
-            {busy ? '⏳ Asking ChatGPT… (can take a minute)' : '✨ Ask ChatGPT'}
+            {busy ? (chars ? `⏳ ChatGPT is writing… ${chars.toLocaleString()} characters` : '⏳ ChatGPT is thinking…') : '✨ Ask ChatGPT'}
           </button>
           <span className="tiny muted">uses your API key · {cfg.model}</span>
         </div>
@@ -445,6 +447,8 @@ function OptionCard({
  * Asks for the full plan of one option. If the chatbot's reply is cut off, the days already received are kept
  * and a follow-up prompt asks for the missing ones, in as many rounds as needed.
  */
+const DAYS_PER_ASK = 3
+
 function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption; onBack: () => void; onUse: (o: AiOption) => void; replaceChoice: ReactNode }) {
   const api = useAiWords()
   const { trip, settings } = useTripCtx()
@@ -463,29 +467,70 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
     keep(storeKey, trimmed)
   }
 
-  // Walk through the replies in order, tracking which days are still missing before each one.
-  const rounds: { prompt: string; text: string; result?: ReturnType<typeof parseDetail>; error?: string; missingBefore: number[] }[] = []
-  const ok: ReturnType<typeof parseDetail>[] = []
-  let missing = expected
-  for (let i = 0; i <= replies.length; i++) {
-    if (i > 0 && (!rounds[i - 1].result || !missing.length)) break
-    const prompt = detailPrompt(trip, settings, option, missing, i > 0)
-    const text = replies[i] ?? ''
-    const round: (typeof rounds)[number] = { prompt, text, missingBefore: missing }
-    if (text.trim()) {
-      try {
-        round.result = parseDetail(text)
-        ok.push(round.result)
-        const done = new Set(ok.flatMap((r) => r.days.filter((d) => d.items.length).map((d) => d.day)))
-        missing = expected.filter((n) => !done.has(n))
-      } catch (e) {
-        round.error = (e as Error).message
-      }
-    }
-    rounds.push(round)
-  }
+  const { rounds, ok, missing } = detailRounds(replies)
   const merged = mergeDetail(option, ok)
   const detailedCount = expected.length - missing.length
+
+  // Walk through the replies in order, tracking which days are still missing before each one. With ChatGPT set up, each
+  // request asks for a few days only: short answers come back quickly and are never cut off.
+  function detailRounds(replies: string[]) {
+    const rounds: { prompt: string; text: string; result?: ReturnType<typeof parseDetail>; error?: string; missingBefore: number[] }[] = []
+    const ok: ReturnType<typeof parseDetail>[] = []
+    let missing = expected
+    for (let i = 0; i <= replies.length; i++) {
+      if (i > 0 && (!rounds[i - 1].result || !missing.length)) break
+      const prompt = detailPrompt(trip, settings, option, api ? missing.slice(0, DAYS_PER_ASK) : missing, i > 0)
+      const text = replies[i] ?? ''
+      const round: (typeof rounds)[number] = { prompt, text, missingBefore: missing }
+      if (text.trim()) {
+        try {
+          round.result = parseDetail(text)
+          ok.push(round.result)
+          const done = new Set(ok.flatMap((r) => r.days.filter((d) => d.items.length).map((d) => d.day)))
+          missing = expected.filter((n) => !done.has(n))
+        } catch (e) {
+          round.error = (e as Error).message
+        }
+      }
+      rounds.push(round)
+    }
+    return { rounds, ok, missing }
+  }
+
+  // "Ask ChatGPT for all the days": one short request after another until every day has its detail. An answer that
+  // can't be read is asked for once more; the days already received are kept whatever happens.
+  const [asking, setAsking] = useState<{ days: number[]; chars: number }>()
+  const [askError, setAskError] = useState<string>()
+  async function askAll() {
+    setAskError(undefined)
+    // Keep the answers that could be read (they come first: reading stops at the first one that can't).
+    let reps = replies.slice(0, detailRounds(replies).rounds.filter((r) => r.result).length)
+    let retried = false
+    try {
+      for (let guard = 0; guard < expected.length + 4; guard++) {
+        const r = detailRounds(reps)
+        if (!r.missing.length) break
+        const next = r.rounds[r.rounds.length - 1]
+        const days = r.missing.slice(0, DAYS_PER_ASK)
+        setAsking({ days, chars: 0 })
+        const text = await askAI([{ role: 'user', content: next.prompt }], (chars) => setAsking({ days, chars }))
+        const after = detailRounds([...reps, text])
+        if (!after.rounds[reps.length]?.result || after.missing.length >= r.missing.length) {
+          if (retried) throw new Error(`ChatGPT's answer for day ${days.join(', ')} couldn't be used twice in a row. Try again, or pick another model in Settings.`)
+          retried = true
+          continue
+        }
+        retried = false
+        reps = [...reps, text]
+        setReplies(reps)
+        keep(storeKey, reps)
+      }
+    } catch (e) {
+      setAskError((e as Error).message)
+    } finally {
+      setAsking(undefined)
+    }
+  }
 
   return (
     <div className="stack-lg" style={{ maxWidth: 900 }}>
@@ -498,7 +543,26 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
       <div className="card stack">
         <h2>Detailed plan: {option.title}</h2>
         <p className="small muted">{option.route.join(' → ')} · {expected.length} days</p>
-        {rounds.map((r, i) => (
+        {api && (
+          <div className="stack" style={{ gap: 8 }}>
+            <div className="row wrap">
+              <button className="btn-primary" disabled={!!asking || !missing.length} onClick={askAll}>
+                {asking
+                  ? `⏳ Days ${asking.days[0]}${asking.days.length > 1 ? `–${asking.days[asking.days.length - 1]}` : ''} of ${expected.length}${asking.chars ? ` · ${asking.chars.toLocaleString()} characters` : ' · ChatGPT is thinking'}…`
+                  : !missing.length
+                    ? '✓ Every day has its detail'
+                    : detailedCount
+                      ? `✨ Ask ChatGPT for the other ${missing.length} days`
+                      : `✨ Ask ChatGPT for all ${expected.length} days`}
+              </button>
+            </div>
+            <p className="tiny muted" style={{ margin: 0 }}>
+              It asks for {DAYS_PER_ASK} days at a time, so each answer is quick, and carries on by itself. If the connection drops, it tries again; what came back is kept.
+            </p>
+            {askError && <div className="notice error">{askError}</div>}
+          </div>
+        )}
+        {!api && rounds.map((r, i) => (
           <div key={i} className="stack" style={{ gap: 8 }}>
             {i === 0 ? (
               <p className="small">
