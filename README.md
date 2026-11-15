@@ -72,7 +72,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   order, fitted around anything already fixed (booked tickets, lunch). Places your plan already holds (the itinerary's own "Visit the castle") are
   **linked, not duplicated**, in both directions. Change one by hand (time, day, tick it off) and it becomes yours: re-planning leaves it alone;
   delete it and the place goes back to the wishlist's backup ideas.
-- **The day's path, everywhere**: every item with a place (planned by the City planner or added or edited by hand) is numbered in time order, with
+- **The day's path, everywhere**: it starts where you slept (last night's hotel on a moving day) and goes through the car pick-up, drives
+  (by road), trains, buses, boats and taxis as well as every item with a place, numbered in time order (things without a time are shown but
+  not on the path), with
   the way to get between them. Day by day has a "🗺️ Day on the map" card (the numbers in the list match the map; tap one to jump to it), and the
   City planner's day chips draw the same path, with links between the two.
 - **🔀 Optimise this day** (Day by day, and each day in the City planner): reorders everything that can move to cut travel. Fixed things with
