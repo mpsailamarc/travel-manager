@@ -90,3 +90,31 @@ describe('the estimate makes sense for where you start', () => {
     expect(driving.lines.some((l) => /^Flights/.test(l.label))).toBe(false)
   })
 })
+
+describe('prices and notes follow the group', () => {
+  const adult = (id: string) => ({ id, name: id, type: 'adult' as const })
+  it('estimated plan prices scale with the travellers; booked ones and taxis stay', async () => {
+    const { scaleCostsForGroup } = await import('./budget')
+    const two = await makeTrip({ travellers: [adult('a'), adult('b')] })
+    const four = { ...two, travellers: [adult('a'), adult('b'), adult('c'), adult('d')] }
+    const items = [
+      { id: 'f', kind: 'flight', status: 'planned', cost: { amount: 400, currency: 'EUR' } },
+      { id: 'b', kind: 'flight', status: 'booked', bookingRef: 'X', cost: { amount: 400, currency: 'EUR' } },
+      { id: 't', kind: 'taxi', status: 'planned', cost: { amount: 30, currency: 'EUR' } },
+      { id: 'h', kind: 'stay', status: 'planned', cost: { amount: 300, currency: 'EUR' } },
+    ] as never[]
+    const out = new Map(scaleCostsForGroup(items, two, four).map((p) => [p.id, p.cost.amount]))
+    expect(out.get('f')).toBe(800)
+    expect(out.has('b')).toBe(false)
+    expect(out.has('t')).toBe(false)
+    expect(out.get('h')).toBe(600) // two rooms instead of one
+  })
+
+  it('"How this was estimated" and figures from an itinerary idea follow too', async () => {
+    const { adjustBasisToTrip, adjustPlanBudgetToTrip } = await import('./budget')
+    const two = await makeTrip({ travellers: [adult('a'), adult('b')] })
+    const four = { ...two, travellers: [adult('a'), adult('b'), adult('c'), adult('d')] }
+    expect(adjustBasisToTrip(['For 2 adults, 3 days and 2 nights (1 room).', 'Other note.'], four)).toEqual(['For 4 adults, 3 days and 2 nights (2 rooms).', 'Other note.'])
+    expect(adjustPlanBudgetToTrip({ flights: 800, food: 300, other: 50 }, ['flights', 'food'], undefined, two, four)).toEqual({ flights: 1600, food: 600, other: 50 })
+  })
+})

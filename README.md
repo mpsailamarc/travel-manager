@@ -94,10 +94,13 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   follows straight away.
 - **One budget**: each category adds up exactly the lines under it: the prices of plan items (📌, editable right there: the plan item
   changes too) and your own lines for the rest (meals, local transport…). A figure typed for a category is its total: what the plan's
-  prices don't use of it shows as "Rest of the budget you set". "Estimate for me" doesn't estimate what the plan already prices.
+  prices don't use of it shows as "Rest of the budget you set". The estimate doesn't count what the plan already prices.
 - **Budget by type**: a bar per category (longest first): the pale track is the budget, the solid part what's spent, red past the budget.
-- **The budget follows the trip**: change the number of travellers or the dates in Trip details and the estimate's lines (per person per
-  day, flights, nights and rooms, moves) are recalculated, so the totals at the top change too.
+- **The budget follows the trip**: change the number of travellers or the dates in Trip details and the budget follows: the estimate's
+  lines (per person per day, flights, nights and rooms, moves) and its "How this was estimated" note, figures from an itinerary idea, and
+  the estimated (not booked) prices of plan items (fares per traveller, tickets and meals per person, hotels per room). Booked prices stay.
+- **No "Estimate for me" button**: a trip with no budget starts from the estimate on its own; "↻ Start the estimate again" is under
+  "How this was estimated". Categories open folded, totals first.
 - **Home as the default start**: Settings → Home city or usual airport. New trips, and trips with no start set, start and end there.
 - **Packed pace** fills about 90% of a 9:00–21:00 day.
 - **With ChatGPT set up** (Settings → AI assistant) the copy-and-paste way is hidden: each AI step is one "Ask ChatGPT" button, and the

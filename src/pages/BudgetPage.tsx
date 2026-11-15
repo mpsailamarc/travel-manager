@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, touchTrip } from '../db'
@@ -37,7 +37,8 @@ export default function BudgetPage() {
   const [editing, setEditing] = useState<Expense | null>(null)
   const cols = 3
   const [basisOpen, setBasisOpen] = useState(false)
-  const [folded, setFolded] = useState<Partial<Record<BudgetCategory, boolean>>>({})
+  // Categories start folded: the totals first, open one for its lines.
+  const [folded, setFolded] = useState<Partial<Record<BudgetCategory, boolean>>>(() => Object.fromEntries(BUDGET_CATEGORIES.map((c) => [c, true])))
   const [assumptions, setAssumptions] = useState<Set<string>>(new Set()) // lines whose quantity × price editor is open
   // Lines from an older estimate get their quantity and price read back from their label (the amount stays the same).
   useEffect(() => {
@@ -50,6 +51,7 @@ export default function BudgetPage() {
     if (next.some((l, i) => l !== old[i])) db.trips.update(trip.id, { budgetLines: next })
   }, [trip.id, trip.budgetLines, trip.startPlace?.country, trip.countryCodes])
 
+  const autoEstimated = useRef<string | undefined>(undefined)
   const expenses = useLiveQuery(() => db.expenses.where('tripId').equals(trip.id).toArray(), [trip.id])
 
   const currencies = [...new Set(items.map((i) => i.cost?.currency).filter((c): c is string => !!c))]
@@ -57,6 +59,17 @@ export default function BudgetPage() {
     async () => Object.fromEntries(await Promise.all(currencies.map(async (c) => [c, (await fxRate(c, home)) ?? 1] as const))),
     [currencies.join(), home],
   )
+
+  // A trip with no budget yet starts from the estimate on its own (no button to find): typical costs for the destination,
+  // level and group, minus what the plan already prices. Everything stays editable; "Start the estimate again" redoes it.
+  const ready = !!expenses && (currencies.length === 0 || !!rates)
+  const empty = !trip.budgetLines && !Object.values(trip.budget ?? {}).some(Boolean)
+  useEffect(() => {
+    if (!ready || !empty || autoEstimated.current === trip.id) return
+    autoEstimated.current = trip.id
+    void estimate(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, empty, trip.id])
 
   if (!expenses) return null
 
@@ -96,6 +109,7 @@ export default function BudgetPage() {
 
   const lines = trip.budgetLines ?? []
   const hasLines = (c: BudgetCategory) => lines.some((l) => l.category === c)
+  const hasRows = (c: BudgetCategory) => hasLines(c) || pricedIn(c).length > 0
 
   /** Saves the breakdown and re-derives the category totals from it. */
   async function saveLines(next: BudgetLine[]) {
@@ -103,11 +117,12 @@ export default function BudgetPage() {
     await touchTrip(trip.id)
   }
 
-  async function estimate() {
+  async function estimate(auto = false) {
     if (
+      !auto &&
       (totalBudget || lines.length) &&
       !confirm(
-        'Estimate for me builds a rough starting budget from typical costs for your destination, your budget level and your group.\n\n' +
+        'This builds a fresh rough budget from typical costs for your destination, your budget level and your group.\n\n' +
           'It REPLACES the budget numbers and lines you have now (your expenses and plan costs are not touched).\n\nContinue?',
       )
     )
@@ -127,6 +142,7 @@ export default function BudgetPage() {
     // A fresh estimate replaces everything: categories it has no lines for (e.g. flights) are cleared.
     await db.trips.update(trip.id, { budgetLines: next, budgetBasis: basis, planBudget: undefined, budget: budgetFromLines(next, {}, []) })
     await touchTrip(trip.id)
+    if (auto) return
     setBasisOpen(true)
     toast('Estimate filled in — see “How this was estimated” below the table')
   }
@@ -177,19 +193,16 @@ export default function BudgetPage() {
           <div className="card-title">
             <h3>By category</h3>
             <div className="row">
-              {lines.length > 0 && (
-                <button className="btn-sm btn-ghost" onClick={() => setFolded(BUDGET_CATEGORIES.every((c) => !hasLines(c) || folded[c]) ? {} : Object.fromEntries(BUDGET_CATEGORIES.map((c) => [c, true])))}>
-                  {BUDGET_CATEGORIES.every((c) => !hasLines(c) || folded[c]) ? 'Expand all' : 'Collapse all'}
+              {BUDGET_CATEGORIES.some(hasRows) && (
+                <button className="btn-sm btn-ghost" onClick={() => setFolded(BUDGET_CATEGORIES.every((c) => !hasRows(c) || folded[c]) ? {} : Object.fromEntries(BUDGET_CATEGORIES.map((c) => [c, true])))}>
+                  {BUDGET_CATEGORIES.every((c) => !hasRows(c) || folded[c]) ? 'Expand all' : 'Collapse all'}
                 </button>
               )}
-              <button className="btn-sm" onClick={estimate}>
-                🧮 Estimate for me
-              </button>
             </div>
           </div>
           <p className="small muted" style={{ marginBottom: 8 }}>
-            Not sure what to put? <b>🧮 Estimate for me</b> fills in a rough budget from typical costs for your destination, your budget level and your group. Every line shows
-            <i> quantity × price</i> (for example <i>3 nights × A$263 per night</i>) so you can change it, remove it, or add your own with ＋.
+            The budget starts from a rough estimate (typical costs for your destination, budget level and group) plus the prices in your plan. Open a category
+            to see its lines: each shows <i>quantity × price</i> (for example <i>3 nights × A$263 per night</i>) so you can change it, remove it, or add your own with ＋.
           </p>
           <datalist id="budget-units">
             {['days', 'nights', 'km', 'person-days', 'travellers', 'trips', 'tickets', 'meals'].map((u) => (
@@ -445,6 +458,9 @@ export default function BudgetPage() {
                   </li>
                 ))}
               </ul>
+              <button className="btn-sm" style={{ marginTop: 6 }} onClick={() => estimate()}>
+                ↻ Start the estimate again
+              </button>
             </details>
           )}
           <p className="tiny muted" style={{ marginTop: 8 }}>

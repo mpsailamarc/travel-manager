@@ -161,6 +161,56 @@ export function adjustLinesToTrip(lines: BudgetLine[], before: Trip, after: Trip
   })
 }
 
+/** The "For 2 adults, 4 days and 3 nights (1 room)." line of "How this was estimated", for the trip as it is now. */
+function groupBasis(trip: Trip) {
+  const p = party(trip)
+  return `For ${p.group}, ${plural(p.days, 'day')} and ${plural(p.nights, 'night')} (${plural(p.rooms, 'room')}).`
+}
+
+/** "How this was estimated" follows the trip too: the sentence about the group and its length is rewritten. */
+export function adjustBasisToTrip(basis: string[] | undefined, after: Trip): string[] | undefined {
+  if (!basis) return basis
+  return basis.map((b) => (/^For .+ (day|night)s?\b.*\)\.$/.test(b) ? groupBasis(after) : b))
+}
+
+const PER_TRAVELLER: ReadonlySet<string> = new Set(['flight', 'train', 'bus', 'ferry'])
+const PER_PERSON: ReadonlySet<string> = new Set(['activity', 'meal', 'walk'])
+
+/**
+ * Prices on plan items that are only estimates (not booked, no booking reference) are for the group as it was: with more
+ * or fewer travellers, fares follow the number of travellers, tickets and meals the group size, hotels the rooms.
+ * Booked prices are real and stay; taxis and cars cost the same for everyone.
+ */
+export function scaleCostsForGroup(items: Item[], before: Trip, after: Trip): { id: string; cost: NonNullable<Item['cost']> }[] {
+  const a = party(before)
+  const b = party(after)
+  if (a.adults === b.adults && a.kids === b.kids) return []
+  return items.flatMap((i) => {
+    if (!i.cost?.amount || i.status === 'booked' || i.status === 'done' || i.bookingRef) return []
+    const f = PER_TRAVELLER.has(i.kind) ? b.travellers / a.travellers : PER_PERSON.has(i.kind) ? b.people / a.people : i.kind === 'stay' ? b.roomFactor / a.roomFactor : 1
+    if (f === 1) return []
+    return [{ id: i.id, cost: { ...i.cost, amount: Math.round(i.cost.amount * f) } }]
+  })
+}
+
+/**
+ * Category figures that came from an itinerary idea (no lines) were for the group as it was: they follow it too.
+ * Figures you typed yourself stay as they are.
+ */
+export function adjustPlanBudgetToTrip(budget: Trip['budget'], planBudget: Trip['planBudget'], lines: BudgetLine[] | undefined, before: Trip, after: Trip): Trip['budget'] {
+  const a = party(before)
+  const b = party(after)
+  if (a.days === b.days && a.adults === b.adults && a.kids === b.kids) return budget
+  const out = { ...budget }
+  for (const c of planBudget ?? []) {
+    if (!out[c] || lines?.some((l) => l.category === c)) continue
+    const f =
+      c === 'flights' ? b.travellers / a.travellers : c === 'stays' ? (b.roomFactor * b.nights) / (a.roomFactor * a.nights) : (b.people * b.days) / (a.people * a.days)
+    out[c] = Math.round(out[c]! * f)
+  }
+  return out
+}
+
 /** "per night", "per person per day", "each": what a unit price is for, so "A$263" is never a mystery. */
 export function perPhrase(unit = ''): string {
   const u = unit.toLowerCase()
