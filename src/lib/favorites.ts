@@ -688,6 +688,33 @@ async function travelOf(dayItems: Item[], pref: GetAround, settings: Settings) {
 }
 
 /** "Optimise this day": a proposal (nothing is saved) that reorders what can move to cut travel, around what's kept. */
+const AIRPORT = /airport|aeroporto|aeropuerto|a[ée]roport|flughafen|\(\w{3}\)/i
+
+/**
+ * The taxi (or shuttle) to or from the airport follows the flight: change the flight's time and the transfer moves with it,
+ * 30 minutes after landing, or 3 hours before take-off (the ride plus check-in). Booked or 📌 locked transfers stay.
+ */
+export function alignTransfers(dayItems: Item[]): { item: Item; startTime: string }[] {
+  const flights = dayItems.filter((i) => i.kind === 'flight' && i.status !== 'skipped' && i.startTime)
+  const out: { item: Item; startTime: string }[] = []
+  for (const t of dayItems) {
+    if (!['taxi', 'bus', 'train'].includes(t.kind) || !t.startTime || t.locked || t.bookingRef || t.status === 'booked' || t.status === 'done') continue
+    let want: number | undefined
+    if (AIRPORT.test(t.from?.name ?? '')) {
+      // Landing: the flight that lands before it (or the only one with an arrival time that day).
+      const f = flights.filter((f) => f.endTime).sort((a, b) => b.endTime!.localeCompare(a.endTime!))[0]
+      if (f) want = hhmmToMin(f.endTime!) + 30
+    } else if (AIRPORT.test(t.to?.name ?? '')) {
+      const f = flights.filter((f) => f.startTime! > t.startTime! || hhmmToMin(f.startTime!) - hhmmToMin(t.startTime!) > -360).sort((a, b) => a.startTime!.localeCompare(b.startTime!))[0]
+      if (f) want = hhmmToMin(f.startTime!) - 180
+    }
+    if (want == null || want < 0 || want > 23 * 60 + 45) continue
+    const startTime = minToHHMM(Math.ceil(want / 15) * 15)
+    if (startTime !== t.startTime) out.push({ item: t, startTime })
+  }
+  return out
+}
+
 export async function proposeDay(tripId: string, date: string, settings: Settings, opts: { onlyUntimed?: boolean } = {}): Promise<DayProposal | undefined> {
   const trip = await db.trips.get(tripId)
   if (!trip) return undefined
@@ -698,17 +725,21 @@ export async function proposeDay(tripId: string, date: string, settings: Setting
   ])
   const day = days.find((d) => d.date === date)
   const city = day?.city
-  const dayItems = items.filter((i) => i.date === date && i.status !== 'skipped')
+  // Airport transfers first follow their flights, so the rest of the day is fitted around where they now are.
+  const transfers = alignTransfers(items.filter((i) => i.date === date && i.status !== 'skipped'))
+  const moved = new Map(transfers.map((t) => [t.item.id, t.startTime]))
+  const dayItems = items.filter((i) => i.date === date && i.status !== 'skipped').map((i) => (moved.has(i.id) ? { ...i, startTime: moved.get(i.id)!, endTime: undefined } : i))
   // onlyUntimed: give times to what has none, leaving everything already timed where it is (the itinerary's own times).
   const movableItems = dayItems.filter((i) => isMovable(i) && (!opts.onlyUntimed || !i.startTime))
-  if (!movableItems.length) return undefined
+  if (!movableItems.length && !transfers.length) return undefined
   const ids = new Set(movableItems.map((i) => i.id))
   const cityDays = city ? cityDates(days, city) : []
   const arriving = arrivalTest(city, day, date === cityDays[0])
   const plan = await scheduleDay({ trip, date, city, day, days, items, settings, arriving }, dayItems.filter((i) => !ids.has(i.id)), movableItems.map((i) => ownMovable(i, favs)))
   const pref = getAroundFor(day, settings, items, date)
 
-  const changes: DayProposal['changes'] = []
+  const changes: DayProposal['changes'] = transfers.map((t) => ({ item: t.item, startTime: t.startTime, endTime: t.item.endTime, legIn: t.item.legIn }))
+  const original = new Map(items.map((i) => [i.id, i]))
   const after = dayItems.map((i) => {
     if (!ids.has(i.id)) return i
     const slot = plan.slots.get(i.id)
@@ -723,7 +754,7 @@ export async function proposeDay(tripId: string, date: string, settings: Setting
   const order = after
     .filter((i) => i.startTime)
     .sort((a, b) => a.startTime!.localeCompare(b.startTime!))
-    .map((i) => ({ item: dayItems.find((x) => x.id === i.id)!, startTime: i.startTime, endTime: i.endTime, leg: i.legIn, moved: changes.some((c) => c.item.id === i.id) }))
+    .map((i) => ({ item: original.get(i.id)!, startTime: i.startTime, endTime: i.endTime, leg: i.legIn, moved: changes.some((c) => c.item.id === i.id) }))
   return { changes, order, travelBefore, travelAfter }
 }
 

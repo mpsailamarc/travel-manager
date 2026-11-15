@@ -12,7 +12,7 @@ import { PlaceSearch } from './PlaceSearch'
 import { PlaceInfo } from './PlaceInfo'
 import { localWiki } from '../lib/apis'
 import { planRipple } from '../lib/ripple'
-import { retimeAfter } from '../lib/favorites'
+import { applyProposal, proposeDay, retimeAfter } from '../lib/favorites'
 import { journeyNote } from '../lib/dayview'
 import { legText, taxiLink, transitLink } from '../lib/legs'
 import { distance } from '../lib/format'
@@ -143,7 +143,20 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       !isNew && full.status !== item.status && (full.status === 'done' || full.status === 'skipped')
         ? await retimeAfter(full, settings, full.date === today() ? hhmmToMin(nowHHMM()) : undefined)
         : undefined
-    if (retimed) toast(`Saved · ${retimed.moved} later ${retimed.moved === 1 ? 'item' : 'items'} moved ${retimed.shiftMin < 0 ? 'earlier' : 'later'}`, { label: 'Undo', run: retimed.undo })
+    // A journey's time changed: offer to re-fit the day around it (the airport taxi follows the flight, the rest follows).
+    const journeyMoved = !isNew && ['flight', 'train', 'bus', 'ferry'].includes(full.kind) && (full.startTime !== item.startTime || full.endTime !== item.endTime)
+    if (journeyMoved) {
+      toast(`Saved · re-fit ${formatDate(full.date)} around the new time?`, {
+        label: 'Re-fit the day',
+        run: async () => {
+          const p = await proposeDay(trip.id, full.date, settings)
+          if (p?.changes.length) {
+            await applyProposal(p)
+            toast(`${p.changes.length} item${p.changes.length > 1 ? 's' : ''} moved to fit around it`)
+          } else toast('Nothing needed to move')
+        },
+      })
+    } else if (retimed) toast(`Saved · ${retimed.moved} later ${retimed.moved === 1 ? 'item' : 'items'} moved ${retimed.shiftMin < 0 ? 'earlier' : 'later'}`, { label: 'Undo', run: retimed.undo })
     else toast(push && ripple.moves.length ? `Saved · pushed ${ripple.moves.length} later item${ripple.moves.length > 1 ? 's' : ''} back` : isNew ? 'Added' : 'Saved')
     onClose()
   }

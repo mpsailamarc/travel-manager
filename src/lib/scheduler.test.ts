@@ -187,8 +187,9 @@ describe('road trips and arrivals (from a real Greece itinerary)', () => {
     await addItem(trip, { date: D, kind: 'flight', title: 'Sydney → Athens', startTime: '23:50', endTime: '18:30', from: { name: 'Sydney Airport (SYD)' }, to: at(LONDON.heathrow) })
     await addItem(trip, { date: D, kind: 'taxi', title: 'Taxi from the airport', startTime: '19:30', from: { name: 'Heathrow airport' }, to: at(LONDON.hotel) })
     const stroll = await addItem(trip, { date: D, kind: 'walk', title: 'Evening stroll in Covent Garden', location: at(LONDON.gallery) })
-    expect(await fillUntimed(trip.id, D, SETTINGS)).toBe(1)
-    expect(mins((await db.items.get(stroll.id))!.startTime)).toBeGreaterThanOrEqual(19 * 60 + 30)
+    await fillUntimed(trip.id, D, SETTINGS)
+    // The taxi follows the landing (18:30 + 30 min); the stroll comes after the taxi.
+    expect(mins((await db.items.get(stroll.id))!.startTime)).toBeGreaterThanOrEqual(19 * 60 + 15)
   })
 
   it('on a driving day, a visit between two drives goes between them, where the first drive arrives', async () => {
@@ -219,5 +220,27 @@ describe('road trips and arrivals (from a real Greece itinerary)', () => {
     const legs = (await dayItems(trip, D)).filter((i) => i.legIn).map((i) => i.legIn!.mode)
     expect(legs).toContain('drive')
     expect(legs).not.toContain('transit')
+  })
+})
+
+describe('changing a flight time', () => {
+  it('Optimise moves the airport taxi with the flight, and the rest of the day follows', async () => {
+    const trip = await makeTrip()
+    const flight = await addItem(trip, { date: D, kind: 'flight', title: 'Flight in', startTime: '06:00', endTime: '18:30', from: { name: 'Sydney Airport (SYD)' }, to: at(LONDON.heathrow) })
+    const taxi = await addItem(trip, { date: D, kind: 'taxi', title: 'Taxi from the airport', startTime: '19:00', from: { name: 'Heathrow Airport (LHR)' }, to: at(LONDON.hotel) })
+    const stroll = await addItem(trip, { date: D, kind: 'walk', title: 'Stroll', startTime: '19:45', endTime: '20:45', location: at(LONDON.gallery) })
+    await db.items.update(flight.id, { endTime: '10:00' }) // lands in the morning now
+    await applyProposal((await proposeDay(trip.id, D, SETTINGS))!)
+    expect((await db.items.get(taxi.id))!.startTime).toBe('10:30')
+    expect(mins((await db.items.get(stroll.id))!.startTime)).toBeLessThan(13 * 60)
+  })
+
+  it('the taxi to the airport leaves 3 hours before the flight out', async () => {
+    const { alignTransfers } = await import('./favorites')
+    const day = [
+      { id: 't', kind: 'taxi', title: 'Taxi to the airport', status: 'planned', startTime: '12:00', from: { name: 'Hotel' }, to: { name: 'Athens Airport (ATH)' } },
+      { id: 'f', kind: 'flight', title: 'Flight home', status: 'planned', startTime: '18:00', endTime: '07:30' },
+    ] as never[]
+    expect(alignTransfers(day).map((m) => m.startTime)).toEqual(['15:00'])
   })
 })
