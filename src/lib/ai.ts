@@ -46,6 +46,8 @@ const AiItem = z.object({
   lon: num,
   from: str,
   to: str,
+  fromLat: num,
+  fromLon: num,
   nights: num,
   estCost: num,
   bookAhead: z.boolean().optional().catch(undefined),
@@ -153,10 +155,14 @@ export function movesLine(trip: Trip) {
 
 const ITEM_SCHEMA = `{ "kind": one of ${KINDS.map((k) => `"${k}"`).join('|')},
   "title": string, "time": "HH:MM" (optional), "endTime": "HH:MM" (optional),
-  "place": string (optional), "lat": number, "lon": number (coordinates of the place, when known),
-  "from": string, "to": string (transport only), "nights": number (stays only),
+  "place": string (optional), "lat": number, "lon": number (coordinates of the place — for transport, of where it arrives — when known),
+  "from": string, "to": string, "fromLat": number, "fromLon": number (transport only: where it leaves from), "nights": number (stays only),
   (use "drive" when we drive ourselves — nothing to book; use "car" only for renting, picking up or returning a rental car),
-  "estCost": number (total for the group, in the trip currency), "bookAhead": boolean, "notes": string }`
+  "estCost": number (total for the group, in the trip currency), "bookAhead": boolean, "notes": string }
+Times are the local clock time where each thing happens. For a journey, "time" is the departure on the local clock where
+it leaves and "endTime" the arrival on the local clock where it lands — don't convert between time zones.
+A journey's "endTime" is when you arrive; what you do there is its own item, and going back is another journey.
+A "note" has no time.`
 
 const CHECKLIST_SCHEMA = `{ "title": string, "category": one of ${CHECKLIST_CATEGORIES.map((c) => `"${c}"`).join('|')} }`
 
@@ -187,6 +193,7 @@ ${tripBrief(trip, settings)}
 
 Guidelines:
 - Respect the pace, the children's ages, the focus and how we want to get between places.
+- Each day's city is the town where we sleep that night (a day trip is a highlight, not the city).
 - Keep it short: per day only the city, a title and ${long ? '1–2 highlights' : '2 highlights'} of 2–4 words each.
 - Budget totals are for the whole group in ${settings.homeCurrency}, using categories: ${BUDGET_CATEGORIES.join(', ')}.
 - Write compact JSON: one line per day.
@@ -282,7 +289,10 @@ ${outline}
 
 Guidelines:
 - Include transport between places (typical duration in notes), one "stay" item on each arrival day with "nights", and 2–5 activities or meals per day with times.
-- Give real coordinates (lat/lon) for each day's city and for places whenever you can.
+- Each day's "city", "lat" and "lon" are the town where we sleep that night (on a day we fly in, where we land; not home, nor an excursion spot). Day trips and excursions are items of that day.
+- Flights: a real schedule for that route (usual departure time and flight time, with the time difference); if it lands the next day, say "arrives next day" in notes.
+- Things at sunrise or sunset start at that place's real sunrise or sunset time on that date.
+- Give real coordinates for each day's town, for places, and for where journeys leave from and arrive, whenever you can.
 - Keep "notes" under 15 words.${continuing ? '' : `
 - Checklist: things to do before leaving that are specific to this plan (visas, vaccinations, bookings to make early…).`}
 - If the reply would be too long, stop after a complete day and close the JSON properly — I will ask for the rest.
@@ -465,9 +475,10 @@ function toItem(a: AiItem & { bookingRef?: string; provider?: string }, tripId: 
     date,
     kind,
     title: a.title,
-    startTime: /^\d{1,2}:\d{2}$/.test(a.time ?? '') ? a.time!.padStart(5, '0') : undefined,
-    endTime: /^\d{1,2}:\d{2}$/.test(a.endTime ?? '') ? a.endTime!.padStart(5, '0') : undefined,
-    from: isTransport && a.from ? { name: a.from } : undefined,
+    // A note is for the day, not a moment in it.
+    startTime: kind !== 'note' && /^\d{1,2}:\d{2}$/.test(a.time ?? '') ? a.time!.padStart(5, '0') : undefined,
+    endTime: kind !== 'note' && /^\d{1,2}:\d{2}$/.test(a.endTime ?? '') ? a.endTime!.padStart(5, '0') : undefined,
+    from: isTransport && a.from ? trustedPlace({ name: a.from, lat: a.fromLat, lon: a.fromLon }) : undefined,
     to: isTransport && a.to ? trustedPlace({ name: a.to, lat: a.lat, lon: a.lon }) : undefined,
     location: !isTransport && (a.place || a.lat != null) ? { name: a.place ?? a.title, lat: a.lat, lon: a.lon } : undefined,
     nights: kind === 'stay' ? a.nights ?? 1 : undefined,

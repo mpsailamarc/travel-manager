@@ -108,3 +108,33 @@ describe('all three itinerary options in one go', () => {
     expect(routeShape(two.options[0].option)).toEqual({ places: 2, moves: 1 })
   })
 })
+
+describe('the detailed plan asks for times the app can trust', () => {
+  it('local times, journeys that end on arrival, real sunsets, the night’s town, untimed notes', async () => {
+    const { detailPrompt } = await import('./ai')
+    const t = { id: 't', name: 'T', countryCodes: ['CL'], cities: [], startDate: '2027-02-01', endDate: '2027-02-03', travellers: [], style: 'intense', budgetLevel: 'mid', interests: [], budget: {} } as unknown as Trip
+    const o = { title: 'A', bestFor: '', summary: '', route: ['Santiago'], days: [{ day: 1, city: 'Santiago', title: 't', highlights: [], items: [] }], budget: {}, checklist: [], tips: [] }
+    const p = detailPrompt(t, { homeCurrency: 'EUR' } as Settings, o as never, [1], false)
+    expect(p).toMatch(/local clock where\s+it leaves/)
+    expect(p).toMatch(/endTime" is when you arrive/)
+    expect(p).toMatch(/real sunrise or sunset time/)
+    expect(p).toMatch(/town where we sleep that night/)
+    expect(p).toContain('A "note" has no time.')
+  })
+
+  it('keeps where a journey leaves from, and drops a time a chatbot gave a note', async () => {
+    const { applyPlan } = await import('./ai')
+    const { makeTrip } = await import('../test/fixtures')
+    const { db } = await import('../db')
+    const trip = await makeTrip()
+    const items = [
+      { kind: 'flight', title: 'Flight SYD → SCL', time: '11:30', endTime: '10:00', from: 'Sydney (SYD)', fromLat: -33.94, fromLon: 151.18, to: 'Santiago (SCL)', lat: -33.39, lon: -70.79 },
+      { kind: 'note', title: 'Checklist: arrival papers', time: '23:00' },
+    ]
+    const option = { title: 'A', bestFor: '', summary: '', route: [], days: [{ day: 1, city: 'Santiago', title: 't', highlights: [], items }], budget: {}, checklist: [], tips: [] }
+    await applyPlan(trip, option as never, 'EUR', true)
+    const saved = await db.items.where('tripId').equals(trip.id).toArray()
+    expect(saved.find((i) => i.kind === 'flight')!.from).toMatchObject({ lat: -33.94, lon: 151.18 })
+    expect(saved.find((i) => i.kind === 'note')!.startTime).toBeUndefined()
+  })
+})
