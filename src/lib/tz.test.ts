@@ -104,3 +104,25 @@ describe('reading place names', () => {
     expect(cityIn('Paris (CDG/ORY)')?.name).toBe('Paris')
   })
 })
+
+describe('the way home: Rome → Dubai → Sydney, both listed on the last day', () => {
+  const t = { id: 'R', startDate: '2027-09-20', endDate: '2027-09-28', countryCodes: ['IT'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as Trip
+  const ds = [{ id: 'R:28', tripId: 'R', date: '2027-09-28', city: 'Rome', lat: 41.9028, lon: 12.4964 }]
+  const leg = (id: string, title: string, s: string, e: string, from: [string, number, number], to: [string, number, number]) =>
+    ({ id, tripId: 'R', date: '2027-09-28', kind: 'flight', title, status: 'planned', order: 0, startTime: s, endTime: e, from: { name: from[0], lat: from[1], lon: from[2] }, to: { name: to[0], lat: to[1], lon: to[2] } }) as Item
+  const rome = leg('a', 'Rome FCO → Dubai DXB', '19:30', '05:10', ['Fiumicino (FCO)', 41.8, 12.25], ['Dubai International (DXB)', 25.25, 55.36])
+  const dubai = leg('b', 'Dubai DXB → Sydney SYD', '08:00', '07:10', ['Dubai International Airport (DXB)', 25.25, 55.36], ['Sydney (SYD)', -33.94, 151.18])
+
+  it('the connection leaves Dubai after the first flight has landed there', () => {
+    const ctx = { trip: t, days: ds, items: [rome, dubai] }
+    const first = transportSpan(rome, ctx)!
+    const second = transportSpan(dubai, ctx)!
+    expect(second.depUtc).toBeGreaterThan(first.arrUtc)
+    expect(new Date(second.depUtc).toISOString()).toBe('2027-09-29T04:00:00.000Z') // 08:00 in Dubai on the 29th
+  })
+
+  it("so the last day's calendar shows only the flight out of Rome", () => {
+    const v = buildDayView([rome, dubai], '2027-09-28', { trip: t, days: ds })
+    expect(v.entries.map((e) => e.item.id)).toEqual(['a'])
+  })
+})

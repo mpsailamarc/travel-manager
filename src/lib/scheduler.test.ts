@@ -320,3 +320,19 @@ describe('the overnight flight landing the next day', () => {
     expect((await db.items.get(pinned.id))!.startTime).toBe('07:00') // booked: left as it is
   })
 })
+
+describe('nothing planned into a journey', () => {
+  it('an activity in the two hours before a flight is moved, a booked one stays', async () => {
+    const { reconcileTrip } = await import('./favorites')
+    const trip = await makeTrip()
+    const LAST = trip.endDate
+    await addItem(trip, { kind: 'stay', title: 'Hotel', status: 'booked', date: '2027-03-10', nights: 3, location: at(LONDON.hotel) })
+    await addItem(trip, { kind: 'flight', date: LAST, title: 'London (LHR) → Rome (FCO)', status: 'booked', startTime: '19:30', endTime: '23:10', from: { name: 'London Heathrow (LHR)', lat: 51.47, lon: -0.4543 }, to: { name: 'Rome Fiumicino (FCO)', lat: 41.8, lon: 12.25 } })
+    const dinner = await addItem(trip, { kind: 'meal', date: LAST, title: 'Farewell dinner', startTime: '19:00', endTime: '20:30', location: at(LONDON.borough) })
+    const show = await addItem(trip, { date: LAST, title: 'Matinée (booked)', status: 'booked', startTime: '18:00', endTime: '19:00', location: at(LONDON.abbey) })
+    await reconcileTrip(trip.id)
+    const d = (await db.items.get(dinner.id))!
+    expect(d.startTime == null || mins(d.endTime ?? d.startTime) <= 17 * 60 + 30).toBe(true) // before check-in, or left as an idea
+    expect((await db.items.get(show.id))!.startTime).toBe('18:00')
+  })
+})

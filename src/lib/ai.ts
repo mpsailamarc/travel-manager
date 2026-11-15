@@ -297,7 +297,8 @@ Guidelines:
 - Each day's "city", "lat" and "lon" are the town where we sleep that night (on a day we fly in, where we land; not home, nor an excursion spot). Day trips and excursions are items of that day.
 - Flights: a real schedule for that route (usual departure time and flight time, with the time difference); "time" and "endTime" are never the same. If it lands the next day, say "arrives next day" in notes.
 - If the trip starts with a long flight from home, day 1 is the day it leaves: put it on day 1, and plan nothing at the destination until after it has landed (on day 1 or day 2, whichever it is). The flight home goes on the day it leaves.
-- Nothing is planned during a journey, and the first thing after landing starts at least 1 hour later (2 hours after a long-haul flight).
+- Nothing is planned during a journey, and the first thing after landing starts at least 1 hour later (2 hours after a long-haul flight). Before a flight, be at the airport 2 hours ahead (3 for a long-haul one), with the trip to the airport as its own item, and plan nothing in that time.
+- A connecting flight is its own item on the day it actually leaves: after a flight that lands past midnight, that's the next day.
 - Things at sunrise or sunset start at that place's real sunrise or sunset time on that date; evening and night things are in the evening.
 - Visits last a realistic time (a big museum 2–3 hours, a viewpoint 30–60 minutes, a meal 1 hour or more).
 - Give real coordinates for each day's town and for places. Every journey needs both ends: "fromLat"/"fromLon" where it leaves and "lat"/"lon" where it arrives — the actual airport, station, port or car-rental office, not the city centre.

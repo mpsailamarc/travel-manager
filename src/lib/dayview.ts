@@ -51,6 +51,7 @@ export function buildDayView(allItems: Item[], date: ISODate, zoneCtx: ZoneCtx):
       if (span) {
         const start = (span.depUtc - mid) / MIN
         const end = (span.arrUtc - mid) / MIN
+        if (start >= 24 * 60) continue // a connection that really leaves the next day: shown there
         entries.push({
           item: it,
           start: Math.min(Math.max(start, 0), 24 * 60 - 1),
@@ -80,7 +81,8 @@ export function buildDayView(allItems: Item[], date: ISODate, zoneCtx: ZoneCtx):
     for (const it of allItems.filter((i) => i.date === addDays(date, -1) && isTransportKind(i.kind))) {
       const span = transportSpan(it, ctx)
       if (span && span.arrUtc > mid) {
-        entries.push({ item: it, start: 0, end: Math.min((span.arrUtc - mid) / MIN, 24 * 60), spill: true, clippedStart: true, converted: span.fromTz !== tz || span.toTz !== tz, zoneNote: noteOf(it, span) })
+        const start = Math.max(0, (span.depUtc - mid) / MIN)
+        entries.push({ item: it, start, end: Math.min((span.arrUtc - mid) / MIN, 24 * 60), spill: true, clippedStart: start === 0, converted: span.fromTz !== tz || span.toTz !== tz, zoneNote: noteOf(it, span) })
       }
     }
   }

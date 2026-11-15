@@ -461,6 +461,7 @@ function guessMin(a: LatLon, b: LatLon, pref: GetAround, walkMax: number, speedK
  */
 export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: Movable[]): Promise<DayPlan> {
   const { trip, date, city, day, items, settings } = ctx
+  fixedItems = fixedItems.filter((i) => !leavesLater(i, ctx))
   movable = movable.map((m) => (m.mealAt != null ? m : { ...m, mealAt: sunAt(m, ctx) }))
   const pref = getAroundFor(day, settings, items, date)
   const walkMax = settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN
@@ -849,6 +850,15 @@ interface Window {
   title: string
 }
 
+/** A journey listed on this day that really leaves on a later one (a connection after an overnight flight). */
+function leavesLater(i: Item, ctx: Pick<DayContext, 'trip' | 'date' | 'days' | 'items'>): boolean {
+  if (i.kind !== 'flight' || !i.startTime) return false
+  const zctx = { trip: ctx.trip, days: ctx.days, items: ctx.items }
+  const tz = zoneOfDate(ctx.date, zctx)
+  const span = tz ? transportSpan(i, zctx) : undefined
+  return !!span && span.depUtc >= midnight(ctx.date, tz!) + 86_400_000
+}
+
 /**
  * A journey dated on an earlier day that lands on this one (the overnight flight from Sydney): from midnight until it's
  * down, in this day's time. The latest such landing, if any.
@@ -1219,6 +1229,30 @@ async function reconcileNow(tripId: string): Promise<string[]> {
       }
       timeFixes.push({ key: it.id, changes: { startTime: undefined, endTime: undefined, legIn: undefined } })
       sunDates.add(date)
+    }
+  }
+  // Things planned into a journey that can't move (a flight with its check-in, a train, a taxi, anything booked or 📌) are
+  // fitted again around it — after the repairs above, so a drive that was just shortened no longer counts its old end.
+  const patch = new Map<string, Partial<Item>>()
+  for (const f of timeFixes) patch.set(f.key, { ...patch.get(f.key), ...f.changes })
+  const repaired = items.map((i) => (patch.has(i.id) ? { ...i, ...patch.get(i.id) } : i))
+  for (const date of new Set(repaired.map((i) => i.date))) {
+    const day = days.find((d) => d.date === date)
+    const dayItems = repaired.filter((i) => i.date === date && i.status !== 'skipped')
+    const ctx = { trip, date, days, items: repaired }
+    const fixedOnes = dayItems.filter((i) => i.startTime && !isMovable(i) && !leavesLater(i, ctx))
+    if (!fixedOnes.length) continue
+    const here = day?.lat != null && day.lon != null ? { lat: day.lat, lon: day.lon } : undefined
+    const arriving = arrivalTest(day?.city, day, !!day?.city && cityDates(days, day.city)[0] === date)
+    const windows = fixedWindows(fixedOnes, here, arriving).filter((w) => w.e > w.s)
+    for (const it of dayItems) {
+      if (!it.startTime || !isMovable(it) || it.kind === 'note' || (it.planner && it.favId)) continue
+      const s = hhmmToMin(it.startTime)
+      const e = it.endTime && hhmmToMin(it.endTime) > s ? hhmmToMin(it.endTime) : s + (it.kind === 'meal' ? 60 : 30)
+      if (windows.some((w) => s < w.e && e > w.s)) {
+        timeFixes.push({ key: it.id, changes: { startTime: undefined, endTime: undefined, legIn: undefined } })
+        sunDates.add(date)
+      }
     }
   }
   // On those days, everything the planner timed is placed again (your own times and the itinerary's stay as they are).

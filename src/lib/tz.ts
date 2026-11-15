@@ -140,13 +140,17 @@ export function transportSpan(it: Item, ctx: ZoneCtx): TransportSpan | undefined
   if (!isTransportKind(it.kind) || !it.startTime || !it.endTime) return undefined
   const z = itemZones(it, ctx)
   if (!z.from || !z.to) return undefined
-  const depUtc = zonedToUtc(it.date, it.startTime, z.from)
+  let depUtc = zonedToUtc(it.date, it.startTime, z.from)
+  // A connection ("Dubai → Sydney" on the same day as "Rome → Dubai", which lands at 05:10 the next morning) leaves after
+  // the flight into its airport has landed: a day or two later on the clock if need be.
+  const feeder = it.kind === 'flight' ? connectionInto(it, ctx) : undefined
+  for (let k = 1; feeder && depUtc <= feeder && k <= 2; k++) depUtc = zonedToUtc(addDays(it.date, k), it.startTime, z.from)
   // The first moment after departure when the arrival clock shows that time: it may be the next day, or even the previous
   // date across the date line — but never quicker than a plane can fly the distance (Sydney → Santiago isn't 4 hours).
   const shortest = it.kind === 'flight' ? minFlightMs(it, ctx) : 0
   let arrUtc = Infinity
   let arrDate = it.date
-  for (const k of [-1, 0, 1, 2]) {
+  for (const k of [-1, 0, 1, 2, 3, 4]) {
     const date = addDays(it.date, k)
     const t = zonedToUtc(date, it.endTime, z.to)
     if (t > depUtc + shortest && t < arrUtc) {
@@ -156,12 +160,13 @@ export function transportSpan(it: Item, ctx: ZoneCtx): TransportSpan | undefined
   }
   if (!isFinite(arrUtc)) return undefined
   // The trip's first day already at the destination, with things planned there that day ("Day 1, London": the flight
-  // from Sydney, then the South Bank at 10:05): the flight lands that day, so it left the day before (or earlier) — not
+  // from Sydney, then the South Bank at 10:05; or the taxi from the airport): the flight lands that day, so it left the day before (or earlier) — not
   // one that lands tomorrow while day 1 is spent in London.
   const toTz = z.to
   const lands = zonedToUtc(it.date, it.endTime, toTz)
   const plannedThere = ctx.items?.some((o) => {
-    if (o.date !== it.date || o.id === it.id || !o.startTime || isTransportKind(o.kind) || o.kind === 'stay' || o.status === 'skipped') return false
+    // Anything but another flight counts: a visit, a meal, the taxi from the arrival airport.
+    if (o.date !== it.date || o.id === it.id || !o.startTime || o.kind === 'flight' || o.kind === 'stay' || o.status === 'skipped') return false
     const t = zonedToUtc(it.date, o.startTime, toTz)
     return t >= lands && t < arrUtc
   })
@@ -174,7 +179,38 @@ export function transportSpan(it: Item, ctx: ZoneCtx): TransportSpan | undefined
   return { depUtc, arrUtc, durationMin: Math.round((arrUtc - depUtc) / 60000), fromTz: z.from, toTz: z.to, arrDate, zonesDiffer: z.from !== z.to }
 }
 
-/** The quickest a flight can be: its distance at 950 km/h (zero when an end has no known place). */
+/** When the flight into this one's departure airport lands (the first leg of a connection, that day or the day before). */
+function connectionInto(it: Item, ctx: ZoneCtx): number | undefined {
+  if (!ctx.items) return undefined
+  const code = (p?: { name: string }) => p?.name.match(/\b([A-Z]{3})\b/)?.[1]
+  const at = placeLL(it.from)
+  const same = (p?: Pick<Place, 'name' | 'lat' | 'lon'>) => {
+    const q = placeLL(p)
+    return (!!at && !!q && haversineM(at, q) < 50_000) || (!!code(it.from) && code(it.from) === code(p as { name: string }))
+  }
+  let lands: number | undefined
+  for (const f of ctx.items) {
+    if (f.id === it.id || f.kind !== 'flight' || f.status === 'skipped' || (f.date !== it.date && f.date !== addDays(it.date, -1)) || !same(f.to)) continue
+    const span = transportSpan(f, { trip: ctx.trip, days: ctx.days }) // without items: a connection of a connection isn't followed
+    if (span && span.depUtc < zonedToUtc(it.date, it.startTime!, itemZones(it, ctx).from!) + 86_400_000 && (lands == null || span.arrUtc > lands)) lands = span.arrUtc
+  }
+  return lands
+}
+
+function placeLL(p?: Pick<Place, 'name' | 'lat' | 'lon'>) {
+  if (!p) return undefined
+  const q = trustedPlace(p)
+  const c = q.lat == null ? cityIn(q.name) : undefined
+  const lat = q.lat ?? c?.lat
+  const lon = q.lon ?? c?.lon
+  return lat != null && lon != null ? { lat, lon } : undefined
+}
+
+/**
+ * The quickest a flight can be: its distance at 1,100 km/h, a jet's ground speed with a strong tailwind (zero when an end
+ * has no known place). Generous on purpose: chatbots' flight times are often a little optimistic, and an hour too quick
+ * must not push the landing a whole day later.
+ */
 function minFlightMs(it: Item, ctx: ZoneCtx): number {
   const placeOf = (p?: Pick<Place, 'name' | 'lat' | 'lon'>) => {
     if (!p) return undefined
@@ -186,7 +222,7 @@ function minFlightMs(it: Item, ctx: ZoneCtx): number {
   }
   const a = placeOf(it.from) ?? (it.date <= ctx.trip.startDate ? placeOf(ctx.trip.startPlace) : undefined)
   const b = placeOf(it.to)
-  return a && b ? (haversineM(a, b) / 950_000) * 3_600_000 : 0
+  return a && b ? (haversineM(a, b) / 1_100_000) * 3_600_000 : 0
 }
 
 /** Travel time of a transport item (zone-aware), else the plain difference between its two clock times. */
