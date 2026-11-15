@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { movesLine, outlinePrompt, parseBookings, parseCityIdeas, parseDetail, parsePlan } from './ai'
+import { movesLine, outlinePrompt, outlineRounds, parseBookings, parseCityIdeas, parseDetail, parsePlan, routeShape } from './ai'
 import type { Settings, Trip } from '../types'
 
 const option = (title: string) => ({ title, summary: 's', route: ['Lisbon'], days: [{ day: 1, city: 'Lisbon', title: 'Alfama', highlights: ['Castle'] }], budget: { stays: 500 }, tips: [] })
@@ -80,5 +80,31 @@ describe('the itinerary prompt knows how you want to travel', () => {
     expect(p).toContain('Focus: a road trip')
     expect(p).toContain('Getting between places: we are 2')
     expect(outlinePrompt(trip(), settings)).toContain('Focus: a balance of cities')
+  })
+})
+
+describe('all three itinerary options in one go', () => {
+  const opt = (title: string, days: number) => ({ title, bestFor: 'x', summary: 's', route: ['A'], days: Array.from({ length: days }, (_, i) => ({ day: i + 1, city: i < 2 ? 'A' : 'B', title: 't', highlights: [] })), budget: {}, tips: [] })
+  it('asks for the three options and how they differ in one prompt', () => {
+    const t = { id: 't', name: 'T', countryCodes: ['GR'], cities: [], startDate: '2027-07-01', endDate: '2027-07-04', travellers: [], style: 'intense', budgetLevel: 'mid', interests: [], budget: {} } as unknown as Trip
+    const p = outlinePrompt(t, { homeCurrency: 'EUR' } as Settings)
+    expect(p).toContain('all 3 in this reply')
+    expect(p).toContain('"compare"')
+    expect(p).toContain('Pace: all out')
+  })
+
+  it('reads the comparison and the options; after a cut-off reply only the missing ones are asked for', () => {
+    const whole = JSON.stringify({ compare: 'A is calm, B is fast, C is cheap.', options: [opt('A', 4), opt('B', 4), opt('C', 4)] })
+    const one = outlineRounds([whole], 'prompt', 4)
+    expect(one.compare).toMatch(/A is calm/)
+    expect(one.options.map((o) => o.option.title)).toEqual(['A', 'B', 'C'])
+    expect(one.done).toBe(true)
+    expect(one.rounds).toHaveLength(1)
+
+    const cut = whole.slice(0, whole.indexOf('"day":3', whole.indexOf('"title":"C"'))) // stops in option C's day 3
+    const two = outlineRounds([cut], 'prompt', 4)
+    expect(two.options.map((o) => [o.option.title, o.incomplete])).toEqual([['A', false], ['B', false], ['C', true]])
+    expect(two.rounds[1].prompt).toMatch(/cut off after option 2.*option 3/)
+    expect(routeShape(two.options[0].option)).toEqual({ places: 2, moves: 1 })
   })
 })

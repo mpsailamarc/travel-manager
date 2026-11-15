@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { planInputs } from './planbasis'
 import { trustedPlace } from './cities'
 import { db, touchTrip } from '../db'
-import type { BudgetCategory, Day, Item, ItemKind, Settings, Trip, TripFocus } from '../types'
+import type { BudgetCategory, Day, Item, ItemKind, Settings, Trip, TripFocus, TripStyle } from '../types'
 import { BUDGET_CATEGORIES, CHECKLIST_CATEGORIES } from '../types'
 import { addDays, daysBetween, formatDate } from './dates'
 import { country } from './countries'
@@ -68,6 +68,7 @@ const ChecklistSuggestion = z.object({ title: z.string(), category: z.enum(CHECK
 const AiOption = z.object({
   title: z.string(),
   summary: z.string().catch(''),
+  bestFor: z.string().catch(''),
   route: z.array(z.string()).catch([]),
   days: lenientArray(AiDay),
   budget: z.record(z.string(), z.number()).catch({}),
@@ -76,7 +77,7 @@ const AiOption = z.object({
 })
 export type AiOption = z.infer<typeof AiOption>
 
-const PlanResponse = z.object({ options: lenientArray(AiOption).refine((o) => o.some((x) => x.days.length), 'no complete option') })
+const PlanResponse = z.object({ compare: z.string().catch(''), options: lenientArray(AiOption).refine((o) => o.some((x) => x.days.length), 'no complete option') })
 const DetailResponse = z.object({ days: lenientArray(AiDay), checklist: lenientArray(ChecklistSuggestion) })
 const DayResponse = z.object({ items: lenientArray(AiItem) })
 // Booking references and providers are what an imported confirmation is for: they must survive the parsing.
@@ -103,7 +104,7 @@ function tripBrief(trip: Trip, settings: Settings) {
     trip.cities.length ? `Places I have in mind: ${trip.cities.join(', ')}` : '',
     `Dates: ${trip.startDate} to ${trip.endDate} (${nights + 1} days, ${nights} nights)`,
     `Travellers: ${adults} adult(s)${kids.length ? ` and ${kids.length} child(ren) aged ${kids.map((k) => k.age ?? '?').join(', ')}` : ''}`,
-    `Pace: ${trip.style}`,
+    `Pace: ${PACE_LINE[trip.style]}`,
     `Budget level: ${trip.budgetLevel}`,
     trip.interests.length ? `Interests: ${trip.interests.join(', ')}` : '',
     `Focus: ${FOCUS_LINE[trip.focus ?? 'mix']}`,
@@ -114,6 +115,14 @@ function tripBrief(trip: Trip, settings: Settings) {
     trip.notes ? `Other wishes: ${trip.notes}` : '',
   ]
   return lines.filter(Boolean).join('\n')
+}
+
+const PACE_LINE: Record<TripStyle, string> = {
+  relaxed: 'relaxed: 1–2 things a day, lots of downtime',
+  balanced: 'balanced: a plan each day, with breaks',
+  packed: 'packed: see as much as possible, about 9:00–21:00',
+  intense:
+    'all out: start very early (around 7:00, earlier for a sunrise) and finish late (up to midnight: night views, late openings, evening walks), no rest breaks; long walks and several walks or hikes a day are welcome; skip sit-down lunches and dinners (food on the go) unless the meal is itself a highlight',
 }
 
 const FOCUS_LINE: Record<TripFocus, string> = {
@@ -151,41 +160,100 @@ const ITEM_SCHEMA = `{ "kind": one of ${KINDS.map((k) => `"${k}"`).join('|')},
 
 const CHECKLIST_SCHEMA = `{ "title": string, "category": one of ${CHECKLIST_CATEGORIES.map((c) => `"${c}"`).join('|')} }`
 
-const OPTION_SHAPE = `{
-  "option": {
-    "title": string,
-    "summary": string (1–2 sentences),
-    "route": [city names in order],
-    "days": [ { "day": 1, "city": string, "title": string, "highlights": [string, ...] } ],
-    "budget": { "flights": number, "transport": number, "stays": number, "food": number, "activities": number, "other": number },
-    "tips": [up to 3 strings]
-  }
+const OPTIONS_SHAPE = `{
+  "compare": string (2–3 sentences: how the 3 options differ — route, rhythm, getting around, cost — and who each suits),
+  "options": [
+    {
+      "title": string,
+      "bestFor": string (a few words: who or what this option suits best),
+      "summary": string (1 sentence),
+      "route": [city names in order],
+      "days": [ { "day": 1, "city": string, "title": string, "highlights": [string, ...] } ],
+      "budget": { "flights": number, "transport": number, "stays": number, "food": number, "activities": number, "other": number },
+      "tips": [up to 2 strings]
+    }
+  ]
 }`
 
 /**
- * Step 1: three outlines, one per reply. Free chatbots cut off long replies, so asking for a single option
- * at a time keeps each answer short; the follow-ups go in the same chat so the options differ.
+ * Step 1: three outlines in one reply, with how they differ first. They're kept compact (1–2 highlights a day) so
+ * a free chatbot's reply fits; if it's cut off anyway, the complete options are kept and a follow-up asks for the rest.
  */
 export function outlinePrompt(trip: Trip, settings: Settings) {
-  return `You are an experienced travel planner. I'd like 3 genuinely different itinerary options for this trip (different route, rhythm or focus) as short outlines. To keep replies short we'll do one option per reply: reply now with ONLY option 1.
+  const long = daysBetween(trip.startDate, trip.endDate) >= 10
+  return `You are an experienced travel planner. I'd like 3 genuinely different itinerary options for this trip (different route, rhythm or focus) as short outlines, all 3 in this reply, starting with a short comparison of how they differ.
 
 ${tripBrief(trip, settings)}
 
 Guidelines:
 - Respect the pace, the children's ages, the focus and how we want to get between places.
-- Keep it short: per day only the city, a title and 2–3 highlights of a few words each.
+- Keep it short: per day only the city, a title and ${long ? '1–2 highlights' : '2 highlights'} of 2–4 words each.
 - Budget totals are for the whole group in ${settings.homeCurrency}, using categories: ${BUDGET_CATEGORIES.join(', ')}.
 - Write compact JSON: one line per day.
 
 Reply with ONLY a JSON code block, no other text, using exactly this shape:
-${OPTION_SHAPE}`
+${OPTIONS_SHAPE}`
 }
 
-/** Follow-up in the same chat: the next option, or the same one again (shorter) after a cut-off reply. */
-export function nextOptionPrompt(n: number, retry: boolean) {
-  return retry
-    ? `Your reply was cut off. Send option ${n} again in the same JSON format, shorter: at most 2 highlights per day of 2–4 words each, a 1-sentence summary and at most 2 tips. Compact JSON, one line per day. Only option ${n}.`
-    : `Now option ${n} of 3: clearly different from the previous option${n > 2 ? 's' : ''} (route, rhythm or focus). Same JSON format { "option": … } with only this option, compact (one line per day).`
+/** Follow-up in the same chat for the options still missing: after a cut-off reply (shorter), or when fewer than 3 came. */
+export function moreOptionsPrompt(n: number, cutOff: boolean) {
+  const which = n < 3 ? `options ${n} to 3` : 'option 3'
+  return cutOff
+    ? `Your reply was cut off${n > 1 ? ` after option ${n - 1}` : ''}. Send ${which} again, shorter: at most 2 highlights per day of 2–4 words each, a 1-sentence summary and at most 2 tips. Same JSON format { "options": [ … ] } with only ${which}, compact (one line per day).`
+    : `Now ${which}: clearly different from the previous option${n > 2 ? 's' : ''} (route, rhythm or focus). Same JSON format { "options": [ … ] } with only ${which}, compact (one line per day).`
+}
+
+export interface OutlineRound {
+  n: number // the first option this reply is for
+  prompt: string
+  text: string
+  error?: string
+  truncated?: boolean
+  parsed: boolean
+}
+
+/**
+ * Walks the pasted replies in order. The first should hold all 3 options; when it was cut off (or brought fewer),
+ * its complete options are kept — a cut-off one keeps its complete days, marked incomplete — and the next round
+ * asks only for the missing ones.
+ */
+export function outlineRounds(replies: string[], firstPrompt: string, tripDays: number) {
+  const rounds: OutlineRound[] = []
+  const options: { option: AiOption; incomplete: boolean }[] = []
+  let compare = ''
+  let n = 1
+  let cutOff = false
+  for (let i = 0; i <= replies.length && n <= 3; i++) {
+    if (i > 0 && !rounds[i - 1].parsed) break
+    const text = replies[i] ?? ''
+    const round: OutlineRound = { n, prompt: i === 0 ? firstPrompt : moreOptionsPrompt(n, cutOff), text, parsed: false }
+    rounds.push(round)
+    if (!text.trim()) break
+    try {
+      const r = parsePlan(text)
+      round.parsed = true
+      round.truncated = r.truncated
+      compare ||= r.compare
+      for (const option of r.options) {
+        if (n > 3) break
+        // Only the option the reply stopped in can be short of days; earlier ones are complete.
+        const incomplete = r.truncated && option === r.options[r.options.length - 1] && option.days.length < tripDays
+        options[n - 1] = { option, incomplete }
+        if (!incomplete) n++
+      }
+      cutOff = r.truncated
+    } catch (e) {
+      round.error = (e as Error).message
+    }
+  }
+  return { rounds, options: options.filter(Boolean), compare, done: n > 3 }
+}
+
+/** How many places an outline stays in, and on how many days it moves on to the next. */
+export function routeShape(o: AiOption) {
+  const cities = o.days.map((d) => d.city?.trim().toLowerCase()).filter(Boolean)
+  const moves = cities.filter((c, i) => i > 0 && c !== cities[i - 1]).length
+  return { places: new Set(cities).size || o.route.length, moves }
 }
 
 /** Step 2: the full plan for the chosen option — or, when continuing, only the days still missing. */
@@ -334,7 +402,7 @@ function friendly<T>(schema: z.ZodType<T>, text: string, normalise: (v: unknown)
   return { data: parsed.data, truncated }
 }
 
-/** Accepts { "option": … } (one per reply), { "options": [ … ] } (older prompt) or a bare option. */
+/** Accepts { "compare", "options": [ … ] }, { "option": … } (one per reply, the older prompt) or a bare option. */
 export function parsePlan(text: string) {
   const { data, truncated } = friendly(PlanResponse, text, (v) => {
     const o = v as { option?: unknown; options?: unknown; days?: unknown }
@@ -345,7 +413,7 @@ export function parsePlan(text: string) {
     }
     return v
   })
-  return { options: data.options.filter((o) => o.days.length), truncated }
+  return { compare: data.compare, options: data.options.filter((o) => o.days.length), truncated }
 }
 const CityIdea = z.object({
   name: z.string(),

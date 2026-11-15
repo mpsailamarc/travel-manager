@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
 import { reconcileTrip } from '../lib/favorites'
+import { forPace } from '../lib/legs'
 import type { Day, Item, Settings, Trip } from '../types'
 import { useDays, useItems, useSettings, useTrip } from '../lib/hooks'
 import { daysBetween, formatRange, today } from '../lib/dates'
@@ -96,7 +97,9 @@ export default function TripLayout() {
   const trip = useTrip(tripId)
   const items = useItems(tripId)
   const days = useDays(tripId)
-  const settings = useSettings()
+  const base = useSettings()
+  // Every page of the trip plans with the trip's pace in mind (all out walks further).
+  const settings = useMemo(() => forPace(base, trip?.style), [base, trip?.style])
   const [editing, setEditing] = useState(false)
   const navigate = useNavigate()
 

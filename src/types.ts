@@ -24,7 +24,7 @@ export interface Traveller {
   age?: number
 }
 
-export type TripStyle = 'relaxed' | 'balanced' | 'packed'
+export type TripStyle = 'relaxed' | 'balanced' | 'packed' | 'intense'
 export type BudgetLevel = 'shoestring' | 'mid' | 'comfort' | 'luxury'
 export type TripFocus = 'cities' | 'mix' | 'outdoors'
 export type InnerFlights = 'auto' | 'fly' | 'few' | 'none'

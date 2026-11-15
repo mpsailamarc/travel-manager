@@ -35,8 +35,12 @@ const scheduled = (f: Favorite) => !!f.date && !f.itemId
 
 /* ------------------------------ Day capacity ------------------------------ */
 
-// Sightseeing minutes per day, out of a 9:00–21:00 day: relaxed about a third, balanced half, packed about 90%.
-const PACE_MIN: Record<TripStyle, number> = { relaxed: 240, balanced: 360, packed: 650 }
+// Sightseeing minutes per day, out of a 9:00–21:00 day: relaxed about a third, balanced half, packed about 90%;
+// all out fills a 7:00–midnight day with no breaks.
+const PACE_MIN: Record<TripStyle, number> = { relaxed: 240, balanced: 360, packed: 650, intense: 900 }
+// When a day starts and how late it may run: all out starts at 7:00 and goes on until midnight.
+const DAY_FROM = (s: TripStyle) => (s === 'intense' ? 7 * 60 : 9 * 60 + 30)
+const DAY_UNTIL = (s: TripStyle) => (s === 'intense' ? 24 * 60 : 22 * 60)
 const STOP_OVERHEAD = 15 // minutes of walking/queuing per stop, before the real route is known
 
 function itemMinutes(it: Item): number {
@@ -453,9 +457,9 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
 
   const here = home ?? (day?.lat != null && day.lon != null ? { lat: day.lat, lon: day.lon } : undefined)
   const fixed = fixedWindows(fixedItems, here, ctx.arriving)
-  const startTime = day?.walkStartTime ? hhmmToMin(day.walkStartTime) : dayStart(fixedItems, fixed, here, ctx.arriving)
+  const startTime = day?.walkStartTime ? hhmmToMin(day.walkStartTime) : dayStart(fixedItems, fixed, here, ctx.arriving, trip.style)
   const cutoff = departureCutoff(fixedItems, startTime, ctx.arriving, date === trip.endDate)
-  const dayEnd = cutoff ?? 22 * 60
+  const dayEnd = cutoff ?? DAY_UNTIL(trip.style)
 
   // Where you are at the start: the hotel (or chosen start), or wherever something fixed earlier that morning left you.
   let from = { t: startTime, at: home, name: startPlace?.name ?? '' }
@@ -1167,21 +1171,20 @@ async function reconcileNow(tripId: string): Promise<string[]> {
   return released
 }
 
-/** Start the walk after whatever is already planned in the morning (or after arriving), never before 09:30. */
 /**
- * When the day can start: 9:30, or after arriving from far away (the flight in, plus an hour; the taxi from the airport),
+ * When the day can start: 9:30 (7:00 at the all-out pace), or after arriving from far away (the flight in, plus an hour; the taxi from the airport),
  * or after whatever is fixed first thing. Moving on during the day (a drive to the next town) doesn't delay the start:
  * the time before it is used where you are.
  */
-function dayStart(dayItems: Item[], fixed: Window[], here: LatLon | undefined, arriving: (i: Item) => boolean): number {
-  let t = 9 * 60 + 30
+function dayStart(dayItems: Item[], fixed: Window[], here: LatLon | undefined, arriving: (i: Item) => boolean, style: TripStyle): number {
+  let t = DAY_FROM(style)
   for (const i of dayItems) {
     if (!i.startTime || i.status === 'skipped') continue
     if (arrivesFromAfar(i, here, arriving) && i.endTime) t = Math.max(t, hhmmToMin(i.endTime) + 60)
     if (i.kind === 'taxi' && arriving(i) && /airport|station|port|pier|harbou?r|\(\w{3}\)/i.test(i.from?.name ?? '')) t = Math.max(t, hhmmToMin(i.startTime) + (itemMinutes(i) || 30))
   }
   for (const w of fixed) if (w.s <= t + 30 && w.s >= t - 60 && w.e > t) t = Math.max(t, w.e)
-  return Math.min(t, 22 * 60)
+  return Math.min(t, DAY_UNTIL(style))
 }
 
 

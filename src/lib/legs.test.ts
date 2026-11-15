@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { planLeg } from './legs'
+import { forPace, planLeg } from './legs'
+import type { Settings } from '../types'
 import { LONDON } from '../test/fixtures'
 
 // No network in tests: walking and taxi fall back to straight-line distance × 1.3, as the app does offline.
@@ -24,5 +25,13 @@ describe('getting between places', () => {
 
   it('marks public transport as an estimate', async () => {
     expect((await planLeg(LONDON.hotel, LONDON.tower, 'transit', 15, 4.5)).estimated).toBe(true)
+  })
+})
+
+describe('walking at the all-out pace', () => {
+  it('walks hops of up to 30 minutes, or further if you set it', () => {
+    expect(forPace({ walkMaxMin: 15 } as Settings, 'intense').walkMaxMin).toBe(30)
+    expect(forPace({ walkMaxMin: 45 } as Settings, 'intense').walkMaxMin).toBe(45)
+    expect(forPace({ walkMaxMin: 15 } as Settings, 'packed').walkMaxMin).toBe(15)
   })
 })

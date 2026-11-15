@@ -2,11 +2,16 @@
 // routers; public transport has no free routing service, so it is an estimate (waiting + average speed) with a
 // link to real timetables.
 
-import type { Day, GetAround, Item, Leg, Settings } from '../types'
+import type { Day, GetAround, Item, Leg, Settings, TripStyle } from '../types'
 import { drivingRoute, walkingRoute } from './apis'
 import { haversineM, type LatLon } from './geo'
 
 export const DEFAULT_WALK_MAX_MIN = 15
+
+/** At the all-out pace you walk further before taking transport: hops of up to 30 minutes on foot (or your own, if longer). */
+export function forPace(settings: Settings, style: TripStyle | undefined): Settings {
+  return style === 'intense' ? { ...settings, walkMaxMin: Math.max(settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN, 30) } : settings
+}
 const TAXI_WAIT_MIN = 5
 const TRANSIT_WAIT_MIN = 10 // getting to the stop, waiting, getting from the stop
 const TRANSIT_KMH = 18 // average door-to-stop city speed, stops included

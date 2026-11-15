@@ -13,6 +13,7 @@ export const STYLES: Record<TripStyle, { label: string; desc: string }> = {
   relaxed: { label: '🐢 Relaxed', desc: '1–2 things a day, lots of downtime' },
   balanced: { label: '🚶 Balanced', desc: 'A plan each day with breaks' },
   packed: { label: '🏃 Packed', desc: 'See as much as possible: about 90% of the day, 9:00–21:00' },
+  intense: { label: '⚡ All out', desc: 'Up at dawn, out until late, long walks, meals on the go: 7:00 to midnight' },
 }
 
 export const BUDGET_LEVELS: Record<BudgetLevel, { label: string; desc: string }> = {

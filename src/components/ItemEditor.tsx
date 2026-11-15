@@ -14,7 +14,7 @@ import { localWiki } from '../lib/apis'
 import { planRipple } from '../lib/ripple'
 import { applyProposal, proposeDay, retimeAfter } from '../lib/favorites'
 import { journeyNote } from '../lib/dayview'
-import { legText, taxiLink, transitLink } from '../lib/legs'
+import { forPace, legText, taxiLink, transitLink } from '../lib/legs'
 import { distance } from '../lib/format'
 import { itemZones, offsetMin, transportSpan, tzAt, tzCity, tzLabel, zonedToUtc } from '../lib/tz'
 import { CITIES } from '../lib/cities'
@@ -59,7 +59,7 @@ interface Props {
 }
 
 export function ItemEditor({ trip, item, city, area, onClose }: Props) {
-  const settings = useSettings()
+  const settings = forPace(useSettings(), trip.style)
   const isNew = !item.id
   const [newId] = useState(uid) // fixed when the form opens: tapping Save twice saves one item
   const [saving, setSaving] = useState(false)

@@ -244,3 +244,22 @@ describe('changing a flight time', () => {
     expect(alignTransfers(day).map((m) => m.startTime)).toEqual(['15:00'])
   })
 })
+
+describe('the all-out pace', () => {
+  it('starts the day at 7:00, where a packed day starts at 9:30', async () => {
+    const plan = async (style: 'packed' | 'intense') => {
+      const trip = await makeTrip({ style })
+      await addItem(trip, { kind: 'stay', title: 'Hotel', status: 'booked', date: '2027-03-10', nights: 3, location: at(LONDON.hotel) })
+      const places = [LONDON.tower, LONDON.stPauls, LONDON.abbey, LONDON.nhm, LONDON.kensington]
+      for (const [k, p] of places.entries()) await addItem(trip, { date: D, title: `${p.name} gardens`, startTime: `${12 + k}:00`, endTime: `${12 + k}:30`, location: at(p) })
+      const r = await proposeDay(trip.id, D, SETTINGS)
+      await db.items.clear()
+      return r!.order.filter((o) => o.item.kind !== 'stay').map((o) => mins(o.startTime))
+    }
+    // The first place comes after getting there from the hotel: the same trip on both days, 2½ hours apart.
+    const packed = Math.min(...(await plan('packed')))
+    const intense = Math.min(...(await plan('intense')))
+    expect(packed).toBeGreaterThanOrEqual(9 * 60 + 30)
+    expect(packed - intense).toBe(150)
+  })
+})

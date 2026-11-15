@@ -10,8 +10,10 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   a mix, or a road trip with hikes) and **flights between places** (you decide, fly when faster, only long hops, no flights).
   Left to "you decide", a group of 2 or more is steered towards driving or trains: every flight is paid per person, a rental car once.
 - **Ideas (AI, free)**: the app writes a prompt. Paste it into any free chatbot (Claude, Gemini, ChatGPT) and paste the answer back.
-  Options come one per reply (free chatbots cut off long replies), then the full day-by-day detail of the one you pick, with
-  follow-up prompts for anything that was cut off. Answers are validated before anything is saved.
+  All 3 options come in one reply, kept compact, with **how they differ** first: the chatbot's own comparison and a table of
+  who each suits, how many places, how many moves and the budget. If a reply is cut off, the complete options are kept and a
+  short follow-up asks only for the missing ones. Then the full day-by-day detail of the one you pick, with follow-up prompts
+  for anything that was cut off. Answers are validated before anything is saved.
 - **Optional: ask ChatGPT from inside the app**: in Settings → AI assistant, switch from copy and paste to your own OpenAI API key. Every AI step
   (ideas, day detail, replan, booking import, city ideas) then gets an "✨ Ask ChatGPT" button that sends the prompt and fills in the answer, with
   copy and paste still one tap away. The key stays on that device only (not synced, not in backups or shared files); calls go straight to
@@ -119,6 +121,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   "How this was estimated". Categories open folded, totals first.
 - **Home as the default start**: Settings → Home city or usual airport. New trips, and trips with no start set, start and end there.
 - **Packed pace** fills about 90% of a 9:00–21:00 day.
+- **All-out pace** (⚡): days from 7:00 to midnight with no breaks, walks of up to 30 minutes instead of transport, and the
+  AI is asked for early starts, late finishes, long or several walks a day, and food on the go rather than sit-down meals.
 - **With ChatGPT set up** (Settings → AI assistant) the copy-and-paste way is hidden: each AI step is one "Ask ChatGPT" button, and the
   answer box only appears, folded, once there is an answer.
 - **Opening hours**: sights are kept within their likely opening hours where possible: the published ones when OpenStreetMap has them

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { applyBookings, applyPlan, applyTemplate, bookingPrompt, CHATBOTS, detailPrompt, mergeDetail, nextOptionPrompt, outlinePrompt, parseBookings, parseDetail, parsePlan, type AiOption } from '../lib/ai'
+import { applyBookings, applyPlan, applyTemplate, bookingPrompt, CHATBOTS, detailPrompt, mergeDetail, outlinePrompt, outlineRounds, parseBookings, parseDetail, routeShape, type AiOption } from '../lib/ai'
 import { refreshChecklist } from '../lib/checklist'
 import { BUDGET_LABELS } from '../lib/budget'
 import { addDays, daysBetween, formatDate } from '../lib/dates'
@@ -158,47 +158,6 @@ export function useAiWords() {
   return aiReady(useAiConfig())
 }
 
-interface OutlineRound {
-  n: number // which option this reply is for
-  prompt: string
-  text: string
-  error?: string
-  truncated?: boolean
-  parsed: boolean
-}
-
-/**
- * Walks the pasted replies in order: each one should hold the next option. A cut-off reply keeps whatever
- * complete days it had (marked incomplete) and the next round asks for the same option again, shorter.
- */
-function outlineRounds(replies: string[], firstPrompt: string) {
-  const rounds: OutlineRound[] = []
-  const options: { option: AiOption; incomplete: boolean }[] = []
-  let n = 1
-  let retry = false
-  for (let i = 0; i <= replies.length && n <= 3; i++) {
-    if (i > 0 && !rounds[i - 1].parsed) break
-    const text = replies[i] ?? ''
-    const round: OutlineRound = { n, prompt: i === 0 ? firstPrompt : nextOptionPrompt(n, retry), text, parsed: false }
-    rounds.push(round)
-    if (!text.trim()) break
-    try {
-      const r = parsePlan(text)
-      round.parsed = true
-      round.truncated = r.truncated
-      r.options.forEach((option, k) => {
-        const incomplete = r.truncated && k === r.options.length - 1
-        options[n - 1] = { option, incomplete }
-        if (!incomplete) n++
-      })
-      retry = r.truncated
-    } catch (e) {
-      round.error = (e as Error).message
-    }
-  }
-  return { rounds, options: options.filter(Boolean), done: n > 3 }
-}
-
 function ItineraryIdeas() {
   const api = useAiWords()
   const { trip, items, settings } = useTripCtx()
@@ -212,7 +171,8 @@ function ItineraryIdeas() {
   })
   const [replace, setReplace] = useState(true)
   const [chosen, setChosen] = useState<AiOption>()
-  const { rounds, options, done } = useMemo(() => outlineRounds(replies, outlinePrompt(trip, settings)), [replies, trip, settings])
+  const tripDays = daysBetween(trip.startDate, trip.endDate) + 1
+  const { rounds, options, compare, done } = useMemo(() => outlineRounds(replies, outlinePrompt(trip, settings), tripDays), [replies, trip, settings, tripDays])
 
   function setReply(i: number, text: string) {
     // Editing an earlier reply invalidates the follow-ups that were built from it.
@@ -282,27 +242,23 @@ function ItineraryIdeas() {
           <span className="muted"> — change it with “Trip details” above.</span>
         </div>
         <Steps />
-        {api ? (
-          <p className="small muted">The options come one at a time: ask for option 1, then option 2 and 3 if you like. Then the app asks for the full detail of the option you pick.</p>
-        ) : (
-          <p className="small muted">
-            Free chatbots cut off long replies, so the options come one per reply: paste option 1, then copy the short follow-up for option 2 into the <b>same chat</b>, and so
-            on. You can stop as soon as you like one. Then the app asks for the full detail of the option you pick.
-          </p>
-        )}
+        <p className="small muted">
+          All 3 options come in one {api ? 'answer' : 'reply'}, with how they differ. If {api ? 'it' : 'the chatbot'} cuts the answer off, the complete options are kept
+          and a short follow-up asks for the rest. Then the app asks for the full detail of the option you pick.
+        </p>
         {rounds.map((r, i) => (
           <div key={i} className="stack" style={{ gap: 8 }}>
             {i === 0 ? (
               <p className="small">
-                <b>Option 1 ·</b> {api ? 'ask ChatGPT for the first option.' : 'copy this prompt into a new chat, then paste the answer below.'}
+                <b>3 options ·</b> {api ? 'ask ChatGPT for all three.' : 'copy this prompt into a new chat, then paste the answer below.'}
               </p>
             ) : rounds[i - 1].truncated ? (
               <div className="notice">
-                The reply for option {r.n} was cut off — its complete days are kept below. {api ? 'Ask again to get the rest:' : 'To get all of it, paste this follow-up into the same chat:'}
+                The answer was cut off{r.n > 1 ? ` after option ${r.n - 1}` : ''} — what came complete is kept below. {api ? 'Ask for the rest:' : 'To get the rest, paste this follow-up into the same chat:'}
               </div>
             ) : (
               <div className="notice info">
-                <b>Option {r.n} ·</b> {api ? 'ask for another option' : <>copy this follow-up into the <b>same chat</b> and paste the answer below</>} — or skip it and pick from the options you have.
+                <b>{r.n < 3 ? `Options ${r.n}–3` : 'Option 3'} ·</b> only {r.n - 1} came back. {api ? 'Ask for the rest' : <>Copy this follow-up into the <b>same chat</b> and paste the answer below</>} — or pick from the options you have.
               </div>
             )}
             <PromptBox
@@ -311,7 +267,7 @@ function ItineraryIdeas() {
               onAnswer={(t) => setReply(i, t)}
               autoAsk={i === 0 && freshAsk && !r.text}
             />
-            <AnswerBox label={i === 0 ? "Paste the chatbot's answer" : `Answer for option ${r.n}`} value={r.text} onChange={(t) => setReply(i, t)} minHeight={90} placeholder={'```json\n{ "option": { … } }\n```'} />
+            <AnswerBox label={i === 0 ? "Paste the chatbot's answer" : `Answer for ${r.n < 3 ? `options ${r.n}–3` : 'option 3'}`} value={r.text} onChange={(t) => setReply(i, t)} minHeight={90} placeholder={'```json\n{ "compare": …, "options": [ … ] }\n```'} />
             {r.error && <div className="notice error">{r.error}</div>}
           </div>
         ))}
@@ -331,6 +287,7 @@ function ItineraryIdeas() {
             <h2>Pick an option</h2>
             {replaceChoice}
           </div>
+          <Comparison options={options.map((o) => o.option)} compare={compare} currency={settings.homeCurrency} />
           <div className="grid-3">
             {options.map(({ option, incomplete }, i) => (
               <OptionCard
@@ -347,6 +304,50 @@ function ItineraryIdeas() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+/** How the options differ, before reading them: the chatbot's own comparison, then a side-by-side of route, moves and cost. */
+function Comparison({ options, compare, currency }: { options: AiOption[]; compare: string; currency: string }) {
+  if (options.length < 2 && !compare) return null
+  return (
+    <div className="card stack" style={{ gap: 8 }}>
+      <b>How they differ</b>
+      {compare && <p className="small" style={{ margin: 0, lineHeight: 1.5 }}>{compare}</p>}
+      {options.length > 1 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="small">
+            <thead>
+              <tr>
+                <th>Option</th>
+                <th>Best for</th>
+                <th className="num">Places</th>
+                <th className="num">Moves</th>
+                <th className="num">Budget</th>
+              </tr>
+            </thead>
+            <tbody>
+              {options.map((o, i) => {
+                const { places, moves } = routeShape(o)
+                const total = Object.values(o.budget).reduce((s, v) => s + (v || 0), 0)
+                return (
+                  <tr key={i}>
+                    <td>
+                      <b>{o.title}</b>
+                    </td>
+                    <td className="muted">{o.bestFor || '—'}</td>
+                    <td className="num">{places}</td>
+                    <td className="num">{moves}</td>
+                    <td className="num">{total ? money(total, currency) : '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="tiny muted" style={{ margin: 0 }}>Places: where you sleep along the way. Moves: days you change place.</p>
     </div>
   )
 }
@@ -375,6 +376,7 @@ function OptionCard({
     <div className="card stack option-card">
       <div>
         <h3>{o.title}</h3>
+        {o.bestFor && <div className="small">🎯 {o.bestFor}</div>}
         {o.route.length > 0 && <div className="small muted">{o.route.join(' → ')}</div>}
         {incomplete && (
           <span className="badge planned" style={{ marginTop: 4 }}>
