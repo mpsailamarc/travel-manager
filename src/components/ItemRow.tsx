@@ -6,6 +6,7 @@ import { linkLabel } from './PlaceInfo'
 import { money, distance, plural } from '../lib/format'
 import { formatDuration } from '../lib/dates'
 import { legText } from '../lib/legs'
+import { hoursWarning } from '../lib/hours'
 
 export function itemSubtitle(it: Item): string {
   const parts: string[] = []
@@ -42,6 +43,7 @@ export function ItemRow({ item, onClick, actions, showStatus = true, zoneNote, p
         </div>
         {itemSubtitle(item) && <div className="item-sub">{itemSubtitle(item)}</div>}
         {zoneNote && <div className="item-sub">🌏 {zoneNote}</div>}
+        {hoursWarning(item, item.date) && <div className="item-sub" style={{ color: 'var(--warn, #b45309)' }}>🕘 {hoursWarning(item, item.date)}</div>}
         {item.legIn && (
           <div className="item-sub">
             {legText(item.legIn, distance)}

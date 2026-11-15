@@ -164,11 +164,13 @@ export function DayTimeline({
   now,
   onOpen,
   onChange,
+  onUnlock,
 }: {
   view: DayView
   now?: Date
   onOpen: (item: Item) => void
   onChange?: (item: Item, times: { startTime: string; endTime?: string }) => void
+  onUnlock?: (item: Item) => void // tap the 📌 on a block to let it move again
 }) {
   const blocks = layout(view.entries)
   const { untimed } = view
@@ -212,19 +214,21 @@ export function DayTimeline({
       if (!g.touch && g.mode === 'move' && Math.abs(dy) > 4) g.activate()
       if (!g.active) return
     }
-    const delta = Math.round(((dy / PX_PER_HOUR) * 60) / SNAP) * SNAP
+    // Lands on the quarter hours of the clock (15:00, 15:15, 15:30…), whatever time it started from.
+    const delta = (dy / PX_PER_HOUR) * 60
+    const snap = (m: number) => Math.round(m / SNAP) * SNAP
     const { from, to } = latest.current
     const b = g.block
     let start = b.start
     let end = b.end
     if (g.mode === 'move') {
       const len = b.end - b.start
-      start = Math.min(Math.max(b.start + delta, from), to - len)
+      start = Math.min(Math.max(snap(b.start + delta), from), to - len)
       end = start + len
     } else if (g.mode === 'end') {
-      end = Math.min(Math.max(b.end + delta, b.start + MIN_LEN), to)
+      end = Math.min(Math.max(snap(b.end + delta), snap(b.start + MIN_LEN)), to)
     } else {
-      start = Math.min(Math.max(b.start + delta, from), b.end - MIN_LEN)
+      start = Math.min(Math.max(snap(b.start + delta), from), b.end - MIN_LEN)
     }
     g.live = { start, end }
     setLive({ id: b.item.id, mode: g.mode, start, end })
@@ -331,6 +335,21 @@ export function DayTimeline({
               title={`${b.item.title} · ${hhmm(start)}–${hhmm(end)}${b.estimated ? ' (estimated length)' : ''}${note ? ` · ${note}` : ''}`}
             >
               {gripTop && <i className="tl-grip top" onPointerDown={(e) => down(e, b, 'start')} onClick={(e) => e.stopPropagation()} aria-label="Drag to change the start" />}
+              {b.item.locked && (
+                <i
+                  className="tl-pin"
+                  role="button"
+                  title={onUnlock ? 'Locked at this time: tap to let it move' : 'Locked at this time'}
+                  aria-label="Unlock"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onUnlock?.(b.item)
+                  }}
+                >
+                  📌
+                </i>
+              )}
               <b>
                 {meta.emoji} {b.item.title}
               </b>
@@ -356,7 +375,12 @@ export function DayTimeline({
           </div>
         )}
       </div>
-      {editable && <p className="tiny muted">✋ Hold a block and drag it to move it; drag its top or bottom edge to change when it starts or ends. Booked items stay fixed.</p>}
+      {editable && (
+        <p className="tiny muted">
+          ✋ Hold a block and drag it to move it (it snaps to the quarter hour); drag its top or bottom edge to change when it starts or ends. What you place is 📌 locked there:
+          tap the 📌 to let it move again. Booked items stay fixed.
+        </p>
+      )}
       {blocks.some((b) => b.estimated) && <p className="tiny muted">Dashed blocks have no end time: their length is a guess (~). Drag the bottom edge to set it.</p>}
       {untimed.length > 0 && (
         <div className="stack" style={{ gap: 4 }}>

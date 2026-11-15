@@ -79,6 +79,10 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   **📌 Locks** say what never moves: booked items, journeys and stays always; anything you place by hand (dragged on the calendar, time changed
   in the form, moved up/down) is locked automatically, and any item can be locked or unlocked from its ⋯ menu or form. "Plan my days" uses the
   same engine, so both screens agree.
+- **Opening hours**: sights are kept within their likely opening hours where possible: the published ones when OpenStreetMap has them
+  ("Tu-Su 10:00-18:00", closed days included), otherwise 9:00–17:00 (shops 10:00–19:00; parks, viewpoints, markets, walks, meals and evening
+  shows have no limit). It's a guess, so it only steers the order and warns ("🕘 may be closed then") on the item and in the Optimise preview.
+- **Calendar**: dragging snaps to the clock's quarter hours (15:00, 15:15, 15:30…); a 📌 on a block shows it's locked, tap it to let it move.
 - **Plan my days schedules the whole day**: besides the wishlist, it gives times to what the day already holds without one (an itinerary's
   "Tower of London", "Lunch at Borough Market"), and ties wishlist places to those items instead of adding them again on another day. Lunch
   goes in around noon. Anything 📌 locked, booked, or a journey stays put and the rest fits around it. Planning again gives the same result.

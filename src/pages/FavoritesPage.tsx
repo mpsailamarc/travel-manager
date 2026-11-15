@@ -85,7 +85,7 @@ export default function FavoritesPage() {
   async function toggleSight(p: Poi) {
     const existing = findFav(p.name, p.wikidata)
     if (existing) return removeFav(existing)
-    await addFav({ name: p.name, lat: p.lat, lon: p.lon, category: p.category, visitMin: p.visitMin, source: 'sight', wikipedia: p.wikipedia, wikidata: p.wikidata, interest: interest.get(p.id) })
+    await addFav({ name: p.name, lat: p.lat, lon: p.lon, category: p.category, visitMin: p.visitMin, source: 'sight', wikipedia: p.wikipedia, wikidata: p.wikidata, interest: interest.get(p.id), openingHours: p.openingHours })
   }
 
   async function toggleIdea(i: CityIdea) {

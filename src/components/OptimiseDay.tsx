@@ -4,6 +4,7 @@ import { applyProposal, proposeDay, type DayProposal } from '../lib/favorites'
 import { formatDuration } from '../lib/dates'
 import { distance } from '../lib/format'
 import { legText } from '../lib/legs'
+import { hoursWarning } from '../lib/hours'
 import { Modal, toast } from './ui'
 
 /**
@@ -62,6 +63,11 @@ export function OptimiseDayButton({ tripId, date, settings, className = 'btn-sm'
                       {o.moved ? `was ${o.item.startTime ?? 'without a time'}` : '📌 stays'}
                       {o.moved && o.leg && ` · ${legText(o.leg, distance)}`}
                     </span>
+                    {hoursWarning({ ...o.item, startTime: o.startTime, endTime: o.endTime }, o.item.date) && (
+                      <span className="tiny" style={{ display: 'block', color: '#b45309' }}>
+                        🕘 {hoursWarning({ ...o.item, startTime: o.startTime, endTime: o.endTime }, o.item.date)}
+                      </span>
+                    )}
                   </span>
                 </li>
               ))}
@@ -69,7 +75,11 @@ export function OptimiseDayButton({ tripId, date, settings, className = 'btn-sm'
             {proposal.changes.some((c) => !c.startTime) && (
               <p className="small muted">{proposal.changes.filter((c) => !c.startTime).map((c) => c.item.title).join(', ')}: no time left that day, so they stay on it without a time.</p>
             )}
-            <p className="tiny muted">Locked (📌), booked items, journeys and your hotel never move. Lock anything else from its ⋯ menu or its form.</p>
+            <p className="tiny muted">
+              Locked (📌), booked items, journeys and your hotel never move. Lock anything else from its ⋯ menu or its form. Sights are kept within their
+              opening hours where possible: the published ones when OpenStreetMap has them, otherwise 9:00–17:00 (parks, viewpoints, markets and walks
+              have no limit).
+            </p>
             <div className="row" style={{ justifyContent: 'flex-end' }}>
               <button onClick={() => setProposal(undefined)}>Keep as is</button>
               <button className="btn-primary" disabled={!proposal.changes.length} onClick={apply}>

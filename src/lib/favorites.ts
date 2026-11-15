@@ -5,6 +5,7 @@ import { adoptPlannerItems, db, getSettings, touchTrip } from '../db'
 import type { Day, Favorite, GetAround, Item, Leg, Place, Settings, Trip, TripStyle } from '../types'
 import { POI_CATEGORIES } from './apis'
 import { matchesPlace } from './duplicates'
+import { openingWindow } from './hours'
 import { DEFAULT_WALK_MAX_MIN, planLeg } from './legs'
 import { addDays, hhmmToMin, minToHHMM, today } from './dates'
 import { centroid, haversineM, type LatLon } from './geo'
@@ -226,7 +227,7 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
     let order = dayItems.reduce((m, i) => Math.max(m, i.order), -1) + 1
     const geo = mine.filter((f) => f.lat != null && f.lon != null && !isDayTrip(f))
     const movable: Movable[] = [
-      ...geo.map((f) => ({ key: f.id, name: f.name, lat: f.lat!, lon: f.lon!, visitMin: f.visitMin })),
+      ...geo.map((f) => ({ key: f.id, name: f.name, lat: f.lat!, lon: f.lon!, visitMin: f.visitMin, ...hoursOf({ title: f.name, kind: 'activity', category: f.category, hours: f.openingHours }, date) })),
       ...ownFlex.map((i) => ownMovable(i, favs)),
     ]
     const ownUpdates: { key: string; changes: Partial<Item> }[] = []
@@ -252,6 +253,8 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
           planner: tag,
           favId: f.id,
           legIn: slot.leg,
+          category: f.category,
+          hours: f.openingHours,
         })
       }
       for (const i of ownFlex) {
@@ -344,6 +347,14 @@ export interface Movable {
   visitMin: number
   meal?: boolean
   mealAt?: number // a meal's natural time (lunch 12:00, dinner 19:00), from its name or the time it had
+  open?: number // likely opening hours (minutes): planned inside them when possible
+  close?: number
+}
+
+/** Opening hours as minutes for the scheduler: a place shut that day gets an empty window (it is then planned, but flagged). */
+function hoursOf(x: { title: string; kind?: string; category?: string; hours?: string }, date: string) {
+  const w = openingWindow(x, date)
+  return w === 'closed' ? { open: 0, close: 0 } : w ? { open: w.open, close: w.close } : {}
 }
 
 /** Lunch or dinner time for a meal, from its name or the time it was given; breakfast and snacks have none. */
@@ -357,12 +368,22 @@ function mealTime(title: string, start?: string): number | undefined {
 
 /** How long a plan item takes: the wishlist place's visit time, its own times, or a sensible default for its kind. */
 function ownMovable(i: Item, favs: Favorite[]): Movable {
+  const fav = favs.find((f) => f.itemId === i.id || f.id === i.favId)
   const linked = favs.find((f) => f.itemId === i.id || f.id === i.favId)
   const at = i.location?.lat != null && i.location.lon != null ? { lat: i.location.lat, lon: i.location.lon } : i.walk?.stops[0]
   const own = i.startTime && i.endTime ? hhmmToMin(i.endTime) - hhmmToMin(i.startTime) : undefined
   const visitMin =
     own != null && own > 0 ? own : linked ? linked.visitMin : i.walk ? Math.round(i.walk.walkS / 60 + i.walk.stops.reduce((a, x) => a + x.visitMin, 0)) : i.kind === 'meal' ? 60 : i.kind === 'note' ? 30 : 90
-  return { key: i.id, name: i.title, lat: at?.lat, lon: at?.lon, visitMin, meal: i.kind === 'meal', mealAt: i.kind === 'meal' ? mealTime(i.title, i.startTime) : undefined }
+  return {
+    key: i.id,
+    name: i.title,
+    lat: at?.lat,
+    lon: at?.lon,
+    visitMin,
+    meal: i.kind === 'meal',
+    mealAt: i.kind === 'meal' ? mealTime(i.title, i.startTime) : undefined,
+    ...hoursOf({ title: i.title, kind: i.kind, category: i.category ?? fav?.category, hours: i.hours ?? fav?.openingHours }, i.date),
+  }
 }
 
 interface DayContext {
@@ -440,27 +461,49 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
   }
   stretches.push({ s: cur.t, e: dayEnd, a: cur.at, b: roundTrip ? home : undefined, seq: [] })
 
-  const pathMin = (st: Stretch, seq: (Movable & LatLon)[]) => {
-    let m = 0
+  // Walk a stretch in order: travel, wait for opening if early, visit. `late` adds up the minutes past closing time.
+  const simulate = (st: Stretch, seq: (Movable & LatLon)[]) => {
+    let t = st.s
+    let travel = 0
+    let late = 0
     let p = st.a
     for (const x of seq) {
-      if (p) m += guess(p, x)
-      m += x.visitMin
+      if (p) {
+        const g = guess(p, x)
+        travel += g
+        t += g
+      }
+      if (x.open != null) t = Math.max(t, x.open)
+      t += x.visitMin
+      if (x.close != null && t > x.close) late += t - x.close
       p = x
     }
-    if (p && st.b) m += guess(p, st.b)
-    return m
+    if (p && st.b) {
+      const g = guess(p, st.b)
+      travel += g
+      t += g
+    }
+    return { end: t, travel, late }
   }
-  const travelOnly = (st: Stretch, seq: (Movable & LatLon)[]) => pathMin(st, seq) - seq.reduce((a, x) => a + x.visitMin, 0)
+  const fits = (st: Stretch, seq: (Movable & LatLon)[]) => {
+    const r = simulate(st, seq)
+    return r.end <= st.e && r.late === 0
+  }
+  // Travel, with a heavy price on visits that would end after closing (so the order keeps them inside opening hours).
+  const travelOnly = (st: Stretch, seq: (Movable & LatLon)[]) => {
+    const r = simulate(st, seq)
+    return r.travel + r.late * 10
+  }
 
-  // Longest visits first: each goes where it adds the least travel among the stretches it still fits in.
+  // Places with opening hours first (they need the daytime), longest visits first: each goes where it adds the least travel
+  // among the stretches it still fits in.
   const leftover: (Movable & LatLon)[] = []
-  for (const x of [...located].sort((p, q) => q.visitMin - p.visitMin)) {
+  for (const x of [...located].sort((p, q) => (p.close != null ? 0 : 1) - (q.close != null ? 0 : 1) || q.visitMin - p.visitMin)) {
     let best: { st: Stretch; pos: number; cost: number } | undefined
     for (const st of stretches) {
       for (let pos = 0; pos <= st.seq.length; pos++) {
         const seq = [...st.seq.slice(0, pos), x, ...st.seq.slice(pos)]
-        if (st.s + pathMin(st, seq) > st.e) continue
+        if (!fits(st, seq)) continue
         const cost = travelOnly(st, seq) - travelOnly(st, st.seq)
         if (!best || cost < best.cost) best = { st, pos, cost }
       }
@@ -468,8 +511,70 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
     if (best) best.st.seq.splice(best.pos, 0, x)
     else leftover.push(x)
   }
-  // Nothing left anywhere: when there's no departure to respect, it goes at the end of the day rather than off the plan.
-  if (cutoff == null) for (const x of leftover.splice(0)) stretches[stretches.length - 1].seq.push(x)
+  // What fits nowhere goes where it is least late (and adds least travel), as long as it doesn't run into what's fixed;
+  // with a departure to respect it may stay off the day instead.
+  for (const x of leftover.splice(0)) {
+    let best: { st: Stretch; pos: number; cost: number } | undefined
+    for (const st of stretches) {
+      const last = st === stretches[stretches.length - 1]
+      for (let pos = 0; pos <= st.seq.length; pos++) {
+        const seq = [...st.seq.slice(0, pos), x, ...st.seq.slice(pos)]
+        if (simulate(st, seq).end > st.e && !(last && cutoff == null)) continue
+        const cost = travelOnly(st, seq) - travelOnly(st, st.seq)
+        if (!best || cost < best.cost) best = { st, pos, cost }
+      }
+    }
+    if (best) best.st.seq.splice(best.pos, 0, x)
+  }
+
+  // Improve the whole assignment: move a place to another spot, or swap two places between stretches, whenever that lowers
+  // travel plus time past closing (and never runs into something fixed). A few passes are plenty for a day.
+  const overrun = (st: Stretch) => {
+    const last = st === stretches[stretches.length - 1]
+    const over = simulate(st, st.seq).end - st.e
+    return over > 0 && !(last && cutoff == null) ? over * 20 : 0
+  }
+  const total = () => stretches.reduce((sum, st) => sum + travelOnly(st, st.seq) + overrun(st), 0)
+  for (let pass = 0; pass < 6; pass++) {
+    let best = total()
+    let improved = false
+    // Relocate
+    for (const sa of stretches)
+      for (let i = 0; i < sa.seq.length; i++) {
+        const x = sa.seq[i]
+        sa.seq.splice(i, 1)
+        let to: { st: Stretch; pos: number; cost: number } | undefined
+        for (const sb of stretches)
+          for (let pos = 0; pos <= sb.seq.length; pos++) {
+            sb.seq.splice(pos, 0, x)
+            const c = total()
+            sb.seq.splice(pos, 1)
+            if (c + 0.5 < (to?.cost ?? best)) to = { st: sb, pos, cost: c }
+          }
+        if (to) {
+          to.st.seq.splice(to.pos, 0, x)
+          best = to.cost
+          improved = true
+          i = sa.seq.length // this stretch changed: carry on with the next one
+        } else sa.seq.splice(i, 0, x)
+      }
+    // Swap between stretches
+    for (let a = 0; a < stretches.length; a++)
+      for (let b = a + 1; b < stretches.length; b++) {
+        const A = stretches[a].seq
+        const B = stretches[b].seq
+        for (let i = 0; i < A.length; i++)
+          for (let k = 0; k < B.length; k++) {
+            ;[A[i], B[k]] = [B[k], A[i]]
+            const c = total()
+            if (c + 0.5 < best) {
+              best = c
+              improved = true
+            } else [A[i], B[k]] = [B[k], A[i]]
+          }
+      }
+    if (!improved) break
+  }
 
   // Untangle each stretch (2-opt with its two ends fixed).
   for (const st of stretches) {
@@ -523,7 +628,7 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
   for (const m of meals) notBefore.set(m.key, Math.max(notBefore.get(m.key) ?? 0, m.mealAt!))
 
   const slotsArr = await layoutStops(
-    order.map((m) => ({ lat: m.lat, lon: m.lon, name: m.name, visitMin: m.visitMin, notBefore: notBefore.get(m.key) })),
+    order.map((m) => ({ lat: m.lat, lon: m.lon, name: m.name, visitMin: m.visitMin, notBefore: Math.max(notBefore.get(m.key) ?? 0, m.open ?? 0) })),
     from,
     fixed,
     pref,
@@ -791,7 +896,7 @@ export async function retimeAfter(changed: Item, settings: Settings, nowMin?: nu
     ...at(i),
     name: i.title,
     visitMin: length(i),
-    notBefore: hhmmToMin(i.startTime!) - freed,
+    notBefore: Math.max(hhmmToMin(i.startTime!) - freed, hoursOf({ title: i.title, kind: i.kind, category: i.category, hours: i.hours }, i.date).open ?? 0),
   }))
   const slots = await layoutStops(stops, start, fixed, pref, settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN, settings.walkSpeedKmh, departureCutoff(dayItems.filter((i) => i.id !== changed.id), start.t, arriving))
   const updates = later

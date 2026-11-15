@@ -145,6 +145,8 @@ export interface Item {
   toTz?: string // zone of its end time (e.g. Asia/Tokyo)
   planner?: string // set on items built from favourites ("fav:<city>") so they can be rebuilt
   favId?: string // the wishlist place this item came from
+  category?: string // the wishlist place's kind (museum, park…), to guess opening hours
+  hours?: string // published opening hours (OpenStreetMap format, e.g. "Tu-Su 10:00-18:00")
   legIn?: Leg // how to get here from the previous place of the day (set by the City planner)
   locked?: boolean // 📌 keep this time: optimising and planning never move it (booked items, journeys and stays are always kept)
   autoTime?: boolean // its time was set by "Plan my days" (it had none): planning again may move it; editing it by hand makes the time yours
@@ -207,6 +209,7 @@ export interface Favorite {
   source: 'sight' | 'ai' | 'manual'
   wikipedia?: string
   wikidata?: string
+  openingHours?: string // from OpenStreetMap when known ("Tu-Su 10:00-18:00")
   interest?: { stars: number; langs: number } // how widely written about (Wikipedia language editions), 1–5 stars
   notes?: string
   date?: ISODate // undefined = not scheduled (a backup idea)

@@ -249,7 +249,17 @@ export default function TodayPage() {
               </div>
             )}
             {mode === 'timeline' && dayItems.length > 0 && (
-              <DayTimeline view={view} now={isToday ? now : undefined} onOpen={(it) => setEditing(it)} onChange={moveOnCalendar} />
+              <DayTimeline
+                view={view}
+                now={isToday ? now : undefined}
+                onOpen={(it) => setEditing(it)}
+                onChange={moveOnCalendar}
+                onUnlock={async (it) => {
+                  await db.items.update(it.id, { locked: undefined })
+                  await touchTrip(trip.id)
+                  toast(`🔓 ${it.title} can move again when you optimise or plan`)
+                }}
+              />
             )}
             {mode === 'list' && (
             <div className="items">
