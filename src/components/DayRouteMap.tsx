@@ -4,9 +4,11 @@ import type { DayRoute } from '../lib/dayroute'
 import { legText } from '../lib/legs'
 import { distance } from '../lib/format'
 import LazyMap, { type MapMarker } from './LazyMap'
+import { useMapSize } from '../lib/hooks'
 
 /** The day's path on a map: numbered stops in time order joined by the way you get between them, and the same list underneath. */
-export function DayRouteMap({ route, loading, onOpen, className = 'short' }: { route?: DayRoute; loading: boolean; onOpen: (it: Item) => void; className?: string }) {
+export function DayRouteMap({ route, loading, onOpen, sizeKey = 'tm-day-route-map' }: { route?: DayRoute; loading: boolean; onOpen: (it: Item) => void; sizeKey?: string }) {
+  const [size, setSize] = useMapSize(sizeKey)
   const markers = useMemo((): MapMarker[] => {
     if (!route) return []
     const m: MapMarker[] = route.stops.map((s, n) => ({ id: s.item.id, lat: s.at.lat, lon: s.at.lon, label: String(n + 1), variant: 'on', title: s.item.title, onClick: () => onOpen(s.item) }))
@@ -18,7 +20,16 @@ export function DayRouteMap({ route, loading, onOpen, className = 'short' }: { r
   if (!route?.stops.length) return <p className="small muted">{loading ? 'Working out the route…' : 'Nothing with a place on this day yet. Add a place to an activity (Edit, then “Find”) and it shows here.'}</p>
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <LazyMap className={className} markers={markers} segments={route.segments} fitKey={route.stops.map((s) => s.item.id + s.item.startTime).join()} locate />
+      <div className="chips" style={{ justifyContent: 'flex-end' }}>
+        {(['small', 'large', 'hidden'] as const).map((v) => (
+          <button key={v} className={`chip ${size === v ? 'on' : ''}`} onClick={() => setSize(v)}>
+            {v === 'small' ? 'Small' : v === 'large' ? 'Large' : 'Hide map'}
+          </button>
+        ))}
+      </div>
+      {size !== 'hidden' && (
+        <LazyMap key={size} className={size === 'large' ? 'tall' : 'short'} markers={markers} segments={route.segments} fitKey={route.stops.map((s) => s.item.id + s.item.startTime).join()} locate />
+      )}
       <ol className="route-list">
         {route.stops.map((s, n) => (
           <li key={s.item.id}>
