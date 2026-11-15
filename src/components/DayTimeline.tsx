@@ -174,8 +174,9 @@ export function DayTimeline({
 }) {
   const blocks = layout(view.entries)
   const { untimed } = view
-  const from = blocks.length ? Math.max(0, Math.floor(Math.min(...blocks.map((b) => b.start), 7 * 60) / 60) * 60) : 7 * 60
-  const to = blocks.length ? Math.min(24 * 60, Math.ceil(Math.max(...blocks.map((b) => b.end), 19 * 60) / 60) * 60) : 19 * 60
+  // The whole waking day is there to drag into: from 6:00 (or earlier, if something starts earlier) to midnight.
+  const from = blocks.length ? Math.max(0, Math.floor(Math.min(...blocks.map((b) => b.start), 6 * 60) / 60) * 60) : 6 * 60
+  const to = 24 * 60
 
   const [live, setLive] = useState<Live | null>(null)
   const gesture = useRef<Gesture | null>(null)
