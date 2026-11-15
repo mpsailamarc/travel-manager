@@ -112,6 +112,7 @@ export default function MapView({ markers, line, dashed, segments, className = '
       div.textContent = mk.label ?? ''
       if (mk.title) div.title = mk.title
       if (mk.onClick) {
+        div.style.cursor = 'pointer'
         div.addEventListener('click', (e) => {
           e.stopPropagation()
           mk.onClick!()

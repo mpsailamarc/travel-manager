@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { db } from '../db'
 import type { Day, Item, Place } from '../types'
 import { dateRange, formatDate, formatDuration, today } from '../lib/dates'
@@ -18,6 +18,7 @@ import { useTripCtx } from './TripLayout'
 
 export default function PlanPage() {
   const { trip, items, days } = useTripCtx()
+  const navigate = useNavigate()
   const [editing, setEditing] = useState<(Partial<Item> & { date: string }) | null>(null)
   const [dayEdit, setDayEdit] = useState<Day | null>(null)
   const [mapSize, setMapSize] = useMapSize('tm-plan-map')
@@ -49,7 +50,7 @@ export default function PlanPage() {
         const last = line[line.length - 1]
         if (!last || last[0] !== d.lon || last[1] !== d.lat) {
           line.push([d.lon, d.lat])
-          markers.push({ id: date, lat: d.lat, lon: d.lon, label: String(i + 1), variant: 'on', title: d.city })
+          markers.push({ id: date, lat: d.lat, lon: d.lon, label: String(i + 1), variant: 'on', title: `${d.city ?? ''} · day ${i + 1}: open it`, onClick: () => navigate(`../today?date=${date}`) })
         }
       }
     })
@@ -70,7 +71,7 @@ export default function PlanPage() {
     const dots: MapMarker[] = []
     for (const it of items) {
       const p = it.location ?? it.to
-      if (p?.lat != null && p.lon != null && it.kind !== 'stay') dots.push({ id: it.id, lat: p.lat, lon: p.lon, variant: 'dot', title: it.title })
+      if (p?.lat != null && p.lon != null && it.kind !== 'stay') dots.push({ id: it.id, lat: p.lat, lon: p.lon, variant: 'dot', title: `${it.title}: open its day`, onClick: () => navigate(`../today?date=${it.date}`) })
     }
     return { markers: [...dots, ...markers], line }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,7 +173,7 @@ export default function PlanPage() {
                 🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} ·{' '}
               </>
             )}
-            Numbers = the first day you are in each place · lines follow the roads, except flights and boats (dashed) · grey dots = activities
+            Numbers = the first day you are in each place (tap one, or a grey dot, to open that day) · lines follow the roads, except flights and boats (dashed) · grey dots = activities
             {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
           </p>
         </>

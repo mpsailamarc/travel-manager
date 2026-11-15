@@ -79,6 +79,7 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   **📌 Locks** say what never moves: booked items, journeys and stays always; anything you place by hand (dragged on the calendar, time changed
   in the form, moved up/down) is locked automatically, and any item can be locked or unlocked from its ⋯ menu or form. "Plan my days" uses the
   same engine, so both screens agree.
+- **Plan map is clickable**: tap a numbered day marker or a grey activity dot to open that day in Day by day.
 - **Maps show real paths**: everything follows the streets and roads (walks, taxis, public transport, trains, buses, drives), except flights
   and boats, which stay straight dashed lines. Colours say how you travel: walking green, public transport blue (dashed: its exact line isn't
   known), taxi orange; on the trip map car orange, train/bus blue, flights grey, boats cyan.
