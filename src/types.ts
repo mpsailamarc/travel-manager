@@ -59,6 +59,7 @@ export interface Trip {
   budgetBasis?: string[] // plain-words notes on how the estimate was made
   planBudget?: BudgetCategory[] // categories whose budget came from an itinerary idea (so switching idea can replace them)
   userEndDate?: ISODate // the end date you chose, when an itinerary idea made the trip longer
+  fuel?: { km?: number; perKm?: number } // your own figures for the fuel line (else worked out from the drives)
   planBasis?: string // what the itinerary was made for (destination, dates, pace…): when the trip no longer matches, new ideas are offered
   startPlace?: Place // where the trip starts (e.g. home city or airport)
   endPlace?: Place // where it ends; the start place when not set

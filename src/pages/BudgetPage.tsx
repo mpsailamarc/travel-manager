@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, touchTrip } from '../db'
 import type { BudgetCategory, BudgetLine, Expense, ItemKind, Trip } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
-import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines, inferAssumption, lineAmount, lineFormula, modernLine, syncBudgetToTrip, unitFor } from '../lib/budget'
+import { BUDGET_LABELS, FUEL_EUR_PER_KM, fuelEstimate, budgetFromLines, estimateBudgetLines, inferAssumption, lineAmount, lineFormula, modernLine, syncBudgetToTrip, unitFor } from '../lib/budget'
 import { fxRate } from '../lib/apis'
 import { country } from '../lib/countries'
 import { daysBetween, formatDate, today } from '../lib/dates'
@@ -33,7 +33,7 @@ const KIND_TO_CATEGORY: Record<ItemKind, BudgetCategory> = {
 }
 
 export default function BudgetPage() {
-  const { trip, items, settings } = useTripCtx()
+  const { trip, items, days, settings } = useTripCtx()
   const home = settings.homeCurrency
   const [editing, setEditing] = useState<Expense | null>(null)
   const cols = 3
@@ -59,6 +59,7 @@ export default function BudgetPage() {
   const expenses = useLiveQuery(() => db.expenses.where('tripId').equals(trip.id).toArray(), [trip.id])
 
   const currencies = [...new Set(items.map((i) => i.cost?.currency).filter((c): c is string => !!c))]
+  const { data: eurRate } = useAsync(async () => (await fxRate('EUR', home)) ?? 1, [home])
   const { data: rates } = useAsync(
     async () => Object.fromEntries(await Promise.all(currencies.map(async (c) => [c, (await fxRate(c, home)) ?? 1] as const))),
     [currencies.join(), home],
@@ -82,6 +83,15 @@ export default function BudgetPage() {
     if (!it.cost?.amount || it.status === 'skipped') continue
     planned[KIND_TO_CATEGORY[it.kind]] += it.cost.amount * (rates?.[it.cost.currency] ?? 1)
   }
+  // With a car (rented or your own), fuel counts too: the drives between where you stay, plus local driving. Your own figures
+  // win; an estimate that already has a Fuel line keeps that instead.
+  const fuelPlan = fuelEstimate(items, days)
+  const fuel =
+    fuelPlan && !(trip.budgetLines ?? []).some((l) => /^fuel/i.test(l.label))
+      ? { km: trip.fuel?.km ?? fuelPlan.km, perKm: trip.fuel?.perKm ?? Math.round(FUEL_EUR_PER_KM * (eurRate ?? 1) * 100) / 100, route: fuelPlan.route }
+      : undefined
+  const fuelAmount = fuel ? Math.round(fuel.km * fuel.perKm) : 0
+  planned.transport += fuelAmount
   // Bookings with a reference are treated as paid in advance; expenses are what you pay on the spot.
   const spent: Record<BudgetCategory, number> = Object.fromEntries(BUDGET_CATEGORIES.map((c) => [c, 0])) as Record<BudgetCategory, number>
   let prepaid = 0
@@ -115,7 +125,7 @@ export default function BudgetPage() {
 
   const lines = trip.budgetLines ?? []
   const hasLines = (c: BudgetCategory) => lines.some((l) => l.category === c)
-  const hasRows = (c: BudgetCategory) => hasLines(c) || pricedIn(c).length > 0
+  const hasRows = (c: BudgetCategory) => hasLines(c) || pricedIn(c).length > 0 || (c === 'transport' && !!fuel)
 
   /** Saves the breakdown and re-derives the category totals from it. */
   async function saveLines(next: BudgetLine[]) {
@@ -230,12 +240,13 @@ export default function BudgetPage() {
                 const b = catTotal(c)
                 const catLines = lines.filter((l) => l.category === c)
                 const fromPlan = pricedIn(c)
+                const planCount = fromPlan.length + (c === 'transport' && fuel ? 1 : 0) // what the plan prices, fuel included
                 const isFolded = !!folded[c]
                 const main = (
                   <tr key={c}>
                     <td>
                       <div className="row" style={{ gap: 4 }}>
-                        {catLines.length > 0 || fromPlan.length > 0 ? (
+                        {catLines.length > 0 || planCount > 0 ? (
                           <button className="icon-btn" aria-expanded={!isFolded} aria-label={`${isFolded ? 'Expand' : 'Collapse'} ${BUDGET_LABELS[c].label}`} onClick={() => setFolded((f) => ({ ...f, [c]: !isFolded }))}>
                             {isFolded ? '▸' : '▾'}
                           </button>
@@ -244,7 +255,7 @@ export default function BudgetPage() {
                         )}
                         <span className="grow">
                           {BUDGET_LABELS[c].emoji} {BUDGET_LABELS[c].label}
-                          {isFolded && <span className="tiny muted"> · {plural(catLines.length + fromPlan.length, 'line')}</span>}
+                          {isFolded && <span className="tiny muted"> · {plural(catLines.length + planCount, 'line')}</span>}
                         </span>
                         <button className="icon-btn" aria-label={`Add a line to ${BUDGET_LABELS[c].label}`} title="Add a line" onClick={() => addLine(c)}>
                           ＋
@@ -257,7 +268,7 @@ export default function BudgetPage() {
                       )}
                     </td>
                     <td className="num">
-                      {catLines.length || fromPlan.length ? (
+                      {catLines.length || planCount ? (
                         <b title="Adds up the lines underneath">{money(b, home)}</b>
                       ) : (
                         <input
@@ -326,7 +337,44 @@ export default function BudgetPage() {
                           <td />
                         </tr>
                       )),
-                      ...(rest(c) > 0 && fromPlan.length > 0
+                      ...(c === 'transport' && fuel
+                        ? [
+                            <tr key="fuel" className="budget-line">
+                              <td style={{ paddingLeft: 14 }}>
+                                <span className="small">⛽ Fuel for your drives</span>{' '}
+                                <span className="tiny muted">· {fuel.route.join(' → ')}, plus local driving</span>
+                                <div className="row wrap" style={{ gap: 4, marginTop: 4 }}>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    style={{ width: 84 }}
+                                    aria-label="Kilometres"
+                                    defaultValue={fuel.km}
+                                    key={`fuel-km-${fuel.km}`}
+                                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                                    onBlur={(e) => Number(e.target.value) !== fuel.km && db.trips.update(trip.id, { fuel: { ...trip.fuel, km: Number(e.target.value) || 0 } })}
+                                  />
+                                  <span className="small muted">km ×</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="any"
+                                    style={{ width: 76 }}
+                                    aria-label="Fuel per km"
+                                    defaultValue={fuel.perKm}
+                                    key={`fuel-pk-${fuel.perKm}`}
+                                    onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                                    onBlur={(e) => Number(e.target.value) !== fuel.perKm && db.trips.update(trip.id, { fuel: { ...trip.fuel, perKm: Number(e.target.value) || 0 } })}
+                                  />
+                                  <span className="small muted">per km (for everyone)</span>
+                                </div>
+                              </td>
+                              <td className="num small">{money(fuelAmount, home)}</td>
+                              <td />
+                            </tr>,
+                          ]
+                        : []),
+                      ...(rest(c) > 0 && planCount > 0
                         ? [
                             <tr key={c + '-rest'} className="budget-line">
                               <td style={{ paddingLeft: 14 }}>

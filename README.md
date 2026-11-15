@@ -95,6 +95,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   and how many people or rooms; prices are whole euros above €10 so the sum on screen is the sum that's added. Children's lower prices
   are averaged into the price per person (and said so). Plan prices bought per person (fares, tickets, meals) are edited per person:
   "€200 per person × 3 = €600". Older estimates are converted the first time you open the Budget, keeping their amounts.
+- **Fuel when there's a car**: with a rental (or your own car) in the plan, Local transport gets a ⛽ line: the road between the places
+  you stay while you have the car (from where you pick it up) plus about 30 km a day of local driving, at about €0.13 a km. Change the km
+  or the price per km right there.
 - **Budget ↔ Day by day**: a plan line in the Budget (📌) opens that item in Day by day, where you can change or remove it; the Budget
   follows straight away.
 - **One budget**: each category adds up exactly the lines under it: the prices of plan items (📌, editable right there: the plan item

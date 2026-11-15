@@ -1,9 +1,10 @@
 // Rough, offline budget estimate. Deliberately simple: it's a starting point you then edit,
 // or replace with the AI-generated budget.
 
-import type { BudgetCategory, BudgetLevel, BudgetLine, Item, Trip } from '../types'
+import type { BudgetCategory, BudgetLevel, BudgetLine, Day, Item, Trip } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
 import { daysBetween } from './dates'
+import { haversineM } from './geo'
 import { fxRate } from './apis'
 import { db } from '../db'
 import { country } from './countries'
@@ -351,4 +352,30 @@ export const BUDGET_LABELS: Record<BudgetCategory, { label: string; emoji: strin
   food: { label: 'Food & drink', emoji: '🍽️' },
   activities: { label: 'Activities & tickets', emoji: '🎟️' },
   other: { label: 'Other', emoji: '🧾' },
+}
+
+/** Fuel per km for a normal car, in euros (about 7 l/100 km at ~€1.85 a litre). */
+export const FUEL_EUR_PER_KM = 0.13
+
+/**
+ * Fuel for a trip with a car (rented or your own): the road distance between the places you stay while you have the car,
+ * plus about 30 km a day of local driving. Straight-line distance × 1.3 stands in for the road.
+ */
+export function fuelEstimate(items: Item[], days: Day[]): { km: number; route: string[] } | undefined {
+  const car = items.filter((i) => (i.kind === 'car' || i.kind === 'drive') && i.status !== 'skipped').map((i) => i.date).sort()
+  if (!car.length) return undefined
+  const [from, to] = [car[0], car[car.length - 1]]
+  // From where you pick the car up: the place you slept the night before the first car day.
+  const sorted = days.filter((d) => d.lat != null && d.lon != null).sort((a, b) => a.date.localeCompare(b.date))
+  const before = [...sorted].reverse().find((d) => d.date < from)
+  const stops = [...(before ? [before] : []), ...sorted.filter((d) => d.date >= from && d.date <= to)]
+  const route: { name: string; lat: number; lon: number }[] = []
+  for (const d of stops) {
+    const last = route[route.length - 1]
+    if (!last || last.lat !== d.lat || last.lon !== d.lon) route.push({ name: d.city ?? '?', lat: d.lat!, lon: d.lon! })
+  }
+  let m = 0
+  for (let k = 1; k < route.length; k++) m += haversineM(route[k - 1], route[k]) * 1.3
+  const carDays = daysBetween(from, to) + 1
+  return { km: Math.round(m / 1000 + carDays * 30), route: route.map((r) => r.name) }
 }

@@ -150,3 +150,21 @@ describe('every budget line reads as a sum that adds up', () => {
     expect(flights).toMatchObject({ label: 'Flights, return', qty: 1, unit: 'return flight', per: 'person', count: 3, price: 170, amount: 510 })
   })
 })
+
+describe('fuel when there is a car', () => {
+  it('counts the road between the places you stay while you have the car, plus local driving', async () => {
+    const { fuelEstimate } = await import('./budget')
+    const day = (date: string, city: string, lat: number, lon: number) => ({ id: date, tripId: 't', date, city, lat, lon })
+    const days = [day('2027-07-15', 'Athens', 37.9755, 23.7348), day('2027-07-16', 'Nafplio', 37.562, 22.808), day('2027-07-17', 'Nafplio', 37.562, 22.808), day('2027-07-18', 'Athens', 37.9755, 23.7348)]
+    const car = [
+      { id: 'p', kind: 'car', title: 'Pick up the car', date: '2027-07-16', status: 'planned' },
+      { id: 'd', kind: 'drive', title: 'Drive back to Athens', date: '2027-07-18', status: 'planned' },
+    ] as never[]
+    const f = fuelEstimate(car, days)!
+    expect(f.route).toEqual(['Athens', 'Nafplio', 'Athens']) // picked up where you slept the night before
+    // 2 × ~92 km straight × 1.3 + 3 days × 30 km of local driving
+    expect(f.km).toBeGreaterThan(300)
+    expect(f.km).toBeLessThan(350)
+    expect(fuelEstimate([], days)).toBeUndefined() // no car, no fuel
+  })
+})
