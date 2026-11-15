@@ -157,6 +157,7 @@ describe('fuel when there is a car', () => {
     const day = (date: string, city: string, lat: number, lon: number) => ({ id: date, tripId: 't', date, city, lat, lon })
     const days = [day('2027-07-15', 'Athens', 37.9755, 23.7348), day('2027-07-16', 'Nafplio', 37.562, 22.808), day('2027-07-17', 'Nafplio', 37.562, 22.808), day('2027-07-18', 'Athens', 37.9755, 23.7348)]
     const car = [
+      { id: 'f', kind: 'flight', title: 'Flight to Athens', date: '2027-07-15', status: 'booked', to: { name: 'Athens (ATH)', lat: 37.9364, lon: 23.9445 } },
       { id: 'p', kind: 'car', title: 'Pick up the car', date: '2027-07-16', status: 'planned' },
       { id: 'd', kind: 'drive', title: 'Drive back to Athens', date: '2027-07-18', status: 'planned' },
     ] as never[]
@@ -166,5 +167,22 @@ describe('fuel when there is a car', () => {
     expect(f.km).toBeGreaterThan(300)
     expect(f.km).toBeLessThan(350)
     expect(fuelEstimate([], days)).toBeUndefined() // no car, no fuel
+  })
+
+  it("doesn't count the flight before you pick up the car", async () => {
+    const { fuelEstimate } = await import('./budget')
+    const day = (date: string, city: string, lat: number, lon: number) => ({ id: date, tripId: 't', date, city, lat, lon })
+    const days = [day('2027-01-01', 'Sydney', -33.8688, 151.2093), day('2027-01-02', 'Santiago', -33.4489, -70.6693), day('2027-01-03', 'Valparaíso', -33.0472, -71.6127)]
+    const flight = { id: 'f', kind: 'flight', title: 'Sydney → Santiago', date: '2027-01-01', status: 'booked', to: { name: 'Santiago (SCL)', lat: -33.393, lon: -70.7858 } }
+    const car = [
+      { id: 'p', kind: 'car', title: 'Pick up the car', date: '2027-01-02', status: 'planned' },
+      { id: 'd', kind: 'drive', title: 'Drive to Valparaíso', date: '2027-01-03', status: 'planned' },
+    ]
+    for (const items of [[flight, ...car], car]) {
+      // With the flight in the plan, or without it (too far to be a drive either way): Santiago → Valparaíso only.
+      const f = fuelEstimate(items as never[], days)!
+      expect(f.route).toEqual(['Santiago', 'Valparaíso'])
+      expect(f.km).toBeLessThan(250)
+    }
   })
 })

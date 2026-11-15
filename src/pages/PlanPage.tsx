@@ -63,12 +63,21 @@ export default function PlanPage() {
     saveLocal('tm-plan-from-home', v ? '1' : '0')
   }
 
+  // "The trip only" leaves out the days spent at home (the departure day in Sydney), unless the whole trip is close to home.
+  const homeDay = useMemo(() => {
+    const endP = trip.endPlace?.name ? trip.endPlace : trip.startPlace
+    const homes = [trip.startPlace, endP].filter((p) => p?.lat != null && p.lon != null).map((p) => ({ lat: p!.lat!, lon: p!.lon! }))
+    const atHome = (d: Day) => d.lat != null && d.lon != null && homes.some((h) => haversineM(h, { lat: d.lat!, lon: d.lon! }) < 100_000)
+    const away = days.some((d) => d.lat != null && !atHome(d))
+    return (d: Day | undefined) => !fromHome && away && !!d && atHome(d)
+  }, [days, trip.startPlace, trip.endPlace, fromHome])
+
   const { markers } = useMemo(() => {
     const markers: MapMarker[] = []
     const line: [number, number][] = []
     dates.forEach((date, i) => {
       const d = dayByDate.get(date)
-      if (d?.lat != null && d.lon != null) {
+      if (d?.lat != null && d.lon != null && !homeDay(d)) {
         const last = line[line.length - 1]
         if (!last || last[0] !== d.lon || last[1] !== d.lat) {
           line.push([d.lon, d.lat])
@@ -92,7 +101,7 @@ export default function PlanPage() {
     // Item dots go first so the numbered day markers are drawn on top of them.
     const dots: MapMarker[] = []
     // "The trip only": leave out what's far from every day of the trip (the flights' airports at home), so the map zooms on the trip.
-    const dayPoints = days.filter((d) => d.lat != null && d.lon != null).map((d) => ({ lat: d.lat!, lon: d.lon! }))
+    const dayPoints = days.filter((d) => d.lat != null && d.lon != null && !homeDay(d)).map((d) => ({ lat: d.lat!, lon: d.lon! }))
     const onTrip = (p: { lat: number; lon: number }) => fromHome || !dayPoints.length || dayPoints.some((d) => haversineM(d, p) < 250000)
     for (const it of items) {
       const p = it.location ?? it.to
@@ -100,7 +109,7 @@ export default function PlanPage() {
     }
     return { markers: [...dots, ...markers], line }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace, fromHome])
+  }, [items, days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace, fromHome, homeDay])
 
   // The trip as a chain of places: start → each city (when it changes) → return. A leg is "by car" when you arrive on a day
   // within the period you have a car (first to last car or drive item); those legs follow the roads, the rest stay straight.
@@ -117,12 +126,12 @@ export default function PlanPage() {
     if (fromHome) push(trip.startPlace?.name ?? '', trip.startPlace?.lat, trip.startPlace?.lon, trip.startDate)
     for (const date of dateRange(trip.startDate, trip.endDate)) {
       const d = days.find((x) => x.date === date)
-      push(d?.city ?? 'Stop', d?.lat, d?.lon, date)
+      if (!homeDay(d)) push(d?.city ?? 'Stop', d?.lat, d?.lon, date)
     }
     const endP = trip.endPlace?.name ? trip.endPlace : trip.startPlace
     if (fromHome) push(endP?.name ?? '', endP?.lat, endP?.lon, trip.endDate)
     return out
-  }, [days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace, fromHome])
+  }, [days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace, fromHome, homeDay])
   // How each leg is travelled: a flight or a boat stays a straight dashed line; everything else follows the roads
   // (a train or bus line roughly does too). Colours: car orange, public transport blue, flights grey, boats cyan.
   const legMode = (date: string, byCar: boolean): 'flight' | 'ferry' | 'car' | 'public' => {
