@@ -52,6 +52,13 @@ export default function PlanPage() {
     }
   }, [trip.id, trip.startPlace?.name, trip.startPlace?.lat, trip.endPlace?.name, trip.endPlace?.lat])
 
+  // The map can show the whole journey from home (Sydney → … → Sydney) or just the trip itself, zoomed on where you are.
+  const [fromHome, setFromHomeState] = useState(() => localStorage.getItem('tm-plan-from-home') !== '0')
+  const setFromHome = (v: boolean) => {
+    setFromHomeState(v)
+    localStorage.setItem('tm-plan-from-home', v ? '1' : '0')
+  }
+
   const { markers } = useMemo(() => {
     const markers: MapMarker[] = []
     const line: [number, number][] = []
@@ -65,10 +72,10 @@ export default function PlanPage() {
         }
       }
     })
-    // The trip's start and return places close the route.
-    const start = trip.startPlace?.lat != null && trip.startPlace.lon != null ? trip.startPlace : undefined
+    // The trip's start and return places close the route (unless the map is set to the trip only).
+    const start = fromHome && trip.startPlace?.lat != null && trip.startPlace.lon != null ? trip.startPlace : undefined
     const endP = trip.endPlace?.name ? trip.endPlace : trip.startPlace
-    const end = endP?.lat != null && endP.lon != null ? endP : undefined
+    const end = fromHome && endP?.lat != null && endP.lon != null ? endP : undefined
     if (start) {
       line.unshift([start.lon!, start.lat!])
       markers.push({ id: 'trip-start', lat: start.lat!, lon: start.lon!, label: 'S', variant: 'start', title: `Start: ${start.name}` })
@@ -86,7 +93,7 @@ export default function PlanPage() {
     }
     return { markers: [...dots, ...markers], line }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace])
+  }, [items, days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace, fromHome])
 
   // The trip as a chain of places: start → each city (when it changes) → return. A leg is "by car" when you arrive on a day
   // within the period you have a car (first to last car or drive item); those legs follow the roads, the rest stay straight.
@@ -100,15 +107,15 @@ export default function PlanPage() {
       const last = out[out.length - 1]
       if (!last || last.lat !== lat || last.lon !== lon) out.push({ name, lat, lon, arrive })
     }
-    push(trip.startPlace?.name ?? '', trip.startPlace?.lat, trip.startPlace?.lon, trip.startDate)
+    if (fromHome) push(trip.startPlace?.name ?? '', trip.startPlace?.lat, trip.startPlace?.lon, trip.startDate)
     for (const date of dateRange(trip.startDate, trip.endDate)) {
       const d = days.find((x) => x.date === date)
       push(d?.city ?? 'Stop', d?.lat, d?.lon, date)
     }
     const endP = trip.endPlace?.name ? trip.endPlace : trip.startPlace
-    push(endP?.name ?? '', endP?.lat, endP?.lon, trip.endDate)
+    if (fromHome) push(endP?.name ?? '', endP?.lat, endP?.lon, trip.endDate)
     return out
-  }, [days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace])
+  }, [days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace, fromHome])
   // How each leg is travelled: a flight or a boat stays a straight dashed line; everything else follows the roads
   // (a train or bus line roughly does too). Colours: car orange, public transport blue, flights grey, boats cyan.
   const legMode = (date: string, byCar: boolean): 'flight' | 'ferry' | 'car' | 'public' => {
@@ -185,13 +192,23 @@ export default function PlanPage() {
           ))}
         </div>
       </div>
+      {mapSize !== 'hidden' && trip.startPlace?.lat != null && (
+        <div className="chips">
+          <button className={`chip ${fromHome ? 'on' : ''}`} onClick={() => setFromHome(true)}>
+            From {trip.startPlace.name.split(',')[0]}
+          </button>
+          <button className={`chip ${!fromHome ? 'on' : ''}`} onClick={() => setFromHome(false)}>
+            The trip only
+          </button>
+        </div>
+      )}
       {mapSize !== 'hidden' && (
         <>
           <LazyMap
             key={mapSize}
             markers={markers}
             segments={segments}
-            fitKey={`${markers.length}-${segments.length}-${roads.data?.filter(Boolean).length ?? 0}-${trip.startPlace?.lat}-${trip.endPlace?.lat}`}
+            fitKey={`${markers.length}-${segments.length}-${roads.data?.filter(Boolean).length ?? 0}-${trip.startPlace?.lat}-${trip.endPlace?.lat}-${fromHome}`}
             className={mapSize === 'large' ? 'tall' : 'short'}
           />
           {journeyList.length > 0 && (

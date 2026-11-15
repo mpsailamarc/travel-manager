@@ -52,6 +52,15 @@ export default function TodayPage() {
     localStorage.setItem('tm-day-view', v)
   }
   const [editing, setEditing] = useState<(Partial<Item> & { date: string }) | null>(null)
+  // Opened from elsewhere (the Budget's plan lines) to show one item: open it, then forget the link so it doesn't reopen.
+  const itemParam = params.get('item')
+  useEffect(() => {
+    if (!itemParam) return
+    const it = items.find((i) => i.id === itemParam)
+    if (it) setEditing(it)
+    setParams(date === realToday ? {} : { date }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemParam])
   const [replan, setReplan] = useState(false)
   const dayNo = daysBetween(trip.startDate, date) + 1
   const dates = dateRange(trip.startDate, trip.endDate)

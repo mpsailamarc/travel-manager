@@ -77,7 +77,8 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   }
   if (hasCar) {
     if (rented) add('transport', 'Car rental', carDays, carDays === 1 ? 'day' : 'days', 55 * idx * Math.sqrt(lvl))
-    add('transport', `Fuel${trip.startPlace?.name ? ` (from ${trip.startPlace.name})` : ''}`, carDays * 150, 'km', 0.12 * Math.min(idx, 1.2))
+    // "from home" only when you drive from there; flying in, the car is picked up at the destination.
+    add('transport', `Fuel${domestic && trip.startPlace?.name ? ` (from ${trip.startPlace.name})` : ''}`, carDays * 150, 'km', 0.12 * Math.min(idx, 1.2))
   }
   add('transport', 'Local transport', personDays, 'person-days', PER_PERSON_DAY.transport * idx * lvl)
   if (hops) add('transport', 'Moving between places', hops, hops === 1 ? 'move' : 'moves', 40 * people * idx * lvl)

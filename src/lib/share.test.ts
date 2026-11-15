@@ -74,3 +74,19 @@ describe('the budget follows the group and the dates', () => {
     expect(after.find((l) => /^Food/.test(l.label))!.qty).toBe(6)
   })
 })
+
+describe('the estimate makes sense for where you start', () => {
+  it('flying in and renting a car: fuel is not "from" home; driving from home: it is', async () => {
+    const { estimateBudgetLines } = await import('./budget')
+    const adult = { id: 'a', name: 'a', type: 'adult' as const }
+    const car = [{ id: 'c', tripId: 'x', date: '2027-03-10', kind: 'car', title: 'Pick up the car', status: 'booked', order: 0 }] as never[]
+    const fromSydney = await makeTrip({ travellers: [adult], countryCodes: ['US'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21, country: 'AU' } })
+    const flying = await estimateBudgetLines(fromSydney, 'AU', 'AUD', car)
+    expect(flying.lines.map((l) => l.label)).toContain('Fuel')
+    expect(flying.lines.some((l) => /^Flights/.test(l.label))).toBe(true)
+    const fromSF = await makeTrip({ travellers: [adult], countryCodes: ['US'], startPlace: { name: 'San Francisco', lat: 37.77, lon: -122.42, country: 'US' } })
+    const driving = await estimateBudgetLines(fromSF, 'US', 'USD', car)
+    expect(driving.lines.map((l) => l.label)).toContain('Fuel (from San Francisco)')
+    expect(driving.lines.some((l) => /^Flights/.test(l.label))).toBe(false)
+  })
+})

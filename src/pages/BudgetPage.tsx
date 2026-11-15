@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, touchTrip } from '../db'
 import type { BudgetCategory, BudgetLine, Expense, ItemKind } from '../types'
@@ -42,10 +43,12 @@ export default function BudgetPage() {
   useEffect(() => {
     const old = trip.budgetLines
     if (!old) return
-    const next = old.map((l) => (l.qty && l.price ? l : inferAssumption(l)))
+    // An earlier estimate called fuel "from <home>" even when you fly in and rent a car there: just "Fuel".
+    const flyIn = !!trip.startPlace?.country && trip.countryCodes.length > 0 && !trip.countryCodes.includes(trip.startPlace.country)
+    const next = old.map((l) => (l.qty && l.price ? l : inferAssumption(l))).map((l) => (flyIn && /^Fuel \(from .+\)$/.test(l.label) ? { ...l, label: 'Fuel' } : l))
     // Amounts don't change here, so the category totals stay as they are.
     if (next.some((l, i) => l !== old[i])) db.trips.update(trip.id, { budgetLines: next })
-  }, [trip.id, trip.budgetLines])
+  }, [trip.id, trip.budgetLines, trip.startPlace?.country, trip.countryCodes])
 
   const expenses = useLiveQuery(() => db.expenses.where('tripId').equals(trip.id).toArray(), [trip.id])
 
@@ -258,7 +261,10 @@ export default function BudgetPage() {
                       ...fromPlan.map((i) => (
                         <tr key={'plan-' + i.id} className="budget-line">
                           <td style={{ paddingLeft: 14 }}>
-                            <span className="small">📌 {i.title}</span> <span className="tiny muted">· in the plan</span>
+                            <Link className="small" to={`../today?date=${i.date}&item=${i.id}`} title="Open it in Day by day (change or remove it there)">
+                              📌 {i.title}
+                            </Link>{' '}
+                            <span className="tiny muted">· day {daysBetween(trip.startDate, i.date) + 1}</span>
                           </td>
                           <td className="num small">
                             <div className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>

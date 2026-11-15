@@ -82,12 +82,16 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   in the form, moved up/down) is locked automatically, and any item can be locked or unlocked from its ⋯ menu or form. "Plan my days" uses the
   same engine, so both screens agree.
 - **Plan map is clickable**: tap a numbered day marker or a grey activity dot to open that day in Day by day.
+- **Plan map from home or the trip only**: "From Sydney" draws the whole journey from your start; "The trip only" leaves home out and
+  zooms on the destination.
 - **Plan tab at a glance**: under the map, every journey of the trip in order (flights, boats, trains, buses, drives with road distance and
   time), and the days as one line each ("Athens · Arrival & Plaka evening", items and journeys) that open Day by day. "Every item" brings
   back the full detail (for printing or editing there).
 - **Maps show real paths**: everything follows the streets and roads (walks, taxis, public transport, trains, buses, drives), except flights
   and boats, which stay straight dashed lines. Colours say how you travel: walking green, public transport blue (dashed: its exact line isn't
   known), taxi orange; on the trip map car orange, train/bus blue, flights grey, boats cyan.
+- **Budget ↔ Day by day**: a plan line in the Budget (📌) opens that item in Day by day, where you can change or remove it; the Budget
+  follows straight away.
 - **One budget**: each category adds up exactly the lines under it: the prices of plan items (📌, editable right there: the plan item
   changes too) and your own lines for the rest (meals, local transport…). A figure typed for a category is its total: what the plan's
   prices don't use of it shows as "Rest of the budget you set". "Estimate for me" doesn't estimate what the plan already prices.
