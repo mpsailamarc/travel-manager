@@ -82,6 +82,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   in the form, moved up/down) is locked automatically, and any item can be locked or unlocked from its ⋯ menu or form. "Plan my days" uses the
   same engine, so both screens agree.
 - **Plan map is clickable**: tap a numbered day marker or a grey activity dot to open that day in Day by day.
+- **Plan tab at a glance**: under the map, every journey of the trip in order (flights, boats, trains, buses, drives with road distance and
+  time), and the days as one line each ("Athens · Arrival & Plaka evening", items and journeys) that open Day by day. "Every item" brings
+  back the full detail (for printing or editing there).
 - **Maps show real paths**: everything follows the streets and roads (walks, taxis, public transport, trains, buses, drives), except flights
   and boats, which stay straight dashed lines. Colours say how you travel: walking green, public transport blue (dashed: its exact line isn't
   known), taxi orange; on the trip map car orange, train/bus blue, flights grey, boats cyan.

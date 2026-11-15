@@ -1667,3 +1667,40 @@ hr {
   background: var(--primary-soft);
   border: 1px solid #99f6e4;
 }
+
+/* Plan: one line per day (open it for the detail), and the journeys under the map */
+.day-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.day-line.is-today {
+  border-color: var(--primary);
+}
+
+.day-line-main {
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.day-line-main:hover .strong {
+  color: var(--primary);
+}
+
+.journey-link {
+  color: inherit;
+  text-decoration: none;
+  padding: 2px 0;
+}
+
+.journey-link:hover {
+  color: var(--primary);
+}
+
+@media print {
+  .day-line .no-print {
+    display: none;
+  }
+}

@@ -21,6 +21,12 @@ export default function PlanPage() {
   const navigate = useNavigate()
   const [editing, setEditing] = useState<(Partial<Item> & { date: string }) | null>(null)
   const [dayEdit, setDayEdit] = useState<Day | null>(null)
+  // Headings only (open a day for its detail) or every item, remembered on this device.
+  const [detailed, setDetailedState] = useState(() => localStorage.getItem('tm-plan-detail') === '1')
+  const setDetailed = (v: boolean) => {
+    setDetailedState(v)
+    localStorage.setItem('tm-plan-detail', v ? '1' : '0')
+  }
   const [mapSize, setMapSize] = useMapSize('tm-plan-map')
   const wide = useMediaQuery('(min-width: 721px)')
   const dates = dateRange(trip.startDate, trip.endDate)
@@ -129,6 +135,41 @@ export default function PlanPage() {
     }
   })
 
+  // The trip's journeys under the map, in order: flights, boats, trains, buses and drives from the plan, plus legs by car
+  // that have no item of their own (with the road distance and time). Each opens its day.
+  const JOURNEY_ICON: Partial<Record<Item['kind'], string>> = { flight: '✈️', ferry: '⛴️', train: '🚆', bus: '🚌', drive: '🚗' }
+  const journeyList = [
+    ...items
+      .filter((it) => JOURNEY_ICON[it.kind] && it.status !== 'skipped')
+      .map((it) => {
+        const leg = it.kind === 'drive' ? legs.find((l) => l.to.arrive === it.date && l.mode === 'car') : undefined
+        const route = leg ? roads.data?.[roadLegs.indexOf(leg)] : undefined
+        return {
+          key: it.id,
+          date: it.date,
+          time: it.startTime ?? '',
+          icon: JOURNEY_ICON[it.kind]!,
+          from: it.from?.name ?? leg?.from.name ?? '?',
+          to: it.to?.name ?? leg?.to.name ?? '?',
+          detail: [it.startTime, it.status === 'booked' ? 'booked' : undefined, route ? `${distance(route.distanceM)} · ${formatDuration(route.durationS)} driving` : undefined].filter(Boolean).join(' · '),
+        }
+      }),
+    ...legs
+      .filter((l) => l.mode === 'car' && !items.some((it) => it.kind === 'drive' && it.date === l.to.arrive))
+      .map((l) => {
+        const route = roads.data?.[roadLegs.indexOf(l)]
+        return {
+          key: `${l.from.name}>${l.to.name}@${l.to.arrive}`,
+          date: l.to.arrive,
+          time: '',
+          icon: '🚗',
+          from: l.from.name || 'Start',
+          to: l.to.name || 'End',
+          detail: route ? `${distance(route.distanceM)} · ${formatDuration(route.durationS)} driving` : roads.loading ? 'finding the road…' : '',
+        }
+      }),
+  ].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+
   const estimated = items.reduce((s, i) => s + (i.cost?.amount ?? 0), 0)
   const currency = items.find((i) => i.cost)?.cost?.currency
 
@@ -153,19 +194,18 @@ export default function PlanPage() {
             fitKey={`${markers.length}-${segments.length}-${roads.data?.filter(Boolean).length ?? 0}-${trip.startPlace?.lat}-${trip.endPlace?.lat}`}
             className={mapSize === 'large' ? 'tall' : 'short'}
           />
-          {legs.some((l) => l.mode === 'car') && (
+          {journeyList.length > 0 && (
             <div className="stack" style={{ gap: 2 }}>
-              {legs
-                .filter((l) => l.mode === 'car')
-                .map((l, i) => {
-                  const route = roads.data?.[roadLegs.indexOf(l)]
-                  return (
-                    <div key={i} className="small">
-                      🚗 {l.from.name || 'Start'} → {l.to.name || 'End'}
-                      {route ? ` · ${distance(route.distanceM)} · ${formatDuration(route.durationS)} driving` : roads.loading ? ' · finding the road…' : ' · straight line (no road route available)'}
-                    </div>
-                  )
-                })}
+              {journeyList.map((j) => (
+                <Link key={j.key} to={`../today?date=${j.date}`} className="small journey-link" title="Open that day">
+                  {j.icon} {j.from} → {j.to}
+                  <span className="muted">
+                    {' · '}
+                    {formatDate(j.date, { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {j.detail && ` · ${j.detail}`}
+                  </span>
+                </Link>
+              ))}
             </div>
           )}
           <p className="tiny muted">
@@ -229,7 +269,56 @@ export default function PlanPage() {
           </div>
         )}
 
-        {dates.map((date, i) => {
+        {items.length > 0 && (
+          <div className="row between wrap no-print">
+            <h3>Days</h3>
+            <div className="chips">
+              <button className={`chip ${!detailed ? 'on' : ''}`} onClick={() => setDetailed(false)}>
+                Headings
+              </button>
+              <button className={`chip ${detailed ? 'on' : ''}`} onClick={() => setDetailed(true)}>
+                Every item
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!detailed &&
+          dates.map((date, i) => {
+            const d = dayByDate.get(date)
+            const dayItems = items.filter((it) => it.date === date && it.status !== 'skipped')
+            const journeys = dayItems.filter((it) => ['flight', 'train', 'bus', 'ferry', 'car', 'drive'].includes(it.kind))
+            return (
+              <div key={date} id={`day-${date}`} className={`card tight day-line ${date === now ? 'is-today' : ''}`}>
+                <div className="day-num">
+                  <small>Day</small>
+                  <b>{i + 1}</b>
+                </div>
+                <Link to={`../today?date=${date}`} className="grow day-line-main" title="Open this day">
+                  <div className="strong">
+                    {[d?.city, d?.title].filter(Boolean).join(' · ') || formatDate(date, { weekday: 'long', day: 'numeric', month: 'long' })}
+                    {date === now && <span className="badge done" style={{ marginLeft: 6 }}>Today</span>}
+                  </div>
+                  <div className="small muted">
+                    {formatDate(date, { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {' · '}
+                    {dayItems.length ? `${dayItems.length} ${dayItems.length === 1 ? 'item' : 'items'}` : 'free day'}
+                    {journeys.map((j) => ` · ${KIND_META[j.kind].emoji} ${j.startTime ?? ''}`.trimEnd()).join('')}
+                  </div>
+                </Link>
+                <div className="row no-print">
+                  <button className="btn-sm btn-ghost" title="City, title and notes" onClick={() => setDayEdit(d ?? { id: `${trip.id}:${date}`, tripId: trip.id, date })}>
+                    ✏️
+                  </button>
+                  <Link to={`../today?date=${date}`} className="btn btn-sm" aria-label={`Open day ${i + 1}`}>
+                    Open ›
+                  </Link>
+                </div>
+              </div>
+            )
+          })}
+
+        {detailed && dates.map((date, i) => {
           const d = dayByDate.get(date)
           const dayItems = items.filter((it) => it.date === date)
           return (
