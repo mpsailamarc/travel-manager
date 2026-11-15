@@ -9,7 +9,7 @@ import { openingWindow } from './hours'
 import { cityIn, trustedPlace } from './cities'
 import { DEFAULT_WALK_MAX_MIN, getAroundFor, planLeg } from './legs'
 import { sunClock } from './sun'
-import { tzAt, zoneOfDate } from './tz'
+import { midnight, transportSpan, tzAt, zoneOfDate } from './tz'
 import { addDays, hhmmToMin, minToHHMM, today } from './dates'
 import { centroid, haversineM, type LatLon } from './geo'
 import { uid } from './ids'
@@ -485,8 +485,11 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
   const roundTrip = !!day?.walkRoundTrip && !!home
 
   const here = home ?? (day?.lat != null && day.lon != null ? { lat: day.lat, lon: day.lon } : undefined)
-  const fixed = fixedWindows(fixedItems, here, ctx.arriving)
-  const startTime = day?.walkStartTime ? hhmmToMin(day.walkStartTime) : dayStart(fixedItems, fixed, here, ctx.arriving, trip.style)
+  // A flight from the day before that lands today keeps the morning until it's down; the day then starts at the airport.
+  const landing = landingOn(ctx)
+  const fixed = [...(landing ? [landing] : []), ...fixedWindows(fixedItems, here, ctx.arriving)]
+  let startTime = day?.walkStartTime ? hhmmToMin(day.walkStartTime) : dayStart(fixedItems, fixed, here, ctx.arriving, trip.style)
+  if (landing && !day?.walkStartTime) startTime = Math.max(startTime, Math.min(landing.e + 60, 23 * 60))
   const cutoff = departureCutoff(fixedItems, startTime, ctx.arriving, date === trip.endDate)
   // A sunset or night outing may run past the pace's usual end (sunset in Paris in July is near 22:00).
   const sunLate = Math.max(0, ...movable.filter((m) => !m.meal && m.mealAt != null).map((m) => m.mealAt! + m.visitMin))
@@ -846,6 +849,25 @@ interface Window {
   title: string
 }
 
+/**
+ * A journey dated on an earlier day that lands on this one (the overnight flight from Sydney): from midnight until it's
+ * down, in this day's time. The latest such landing, if any.
+ */
+function landingOn(ctx: Pick<DayContext, 'trip' | 'date' | 'days' | 'items'>): Window | undefined {
+  const zctx = { trip: ctx.trip, days: ctx.days, items: ctx.items }
+  const tz = zoneOfDate(ctx.date, zctx)
+  if (!tz) return undefined
+  const mid = midnight(ctx.date, tz)
+  let best: Window | undefined
+  for (const i of ctx.items) {
+    if (!JOURNEYS.has(i.kind) || i.status === 'skipped' || i.date >= ctx.date || i.date < addDays(ctx.date, -2)) continue
+    const span = transportSpan(i, zctx)
+    const lands = span ? Math.round((span.arrUtc - mid) / 60000) : 0
+    if (lands > 0 && lands < 24 * 60 && (!best || lands > best.e)) best = { s: 0, e: lands, at: placeLL(i.to), title: i.title }
+  }
+  return best
+}
+
 /** The fixed parts of a day (timed items that are not the planner's): places are fitted around them. */
 const JOURNEYS = new Set(['flight', 'train', 'bus', 'ferry', 'car', 'drive'])
 
@@ -1182,6 +1204,23 @@ async function reconcileNow(tripId: string): Promise<string[]> {
       sunDates.add(it.date)
     }
   }
+  // Plans made while yesterday's flight was still in the air: what starts before it has landed (or within the hour after)
+  // is fitted again, after it. Booked and 📌 pinned things stay where you put them.
+  const landingDirty: { city: string; date: string }[] = []
+  for (const date of new Set(items.map((i) => i.date))) {
+    const landing = landingOn({ trip, date, days, items })
+    if (!landing) continue
+    for (const it of items) {
+      if (it.date !== date || !it.startTime || !isMovable(it) || it.kind === 'note' || hhmmToMin(it.startTime) >= landing.e + 60) continue
+      if (it.planner && it.favId) {
+        const city = days.find((d) => d.date === date)?.city
+        if (city) landingDirty.push({ city, date })
+        continue
+      }
+      timeFixes.push({ key: it.id, changes: { startTime: undefined, endTime: undefined, legIn: undefined } })
+      sunDates.add(date)
+    }
+  }
   // On those days, everything the planner timed is placed again (your own times and the itinerary's stay as they are).
   for (const it of items)
     if (sunDates.has(it.date) && it.autoTime && it.startTime && isMovable(it) && !(it.planner && it.favId))
@@ -1233,6 +1272,7 @@ async function reconcileNow(tripId: string): Promise<string[]> {
       if (city && it.planner === plannerTag(city)) markDirty(city, it.date)
     }
   }
+  for (const d of landingDirty) markDirty(d.city, d.date)
   // Days the City planner built from a place whose visit time was just corrected are built again.
   for (const f of favs) if (favChanges.get(f.id)?.visitMin && f.date && !f.itemId && cityDays(f.city).has(f.date)) markDirty(f.city, f.date)
   // "Back to the hotel" notes go when their day has no other planner item left.

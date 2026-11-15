@@ -303,3 +303,20 @@ describe('wishlist places from an older chatbot answer', () => {
     expect((await db.favorites.get(f.id))!.visitMin).toBe(120)
   })
 })
+
+describe('the overnight flight landing the next day', () => {
+  it('keeps that morning free until an hour after landing, and moves what was planned while still in the air', async () => {
+    const { reconcileTrip } = await import('./favorites')
+    const trip = await makeTrip({ startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } })
+    // Day 1 (10 March) in Sydney: the flight leaves at 21:00 and lands in London at 07:00 the next morning.
+    await db.days.put({ id: `${trip.id}:2027-03-10`, tripId: trip.id, date: '2027-03-10', city: 'Sydney', lat: -33.87, lon: 151.21 })
+    await addItem(trip, { kind: 'flight', date: '2027-03-10', title: 'Sydney (SYD) → London (LHR)', startTime: '21:00', endTime: '07:00', from: { name: 'Sydney (SYD)', lat: -33.94, lon: 151.18 }, to: { name: 'London Heathrow (LHR)', lat: 51.47, lon: -0.4543 } })
+    const early = await addItem(trip, { date: D, title: 'Tower of London', startTime: '06:00', endTime: '08:00', location: at(LONDON.tower) })
+    const pinned = await addItem(trip, { date: D, title: 'Breakfast booked', kind: 'meal', status: 'booked', startTime: '07:00', endTime: '08:00', location: at(LONDON.borough) })
+    await reconcileTrip(trip.id)
+    const tower = (await db.items.get(early.id))!
+    // London is on UTC in March: the 07:00 landing is 07:00 on the day's clock, so the visit starts at 08:00 or later.
+    expect(mins(tower.startTime)).toBeGreaterThanOrEqual(8 * 60)
+    expect((await db.items.get(pinned.id))!.startTime).toBe('07:00') // booked: left as it is
+  })
+})
