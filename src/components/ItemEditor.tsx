@@ -142,7 +142,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       !isNew && full.status !== item.status && (full.status === 'done' || full.status === 'skipped')
         ? await retimeAfter(full, settings, full.date === today() ? hhmmToMin(nowHHMM()) : undefined)
         : undefined
-    if (retimed) toast(`Saved · ${retimed.moved} later ${retimed.moved === 1 ? 'place' : 'places'} moved ${retimed.shiftMin < 0 ? 'earlier' : 'later'}`, { label: 'Undo', run: retimed.undo })
+    if (retimed) toast(`Saved · ${retimed.moved} later ${retimed.moved === 1 ? 'item' : 'items'} moved ${retimed.shiftMin < 0 ? 'earlier' : 'later'}`, { label: 'Undo', run: retimed.undo })
     else toast(push && ripple.moves.length ? `Saved · pushed ${ripple.moves.length} later item${ripple.moves.length > 1 ? 's' : ''} back` : isNew ? 'Added' : 'Saved')
     onClose()
   }

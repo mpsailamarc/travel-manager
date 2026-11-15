@@ -367,25 +367,27 @@ function fixedWindows(dayItems: Item[]): Window[] {
  * fixed is in the way, the place goes after it and is reached from where that fixed thing is.
  */
 async function layoutStops(
-  stops: (LatLon & { name: string; visitMin: number })[],
-  from: { t: number; at: LatLon; name: string },
+  stops: { lat?: number; lon?: number; name: string; visitMin: number; notBefore?: number }[],
+  from: { t: number; at?: LatLon; name: string },
   fixed: Window[],
   pref: GetAround,
   walkMax: number,
   speedKmh: number,
   cutoff = 24 * 60,
-): Promise<({ from: number; to: number; leg: Leg } | undefined)[]> {
-  const out: ({ from: number; to: number; leg: Leg } | undefined)[] = []
+): Promise<({ from: number; to: number; leg?: Leg } | undefined)[]> {
+  const out: ({ from: number; to: number; leg?: Leg } | undefined)[] = []
   let t = from.t
   let prev = from.at
   let prevName = from.name
   for (const f of stops) {
-    let leg: Leg = { ...(await planLeg(prev, f, pref, walkMax, speedKmh)), fromName: prevName }
-    let start = t + leg.minutes
+    // Something without a place (lunch, "free time") just follows on: no travel to work out.
+    const here = f.lat != null && f.lon != null ? { lat: f.lat, lon: f.lon } : undefined
+    let leg: Leg | undefined = here && prev ? { ...(await planLeg(prev, here, pref, walkMax, speedKmh)), fromName: prevName } : undefined
+    let start = Math.max(t + (leg?.minutes ?? 0), f.notBefore ?? 0)
     for (const w of fixed) {
       if (!(start < w.e && start + f.visitMin > w.s)) continue
-      if (w.at) leg = { ...(await planLeg(w.at, f, pref, walkMax, speedKmh)), fromName: w.title }
-      start = w.e + (w.at ? leg.minutes : 0)
+      if (w.at && here) leg = { ...(await planLeg(w.at, here, pref, walkMax, speedKmh)), fromName: w.title }
+      start = w.e + (w.at && here ? leg!.minutes : 0)
     }
     if (start + f.visitMin > cutoff) {
       out.push(undefined) // doesn't fit before you leave: stays on the day as an idea without a time
@@ -393,8 +395,10 @@ async function layoutStops(
     }
     out.push({ from: start, to: start + f.visitMin, leg })
     t = start + f.visitMin
-    prev = f
-    prevName = f.name
+    if (here) {
+      prev = here
+      prevName = f.name
+    }
   }
   return out
 }
@@ -415,16 +419,20 @@ export async function retimeAfter(changed: Item, settings: Settings, nowMin?: nu
   const dayItems = await db.items.where({ tripId: changed.tripId, date: changed.date }).toArray()
   const days = await db.days.where('tripId').equals(changed.tripId).toArray()
   const after = (i: Item) => i.startTime! > changed.startTime! || (i.startTime === changed.startTime && i.order > changed.order)
+  // What can move: anything still to do that isn't a journey, a stay or something booked (tickets with a time stay put).
   const later = dayItems
-    .filter((i) => i.id !== changed.id && i.planner && ACTIVE.has(i.status) && i.startTime && after(i) && i.location?.lat != null && i.location.lon != null)
+    .filter((i) => i.id !== changed.id && FLEXIBLE.has(i.kind) && ACTIVE.has(i.status) && !i.bookingRef && i.startTime && after(i))
     .sort((a, b) => a.startTime!.localeCompare(b.startTime!) || a.order - b.order)
+  const laterIds = new Set(later.map((i) => i.id))
   if (!later.length) return undefined
 
   const at = (i?: Item) => (i?.location?.lat != null && i.location.lon != null ? { lat: i.location.lat, lon: i.location.lon } : undefined)
-  let start: { t: number; at: LatLon; name: string } | undefined
+  // Where you are and when you're free: the last place with a location before the next items, if the changed one has none.
+  const lastPlaceBefore = dayItems.filter((i) => i.id !== changed.id && i.status !== 'skipped' && i.startTime && i.startTime <= changed.startTime! && at(i)).sort((a, b) => b.startTime!.localeCompare(a.startTime!))[0]
+  let start: { t: number; at?: LatLon; name: string } | undefined
   if (changed.status === 'done') {
     const end = changed.endTime ? hhmmToMin(changed.endTime) : hhmmToMin(changed.startTime) + itemMinutes(changed)
-    if (at(changed)) start = { t: nowMin ?? end, at: at(changed)!, name: changed.title }
+    start = at(changed) ? { t: nowMin ?? end, at: at(changed)!, name: changed.title } : { t: nowMin ?? end, at: at(lastPlaceBefore), name: lastPlaceBefore?.title ?? '' }
   } else {
     // Skipped: leave from where you were before it, when you would have left for it.
     const g = changed.legIn?.geometry
@@ -433,6 +441,7 @@ export async function retimeAfter(changed: Item, settings: Settings, nowMin?: nu
     else {
       const prev = dayItems.filter((i) => i.id !== changed.id && i.status !== 'skipped' && i.startTime && i.startTime < changed.startTime! && at(i)).sort((a, b) => b.startTime!.localeCompare(a.startTime!))[0]
       if (prev) start = { t: prev.endTime ? hhmmToMin(prev.endTime) : t, at: at(prev)!, name: prev.title }
+      else start = { t: hhmmToMin(changed.startTime), name: '' }
     }
     if (start && nowMin != null) start.t = Math.max(start.t, nowMin)
   }
@@ -440,17 +449,27 @@ export async function retimeAfter(changed: Item, settings: Settings, nowMin?: nu
 
   const day = days.find((d) => d.date === changed.date)
   const pref = day?.getAround ?? settings.getAround ?? 'transit'
-  const fixed = fixedWindows(dayItems.filter((i) => !i.planner && i.id !== changed.id))
+  const fixed = fixedWindows(dayItems.filter((i) => !laterIds.has(i.id) && i.id !== changed.id && i.status !== 'done'))
   const cityDays = days.filter((d) => sameCity(d.city, day?.city)).map((d) => d.date).sort()
   const arriving = arrivalTest(day?.city, day, changed.date === cityDays[0])
-  const stops = later.map((i) => ({ lat: i.location!.lat!, lon: i.location!.lon!, name: i.title, visitMin: Math.max(0, hhmmToMin(i.endTime ?? i.startTime!) - hhmmToMin(i.startTime!)) }))
+  // Close the gap that opened, not every gap of the day: nothing moves up by more than the time freed
+  // (the skipped visit and the trip to it, or how early you finished); finishing late pushes things back as needed.
+  const length = (i: Item) => (i.endTime ? Math.max(0, hhmmToMin(i.endTime) - hhmmToMin(i.startTime!)) : itemMinutes(i) || 30)
+  const plannedEnd = hhmmToMin(changed.startTime) + length(changed)
+  const freed = changed.status === 'skipped' ? length(changed) + (changed.legIn?.minutes ?? 0) : nowMin != null ? plannedEnd - nowMin : 0
+  const stops = later.map((i) => ({
+    ...at(i),
+    name: i.title,
+    visitMin: length(i),
+    notBefore: hhmmToMin(i.startTime!) - freed,
+  }))
   const slots = await layoutStops(stops, start, fixed, pref, settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN, settings.walkSpeedKmh, departureCutoff(dayItems.filter((i) => i.id !== changed.id), start.t, arriving))
   const updates = later
     .flatMap((i, n) => {
       const slot = slots[n]
-      return slot ? [{ i, startTime: minToHHMM(Math.min(slot.from, 1439)), endTime: i.endTime ? minToHHMM(Math.min(slot.to, 1439)) : undefined, legIn: slot.leg }] : []
+      return slot ? [{ i, startTime: minToHHMM(Math.min(slot.from, 1439)), endTime: i.endTime ? minToHHMM(Math.min(slot.to, 1439)) : undefined, legIn: slot.leg ?? i.legIn }] : []
     })
-    .filter((u) => u.startTime !== u.i.startTime || u.endTime !== u.i.endTime || u.legIn.fromName !== u.i.legIn?.fromName)
+    .filter((u) => u.startTime !== u.i.startTime || u.endTime !== u.i.endTime || u.legIn?.fromName !== u.i.legIn?.fromName)
   if (!updates.length) return undefined
   await db.items.bulkUpdate(updates.map((u) => ({ key: u.i.id, changes: { startTime: u.startTime, endTime: u.endTime, legIn: u.legIn } })))
   await touchTrip(changed.tripId)
@@ -468,6 +487,7 @@ export async function retimeAfter(changed: Item, settings: Settings, nowMin?: nu
 /* ------------------------------ Keeping it consistent ------------------------------ */
 
 const ACTIVE = new Set(['planned', 'idea'])
+const FLEXIBLE = new Set(['activity', 'meal', 'walk', 'note'])
 
 /**
  * The wishlist, the days and the plan items must tell the same story. This repairs whatever another change left behind

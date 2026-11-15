@@ -77,7 +77,7 @@ export default function TodayPage() {
     const r = await retimeAfter({ ...it, status: next }, settings, it.date === today() ? hhmmToMin(nowHHMM()) : undefined)
     if (r) {
       const by = formatDuration(Math.abs(r.shiftMin) * 60)
-      toast(`${r.moved} later ${r.moved === 1 ? 'place' : 'places'} moved ${r.shiftMin < 0 ? 'earlier' : 'later'}${r.shiftMin ? ` by ${by}` : ''}`, { label: 'Undo', run: r.undo })
+      toast(`${r.moved} later ${r.moved === 1 ? 'item' : 'items'} moved ${r.shiftMin < 0 ? 'earlier' : 'later'}${r.shiftMin ? ` by ${by}` : ''}`, { label: 'Undo', run: r.undo })
     }
   }
 
@@ -102,32 +102,22 @@ export default function TodayPage() {
   }
 
   /** Dragged on the calendar: save the new times, and offer to undo or to push overlapping items back. */
+  /** Dragged on the calendar: save the new times. If it now overlaps what follows, offer to push those back. */
   async function moveOnCalendar(it: Item, times: { startTime: string; endTime?: string }) {
     const before = { startTime: it.startTime, endTime: it.endTime }
     await db.items.update(it.id, { startTime: times.startTime, endTime: times.endTime ?? it.endTime })
     await adoptPlannerItems([it.id])
     await touchTrip(trip.id)
-    const shown = `${it.title}: ${times.startTime}${times.endTime ? `–${times.endTime}` : ''}`
     const ripple = planRipple(await db.items.where({ tripId: trip.id, date: it.date }).toArray(), { id: it.id, startTime: times.startTime, endTime: times.endTime }, before)
-    const undo = async () => {
-      await db.items.update(it.id, { startTime: before.startTime, endTime: before.endTime })
-      await touchTrip(trip.id)
-    }
     if (ripple.moves.length && !ripple.blockedBy) {
-      toast(`${shown} · now overlaps ${ripple.moves.length} item${ripple.moves.length > 1 ? 's' : ''}`, {
+      toast(`${it.title} now overlaps ${ripple.moves.length} item${ripple.moves.length > 1 ? 's' : ''}`, {
         label: 'Push them back',
         run: async () => {
           await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.start, endTime: m.end } })))
           await adoptPlannerItems(ripple.moves.map((m) => m.item.id))
           await touchTrip(trip.id)
-          toast('Pushed back', { label: 'Undo', run: async () => {
-            await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.item.startTime, endTime: m.item.endTime } })))
-            await undo()
-          } })
         },
       })
-    } else {
-      toast(shown, { label: 'Undo', run: undo })
     }
   }
 
