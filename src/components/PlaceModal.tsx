@@ -41,6 +41,7 @@ export function PlaceModal({
   subject,
   city,
   inList,
+  inPlan,
   onToggle,
   onClose,
   onInterest,
@@ -51,6 +52,7 @@ export function PlaceModal({
   subject: PlaceSubject
   city?: string
   inList: boolean
+  inPlan?: string // "Day 3" when it's already on one of your days
   onToggle: () => void
   onClose: () => void
   onInterest?: (i: Interest) => void // to remember the rating on the wishlist entry
@@ -131,9 +133,15 @@ export function PlaceModal({
         )}
 
         <div className="row wrap">
-          <button className={inList ? '' : 'btn-primary'} onClick={onToggle}>
-            {inList ? removeLabel : addLabel}
-          </button>
+          {inPlan && !inList ? (
+            <span className="badge done" style={{ alignSelf: 'center' }}>
+              📅 Already in your plan · {inPlan}
+            </span>
+          ) : (
+            <button className={inList ? '' : 'btn-primary'} onClick={onToggle}>
+              {inList ? removeLabel : addLabel}
+            </button>
+          )}
           {dayPicker}
           <a className="btn btn-ghost" href={mapUrl} target="_blank" rel="noreferrer">
             🗺️ Map

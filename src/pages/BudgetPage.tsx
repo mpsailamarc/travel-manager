@@ -80,7 +80,10 @@ export default function BudgetPage() {
   const inHome = (i: (typeof items)[number]) => i.cost!.amount * (rates?.[i.cost!.currency] ?? 1)
   const own = (c: BudgetCategory) => trip.budget[c] ?? 0
   const lined = (c: BudgetCategory) => (trip.budgetLines ?? []).some((l) => l.category === c)
-  const catTotal = (c: BudgetCategory) => (lined(c) ? planned[c] + own(c) : Math.max(planned[c], own(c)))
+  // A figure typed for a category (or from an itinerary idea) is its total: what the plan's prices don't use of it shows as one
+  // line, "rest of your budget", so the category always adds up to exactly the lines underneath.
+  const rest = (c: BudgetCategory) => (lined(c) ? 0 : Math.max(0, own(c) - planned[c]))
+  const catTotal = (c: BudgetCategory) => planned[c] + (lined(c) ? own(c) : rest(c))
   const totalBudget = BUDGET_CATEGORIES.reduce((s, c) => s + catTotal(c), 0)
   const totalPlanned = BUDGET_CATEGORIES.reduce((s, c) => s + planned[c], 0)
   const totalSpent = BUDGET_CATEGORIES.reduce((s, c) => s + spent[c], 0)
@@ -225,26 +228,18 @@ export default function BudgetPage() {
                       )}
                     </td>
                     <td className="num">
-                      {catLines.length ? (
+                      {catLines.length || fromPlan.length ? (
                         <b title="Adds up the lines underneath">{money(b, home)}</b>
                       ) : (
-                        <>
-                          <input
-                            type="number"
-                            min={0}
-                            style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
-                            defaultValue={own(c) || ''}
-                            placeholder={planned[c] ? String(Math.round(planned[c])) : undefined}
-                            aria-label={`${BUDGET_LABELS[c].label} budget`}
-                            key={`${c}-${own(c)}`}
-                            onBlur={(e) => setBudget(c, Number(e.target.value))}
-                          />
-                          {planned[c] > 0 && (
-                            <div className="tiny muted" style={{ color: planned[c] > own(c) && own(c) > 0 ? 'var(--danger)' : undefined }}>
-                              {planned[c] > own(c) ? `the plan's prices: ${money(planned[c], home)}` : `incl. ${money(planned[c], home)} in the plan`}
-                            </div>
-                          )}
-                        </>
+                        <input
+                          type="number"
+                          min={0}
+                          style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
+                          defaultValue={own(c) || ''}
+                          aria-label={`${BUDGET_LABELS[c].label} budget`}
+                          key={`${c}-${own(c)}`}
+                          onBlur={(e) => setBudget(c, Number(e.target.value))}
+                        />
                       )}
                     </td>
                     <td className="num">{spent[c] ? money(spent[c], home) : '—'}</td>
@@ -253,15 +248,64 @@ export default function BudgetPage() {
                 // The breakdown sits right under its category. Each line: a name, an amount — or a quantity × price assumption.
                 const planRows = isFolded
                   ? []
-                  : fromPlan.map((i) => (
-                      <tr key={'plan-' + i.id} className="budget-line">
-                        <td style={{ paddingLeft: 14 }}>
-                          <span className="small">📌 {i.title}</span> <span className="tiny muted">· in the plan, follows it</span>
-                        </td>
-                        <td className="num small">{money(inHome(i), home)}</td>
-                        <td />
-                      </tr>
-                    ))
+                  : [
+                      // Prices of plan items: change one here and the item in the plan changes with it.
+                      ...fromPlan.map((i) => (
+                        <tr key={'plan-' + i.id} className="budget-line">
+                          <td style={{ paddingLeft: 14 }}>
+                            <span className="small">📌 {i.title}</span> <span className="tiny muted">· in the plan</span>
+                          </td>
+                          <td className="num small">
+                            <div className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                              <input
+                                type="number"
+                                min={0}
+                                style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
+                                defaultValue={i.cost!.amount}
+                                key={`${i.id}-${i.cost!.amount}`}
+                                aria-label={`Price of ${i.title} (${i.cost!.currency})`}
+                                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                                onBlur={async (e) => {
+                                  const v = Number(e.target.value) || 0
+                                  if (v === i.cost!.amount) return
+                                  await db.items.update(i.id, { cost: v ? { ...i.cost!, amount: v } : undefined })
+                                  await touchTrip(trip.id)
+                                }}
+                              />
+                              {i.cost!.currency !== home && <span className="tiny muted">{i.cost!.currency}</span>}
+                            </div>
+                            {i.cost!.currency !== home && <div className="tiny muted">≈ {money(inHome(i), home)}</div>}
+                          </td>
+                          <td />
+                        </tr>
+                      )),
+                      ...(rest(c) > 0 && fromPlan.length > 0
+                        ? [
+                            <tr key={c + '-rest'} className="budget-line">
+                              <td style={{ paddingLeft: 14 }}>
+                                <span className="small">Rest of the budget you set</span> <span className="tiny muted">· not in the plan yet</span>
+                              </td>
+                              <td className="num small">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
+                                  defaultValue={Math.round(rest(c))}
+                                  key={`${c}-rest-${rest(c)}`}
+                                  aria-label={`Rest of the ${BUDGET_LABELS[c].label} budget`}
+                                  onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                                  onBlur={(e) => setBudget(c, planned[c] + (Number(e.target.value) || 0))}
+                                />
+                              </td>
+                              <td className="num">
+                                <button className="icon-btn" aria-label="Remove the rest of the budget" onClick={() => setBudget(c, 0)}>
+                                  ✕
+                                </button>
+                              </td>
+                            </tr>,
+                          ]
+                        : []),
+                    ]
                 const sub = isFolded
                   ? []
                   : catLines.flatMap((l) => {
@@ -393,8 +437,8 @@ export default function BudgetPage() {
             </details>
           )}
           <p className="tiny muted" style={{ marginTop: 8 }}>
-            <b>Budget</b> counts the prices on plan items (📌, they follow the plan: add a cost to a flight or hotel and it shows up here), plus your
-            lines for everything else, such as meals and local transport. A single figure typed for a category is that category's total.
+            Each category adds up the lines under it: the prices of plan items (📌: change one here and the plan item changes too) and your own
+            lines for everything else, such as meals and local transport.
           </p>
           <p className="tiny muted" style={{ marginTop: 8 }}>
             <b>Spent</b> = bookings that have a booking reference (paid ahead) + expenses you log.

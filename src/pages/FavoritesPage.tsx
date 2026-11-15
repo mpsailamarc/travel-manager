@@ -132,6 +132,15 @@ export default function FavoritesPage() {
   }
 
   const dayNo = (d: string) => daysBetween(trip.startDate, d) + 1
+  // What the days already hold: activities, meals and walks on the plan (yours, the itinerary's and the wishlist's).
+  const placesIn = (ds: string[]) => items.filter((i) => ds.includes(i.date) && ['activity', 'meal', 'walk'].includes(i.kind) && i.status !== 'skipped')
+  /** "Day 3" when this place is already on one of the city's days (as a wishlist place or a plan item), else nothing. */
+  const inPlan = (p: { name: string; lat?: number; lon?: number; wikidata?: string }) => {
+    const fav = findFav(p.name, p.wikidata)
+    if (fav?.date && dates.includes(fav.date)) return `Day ${dayNo(fav.date)}`
+    const it = placesIn(dates).find((i) => matchesPlace(i, p))
+    return it ? `Day ${dayNo(it.date)}` : undefined
+  }
   // Days of the trip with no city (for instance after stretching the trip): offered to this city.
   const unassigned = dateRange(trip.startDate, trip.endDate).filter((d) => !days.find((x) => x.date === d)?.city)
   async function assignDays() {
@@ -310,7 +319,9 @@ export default function FavoritesPage() {
             <div className="card stack">
               <div className="row between wrap">
                 <h3>🗺️ {city}: wishlist & days</h3>
-                <span className="small muted">{plural(cityFavs.length, 'place')}</span>
+                <span className="small muted">
+                  {plural(placesIn(dates).length, 'place')} in your days · {cityFavs.length} on the wishlist
+                </span>
               </div>
               {dates.length > 0 ? (
                 <>
@@ -345,7 +356,7 @@ export default function FavoritesPage() {
                   open={open}
                   onToggle={() => setOpenDays((o) => ({ ...o, [d]: !open }))}
                   title={`Day ${dayNo(d)} · ${formatDate(d)}`}
-                  summary={`· ${plural(list.length, 'place')} · ${status}`}
+                  summary={`· ${plural(placesIn([d]).length, 'place')} · ${status}`}
                 >
                   <Progress value={used} max={cap || 1} over={used > cap} />
                   {list.some((f) => f.lat != null && !f.itemId) && (
@@ -504,6 +515,7 @@ export default function FavoritesPage() {
                   error={sights.error ? (online ? 'The free sights services are busy — try again in a minute.' : 'You are offline — sights load when you are back online.') : undefined}
                   noCenter={!center}
                   isFav={(p) => !!findFav(p.name, p.wikidata)}
+                  inPlan={inPlan}
                   onToggle={toggleSight}
                   onOpen={openPoi}
                   center={area}
@@ -515,6 +527,7 @@ export default function FavoritesPage() {
                 <AiIdeas
                   city={city}
                   isFav={(i) => !!findFav(i.name)}
+                  inPlan={inPlan}
                   onToggle={toggleIdea}
                   onOpen={openIdea}
                 />
@@ -530,6 +543,7 @@ export default function FavoritesPage() {
           subject={shown ? { ...detail.subject, interest: detail.subject.interest ?? shown.interest } : detail.subject}
           city={city}
           inList={!!shown}
+          inPlan={inPlan(detail.subject)}
           onToggle={async () => {
             if (detail.poi) await toggleSight(detail.poi)
             else if (detail.idea) await toggleIdea(detail.idea)
@@ -686,6 +700,7 @@ function SightList(p: {
   isFav: (p: Poi) => boolean
   onToggle: (p: Poi) => void
   onOpen: (p: Poi) => void
+  inPlan: (p: Poi) => string | undefined
   interest: Map<string, Interest>
   rating: boolean
 }) {
@@ -725,7 +740,7 @@ function SightList(p: {
       {p.error && <div className="notice error">{p.error}</div>}
       <div className="poi-list">
         {list.map((x) => (
-          <div key={x.id} className={`poi ${p.isFav(x) ? 'on' : ''}`} onClick={() => p.onOpen(x)}>
+          <div key={x.id} className={`poi ${p.isFav(x) || p.inPlan(x) ? 'on' : ''}`} onClick={() => p.onOpen(x)}>
             <span style={{ fontSize: '1.3rem' }}>{categoryMeta(x.category).emoji}</span>
             <div className="grow">
               <div className="strong small">
@@ -737,16 +752,22 @@ function SightList(p: {
               </div>
             </div>
             <TripadvisorLink name={x.name} city={p.city} />
-            <button
-              className={`btn-sm ${p.isFav(x) ? 'btn-primary' : ''}`}
-              aria-label="Add to wishlist"
-              onClick={(e) => {
-                e.stopPropagation()
-                p.onToggle(x)
-              }}
-            >
-              {p.isFav(x) ? '✓' : '＋'}
-            </button>
+            {p.inPlan(x) ? (
+              <span className="badge done" title="Already on one of your days">
+                📅 {p.inPlan(x)}
+              </span>
+            ) : (
+              <button
+                className={`btn-sm ${p.isFav(x) ? 'btn-primary' : ''}`}
+                aria-label="Add to wishlist"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  p.onToggle(x)
+                }}
+              >
+                {p.isFav(x) ? '✓' : '＋'}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -754,7 +775,7 @@ function SightList(p: {
   )
 }
 
-function AiIdeas({ city, isFav, onToggle, onOpen }: { city: string; isFav: (i: CityIdea) => boolean; onToggle: (i: CityIdea) => void; onOpen: (i: CityIdea) => void }) {
+function AiIdeas({ city, isFav, inPlan, onToggle, onOpen }: { city: string; isFav: (i: CityIdea) => boolean; inPlan: (i: CityIdea) => string | undefined; onToggle: (i: CityIdea) => void; onOpen: (i: CityIdea) => void }) {
   const { trip, settings } = useTripCtx()
   const key = `tm-cityideas:${trip.id}:${city.toLowerCase()}`
   const api = useAiWords()
@@ -792,7 +813,7 @@ function AiIdeas({ city, isFav, onToggle, onOpen }: { city: string; isFav: (i: C
       {parsed.error && <div className="notice error">{parsed.error}</div>}
       <div className="poi-list">
         {parsed.ideas?.map((i) => (
-          <div key={i.name} className={`poi ${isFav(i) ? 'on' : ''}`} onClick={() => onOpen(i)}>
+          <div key={i.name} className={`poi ${isFav(i) || inPlan(i) ? 'on' : ''}`} onClick={() => onOpen(i)}>
             <span style={{ fontSize: '1.3rem' }}>{categoryMeta(i.category).emoji}</span>
             <div className="grow">
               <div className="strong small">{i.name}</div>
@@ -804,16 +825,22 @@ function AiIdeas({ city, isFav, onToggle, onOpen }: { city: string; isFav: (i: C
               </div>
             </div>
             <TripadvisorLink name={i.name} city={city} />
-            <button
-              className={`btn-sm ${isFav(i) ? 'btn-primary' : ''}`}
-              aria-label="Add to wishlist"
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggle(i)
-              }}
-            >
-              {isFav(i) ? '✓' : '＋'}
-            </button>
+            {inPlan(i) ? (
+              <span className="badge done" title="Already on one of your days">
+                📅 {inPlan(i)}
+              </span>
+            ) : (
+              <button
+                className={`btn-sm ${isFav(i) ? 'btn-primary' : ''}`}
+                aria-label="Add to wishlist"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggle(i)
+                }}
+              >
+                {isFav(i) ? '✓' : '＋'}
+              </button>
+            )}
           </div>
         ))}
       </div>

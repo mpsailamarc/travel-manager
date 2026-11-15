@@ -62,6 +62,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   (and its distances) refreshes for what's on screen; "Back to the city centre" resets it. Wide views list well-known places only (a free-service limit).
 - **A day on the map**: in the City planner, the map has a chip per day (or "🗺️ Show this day on the map" inside a day). It shows that day's places
   numbered in walking order, joined by the walking route, with the stop list, distance and time underneath.
+- **The City planner knows what's planned**: it counts the places already in your days, and in Find things to do a sight or AI idea that's
+  already on a day shows "📅 Day 3" instead of ＋.
 - **Level of interest (stars)**: no free source has visitor reviews, so the stars show how widely a place is written about: the number of
   Wikipedia language editions with an article on it (Wikidata), from 1★ (a village chapel) to 5★ (Eiffel Tower, 170+ languages). Sights can be
   sorted most interesting first; the place window also shows Wikipedia page views per month. Tripadvisor stays a link out.
@@ -83,9 +85,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Maps show real paths**: everything follows the streets and roads (walks, taxis, public transport, trains, buses, drives), except flights
   and boats, which stay straight dashed lines. Colours say how you travel: walking green, public transport blue (dashed: its exact line isn't
   known), taxi orange; on the trip map car orange, train/bus blue, flights grey, boats cyan.
-- **One budget**: each category's budget counts the prices already on plan items (listed with 📌, they follow the plan) plus your own lines
-  for the rest (meals, local transport…). "Estimate for me" no longer estimates what the plan already prices. A single figure typed for a
-  category is that category's total. There's no separate "In the plan" figure any more.
+- **One budget**: each category adds up exactly the lines under it: the prices of plan items (📌, editable right there: the plan item
+  changes too) and your own lines for the rest (meals, local transport…). A figure typed for a category is its total: what the plan's
+  prices don't use of it shows as "Rest of the budget you set". "Estimate for me" doesn't estimate what the plan already prices.
 - **Packed pace** fills about 90% of a 9:00–21:00 day.
 - **With ChatGPT set up** (Settings → AI assistant) the copy-and-paste way is hidden: each AI step is one "Ask ChatGPT" button, and the
   answer box only appears, folded, once there is an answer.
