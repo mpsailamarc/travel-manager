@@ -66,6 +66,18 @@ export default function MapView({ markers, line, dashed, segments, className = '
     })
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
     if (locate) m.addControl(new maplibregl.GeolocateControl({ trackUserLocation: true }), 'top-right')
+    // The map credits (OpenStreetMap…) start folded: just the ⓘ button, which opens them. MapLibre unfolds them once,
+    // when the map's sources arrive; the first time it does, they are folded again (a tap on ⓘ still opens them).
+    const credits = el.current.querySelector('.maplibregl-ctrl-attrib')
+    let folded = false
+    const watch = new MutationObserver(() => {
+      if (!folded && credits?.classList.contains('maplibregl-compact-show')) {
+        credits.classList.remove('maplibregl-compact-show')
+        folded = true
+        watch.disconnect()
+      }
+    })
+    if (credits) watch.observe(credits, { attributes: true, attributeFilter: ['class'] })
     m.on('load', () => {
       ready.current = true
       m.addSource('route', { type: 'geojson', data: lineData(pendingLine.current ?? line) })
@@ -93,6 +105,7 @@ export default function MapView({ markers, line, dashed, segments, className = '
     })
     map.current = m
     return () => {
+      watch.disconnect()
       m.remove()
       map.current = null
       ready.current = false
