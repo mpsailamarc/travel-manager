@@ -70,6 +70,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   order, fitted around anything already fixed (booked tickets, lunch). Places your plan already holds (the itinerary's own "Visit the castle") are
   **linked, not duplicated**, in both directions. Change one by hand (time, day, tick it off) and it becomes yours: re-planning leaves it alone;
   delete it and the place goes back to the wishlist's backup ideas.
+- **The day's path, everywhere**: every item with a place (planned by the City planner or added or edited by hand) is numbered in time order, with
+  the way to get between them. Day by day has a "🗺️ Day on the map" card (the numbers in the list match the map; tap one to jump to it), and the
+  City planner's day chips draw the same path, with links between the two.
 - **Getting between places**: per day (default in Settings) walk everywhere, walk short hops (up to N minutes) and go **public transport** or
   **taxi** for longer ones, or pick **whatever is quickest**. Walking and taxi use real routes (OSRM); public transport has no free routing service, so
   it's an estimate (wait + average speed), clearly labelled, with links to real timetables (Google Maps) and Uber on each place.

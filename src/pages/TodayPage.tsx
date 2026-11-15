@@ -14,14 +14,16 @@ import { buildDayView, journeyNote } from '../lib/dayview'
 import { durationMin } from '../lib/tz'
 import { planRipple } from '../lib/ripple'
 import { KIND_META, isTransport, needsBooking } from '../components/kinds'
-import { Empty, Modal, toast } from '../components/ui'
+import { Empty, Modal, Section, toast } from '../components/ui'
+import { DayRouteMap } from '../components/DayRouteMap'
+import { useDayRoute } from '../lib/dayroute'
 import LazyMap from '../components/LazyMap'
 import { BackupIdeas } from '../components/BackupIdeas'
 import { tripPhase, useTripCtx } from './TripLayout'
 import { PromptBox } from './IdeasPage'
 
 export default function TodayPage() {
-  const { trip, items, days } = useTripCtx()
+  const { trip, items, days, settings } = useTripCtx()
   const [params, setParams] = useSearchParams()
   const realToday = today()
   const ph = tripPhase(trip)
@@ -31,6 +33,15 @@ export default function TodayPage() {
   const nowStr = nowHHMM()
   const day = days.find((d) => d.date === date)
   const dayItems = useMemo(() => sortItems(items.filter((i) => i.date === date)), [items, date])
+  // The day's path: every item with a place, numbered in time order. The numbers in the list match the ones on the map.
+  const { route, loading: routeLoading, stops: routeStops } = useDayRoute(items, date, day, settings)
+  const stopNo = new Map(routeStops.map((i, n) => [i.id, n + 1]))
+  const [mapOpen, setMapOpen] = useState(() => localStorage.getItem('tm-day-map') !== '0')
+  const mapBox = useRef<HTMLDivElement>(null)
+  const showMap = () => {
+    setMapOpen(true)
+    setTimeout(() => mapBox.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
+  }
   // The calendar in this day's own time (a flight from another zone is converted; one landing today shows its landing part).
   const view = useMemo(() => buildDayView(items, date, { trip, days }), [items, date, trip, days])
   const [mode, setViewState] = useState<'timeline' | 'list'>(() => (localStorage.getItem('tm-day-view') === 'list' ? 'list' : 'timeline'))
@@ -245,6 +256,8 @@ export default function TodayPage() {
                   <ItemRow
                     item={it}
                     zoneNote={journeyNote(it, { trip, days })}
+                    pin={stopNo.get(it.id)}
+                    onPin={showMap}
                     onClick={() => setEditing(it)}
                     actions={
                       <>
@@ -283,6 +296,27 @@ export default function TodayPage() {
             </div>
             )}
           </div>
+
+          {routeStops.length > 0 && (
+            <div ref={mapBox}>
+              <Section
+                open={mapOpen}
+                onToggle={() => {
+                  localStorage.setItem('tm-day-map', mapOpen ? '0' : '1')
+                  setMapOpen(!mapOpen)
+                }}
+                title="🗺️ Day on the map"
+                summary={`· ${routeStops.length} ${routeStops.length === 1 ? 'place' : 'places'}, numbered as in the list`}
+              >
+                <DayRouteMap route={route} loading={routeLoading} onOpen={setEditing} />
+                <div className="row wrap">
+                  <Link className="btn btn-sm" to={`../favorites${day?.city ? `?city=${encodeURIComponent(day.city)}&day=${date}` : ''}`}>
+                    🗺️ Plan this city
+                  </Link>
+                </div>
+              </Section>
+            </div>
+          )}
         </div>
 
         <div className="stack">

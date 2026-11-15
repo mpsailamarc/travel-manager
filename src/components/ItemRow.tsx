@@ -19,7 +19,7 @@ export function itemSubtitle(it: Item): string {
   return parts.join(' · ')
 }
 
-export function ItemRow({ item, onClick, actions, showStatus = true, zoneNote }: { item: Item; onClick?: () => void; actions?: ReactNode; showStatus?: boolean; zoneNote?: string }) {
+export function ItemRow({ item, onClick, actions, showStatus = true, zoneNote, pin, onPin }: { item: Item; onClick?: () => void; actions?: ReactNode; showStatus?: boolean; zoneNote?: string; pin?: number; onPin?: () => void }) {
   const meta = KIND_META[item.kind]
   return (
     <div className={`item ${item.status === 'done' ? 'is-done' : ''} ${item.status === 'skipped' ? 'is-skipped' : ''}`}>
@@ -29,6 +29,11 @@ export function ItemRow({ item, onClick, actions, showStatus = true, zoneNote }:
       </div>
       <div className={`item-main ${onClick ? 'clickable' : ''}`} onClick={onClick}>
         <div className="row wrap" style={{ gap: 6 }}>
+          {pin != null && (
+            <button type="button" className="pin" title="Show on the day's map" aria-label={`Stop ${pin} on the map`} onClick={(e) => { e.stopPropagation(); onPin?.() }}>
+              {pin}
+            </button>
+          )}
           <span className="item-title">{item.title}</span>
           {showStatus && item.status !== 'planned' && <StatusBadge status={item.status} />}
           {showStatus && item.status === 'planned' && needsBooking(item.kind) && <StatusBadge status="planned" />}

@@ -5,8 +5,8 @@ import { db } from '../db'
 import type { Day, Favorite, GetAround, Place } from '../types'
 import { fetchPois, interestOf, interestTier, type Interest, type Poi } from '../lib/apis'
 import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
-import { applyCityPlan, plannerTag, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
-import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin, today } from '../lib/dates'
+import { applyCityPlan, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
+import { addDays, dateRange, daysBetween, formatDate, formatDuration, today } from '../lib/dates'
 import { distance, plural } from '../lib/format'
 import { haversineM, type LatLon } from '../lib/geo'
 import { useAsync, useOnline } from '../lib/hooks'
@@ -15,6 +15,7 @@ import { PlaceSearch } from '../components/PlaceSearch'
 import { Empty, Progress, Section, Stars, toast } from '../components/ui'
 import { PlaceModal, type PlaceSubject } from '../components/PlaceModal'
 import { matchesPlace } from '../lib/duplicates'
+import { useDayRoute } from '../lib/dayroute'
 import { GET_AROUND_LABEL, legText } from '../lib/legs'
 import LazyMap, { type MapMarker, type MapViewState } from '../components/LazyMap'
 import { tripadvisorSearch } from '../lib/links'
@@ -190,20 +191,12 @@ export default function FavoritesPage() {
   }
 
   // One day shown on the map: its places numbered in walking order, joined by the walking route.
-  const [focus, setFocus] = useState<string>()
-  useEffect(() => setFocus(undefined), [city])
-  const focusItems = useMemo(
-    () =>
-      focus && city
-        ? items
-            .filter((i) => i.date === focus && i.location?.lat != null && (i.planner === plannerTag(city) || cityFavs.some((f) => f.itemId === i.id)) && i.kind !== 'note')
-            .sort((a, b) => (a.startTime ?? '99').localeCompare(b.startTime ?? '99') || a.order - b.order)
-        : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [focus, city, items, favs],
-  )
-  const focusSegments = focusItems.filter((i) => i.legIn?.geometry?.length).map((i) => ({ coords: i.legIn!.geometry!, dashed: i.legIn!.mode === 'transit' }))
-  const focusStart = focusItems[0]?.legIn?.geometry?.[0]
+  const [focus, setFocus] = useState<string | undefined>(params.get('day') ?? undefined)
+  useEffect(() => setFocus(params.get('day') ?? undefined), [city])
+  // Everything with a place on that day, planned here or added by hand, in time order: the same path as on Day by day.
+  const { route: focusRoute, stops: focusItems } = useDayRoute(items, focus ?? '', days.find((x) => x.date === focus), settings)
+  const focusSegments = focusRoute?.segments ?? []
+  const focusStart = focusRoute?.start
   const mapBox = useRef<HTMLDivElement>(null)
   function showOnMap(d: string) {
     setFocus(d)
@@ -219,10 +212,10 @@ export default function FavoritesPage() {
         m.push({ id: p.id, lat: p.lat, lon: p.lon, label: categoryMeta(p.category).emoji, variant: 'dim', title: p.name, onClick: () => openPoi(p) })
       }
     if (focus) {
-      if (focusStart) m.push({ id: 'start', lat: focusStart[1], lon: focusStart[0], label: 'S', variant: 'start', title: focusItems[0]?.legIn?.fromName ?? 'Start' })
-      focusItems.forEach((it, n) => {
+      if (focusStart) m.push({ id: 'start', lat: focusStart.lat, lon: focusStart.lon, label: 'S', variant: 'start', title: focusStart.name ?? 'Start' })
+      focusRoute?.stops.forEach(({ item: it, at }, n) => {
         const f = cityFavs.find((x) => x.id === it.favId || x.itemId === it.id)
-        m.push({ id: it.id, lat: it.location!.lat!, lon: it.location!.lon!, label: String(n + 1), variant: 'on', title: it.title, onClick: f ? () => openFav(f) : undefined })
+        m.push({ id: it.id, lat: at.lat, lon: at.lon, label: String(n + 1), variant: 'on', title: it.title, onClick: f ? () => openFav(f) : undefined })
       })
       return m
     }
@@ -232,7 +225,7 @@ export default function FavoritesPage() {
     }
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sights.data, favs, source, city, focus, focusItems])
+  }, [sights.data, favs, source, city, focus, focusRoute, focusStart])
 
   // Re-fit when the city, the sights or the day plan change — not on every star, which would jump while browsing.
   const fitKey = `${city}-${source}-${focus ?? ''}-${focusItems.map((i) => i.id).join()}-${cityFavs.filter((f) => f.date).map((f) => f.id + f.date).join()}`
@@ -426,25 +419,38 @@ export default function FavoritesPage() {
                     <b>
                       Day {dayNo(focus)} · {formatDate(focus)}
                     </b>
-                    {focusItems.length ? (
+                    {focusRoute?.stops.length ? (
                       <>
                         <span className="muted">
-                          {focusItems.length} {focusItems.length === 1 ? 'place' : 'places'} · {GET_AROUND_LABEL[days.find((x) => x.date === focus)?.getAround ?? settings.getAround ?? 'transit']}
+                          {focusRoute.stops.length} {focusRoute.stops.length === 1 ? 'place' : 'places'} · {GET_AROUND_LABEL[days.find((x) => x.date === focus)?.getAround ?? settings.getAround ?? 'transit']}
                         </span>
                         <ol style={{ margin: 0, paddingLeft: 20 }}>
-                          {focusItems.map((it) => (
+                          {focusRoute.stops.map(({ item: it, leg }) => (
                             <li key={it.id}>
                               {it.startTime && <b>{it.startTime} </b>}
-                              {it.title} <span className="tiny muted">~{formatDuration(((hhmmToMin(it.endTime ?? it.startTime ?? '00:00') - hhmmToMin(it.startTime ?? '00:00')) || 0) * 60)}</span>
-                              {it.legIn && (
+                              {(() => {
+                                const f = cityFavs.find((x) => x.id === it.favId || x.itemId === it.id)
+                                return f ? (
+                                  <button type="button" className="btn-ghost" style={{ padding: 0, minHeight: 0, border: 0, color: 'var(--primary)' }} onClick={() => openFav(f)}>
+                                    {it.title}
+                                  </button>
+                                ) : (
+                                  it.title
+                                )
+                              })()}
+                              {!it.planner && !it.favId && <span className="tiny muted"> · from your plan</span>}
+                              {leg && (
                                 <div className="tiny muted">
-                                  {legText(it.legIn, distance)}
-                                  {it.legIn.fromName ? ` from ${it.legIn.fromName}` : ''}
+                                  {legText(leg, distance)}
+                                  {leg.fromName ? ` from ${leg.fromName}` : ''}
                                 </div>
                               )}
                             </li>
                           ))}
                         </ol>
+                        <Link to={`../today?date=${focus}`} className="small">
+                          Open this day in Day by day →
+                        </Link>
                       </>
                     ) : (
                       <span className="muted">Nothing with a location on this day yet. Add places from the wishlist, then “Plan my days”.</span>
