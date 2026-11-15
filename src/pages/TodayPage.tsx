@@ -12,6 +12,7 @@ import { ItemEditor } from '../components/ItemEditor'
 import { DayProportions, DayTimeline } from '../components/DayTimeline'
 import { buildDayView, journeyNote } from '../lib/dayview'
 import { durationMin } from '../lib/tz'
+import { retimeAfter } from '../lib/favorites'
 import { planRipple } from '../lib/ripple'
 import { KIND_META, isTransport, needsBooking } from '../components/kinds'
 import { Empty, Modal, Section, toast } from '../components/ui'
@@ -67,9 +68,17 @@ export default function TodayPage() {
   const tonight = items.find((i) => i.kind === 'stay' && i.date <= date && date < addDays(i.date, i.nights ?? 1))
 
   async function setStatus(it: Item, status: Item['status']) {
-    await db.items.update(it.id, { status: it.status === status ? 'planned' : status })
+    const next = it.status === status ? 'planned' : status
+    await db.items.update(it.id, { status: next })
     await adoptPlannerItems([it.id]) // ticked off or skipped: the City planner keeps it
     await touchTrip(trip.id)
+    if (next !== 'done' && next !== 'skipped') return
+    // The places still to come move up to fill the gap (or later, if you finished late), from where you are now.
+    const r = await retimeAfter({ ...it, status: next }, settings, it.date === today() ? hhmmToMin(nowHHMM()) : undefined)
+    if (r) {
+      const by = formatDuration(Math.abs(r.shiftMin) * 60)
+      toast(`${r.moved} later ${r.moved === 1 ? 'place' : 'places'} moved ${r.shiftMin < 0 ? 'earlier' : 'later'}${r.shiftMin ? ` by ${by}` : ''}`, { label: 'Undo', run: r.undo })
+    }
   }
 
   async function move(it: Item, dir: -1 | 1) {

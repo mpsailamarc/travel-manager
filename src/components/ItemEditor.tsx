@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
 import { adoptPlannerItems, db, deleteItem, touchTrip } from '../db'
 import type { Item, ItemKind, ItemStatus, Trip } from '../types'
-import { addDays, daysBetween, dateRange, formatDate, formatDuration, hhmmToMin, minToHHMM } from '../lib/dates'
+import { addDays, daysBetween, dateRange, formatDate, formatDuration, hhmmToMin, minToHHMM, nowHHMM, today } from '../lib/dates'
 import { country, CURRENCIES } from '../lib/countries'
 import { uid } from '../lib/ids'
 import { KIND_META, STATUS_LABEL, isTransport, needsBooking } from './kinds'
@@ -13,6 +13,7 @@ import { PlaceSearch } from './PlaceSearch'
 import { PlaceInfo } from './PlaceInfo'
 import { localWiki } from '../lib/apis'
 import { planRipple } from '../lib/ripple'
+import { retimeAfter } from '../lib/favorites'
 import { journeyNote } from '../lib/dayview'
 import { legText, taxiLink, transitLink } from '../lib/legs'
 import { distance } from '../lib/format'
@@ -136,7 +137,13 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       await adoptPlannerItems(ripple.moves.map((m) => m.item.id))
     }
     await touchTrip(trip.id)
-    toast(push && ripple.moves.length ? `Saved · pushed ${ripple.moves.length} later item${ripple.moves.length > 1 ? 's' : ''} back` : isNew ? 'Added' : 'Saved')
+    // Ticked off or skipped here: the places still to come that day move up, as from the list.
+    const retimed =
+      !isNew && full.status !== item.status && (full.status === 'done' || full.status === 'skipped')
+        ? await retimeAfter(full, settings, full.date === today() ? hhmmToMin(nowHHMM()) : undefined)
+        : undefined
+    if (retimed) toast(`Saved · ${retimed.moved} later ${retimed.moved === 1 ? 'place' : 'places'} moved ${retimed.shiftMin < 0 ? 'earlier' : 'later'}`, { label: 'Undo', run: retimed.undo })
+    else toast(push && ripple.moves.length ? `Saved · pushed ${ripple.moves.length} later item${ripple.moves.length > 1 ? 's' : ''} back` : isNew ? 'Added' : 'Saved')
     onClose()
   }
 

@@ -78,6 +78,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   that's no longer in their city go back to the backup ideas (with a note saying so), the calendar loses what the planner had put there, places linked
   to your own items follow them, and days still waiting for their places are filled in. Planned places also leave from wherever you are after
   something already fixed (the museum you booked), not from the hotel.
+- **The rest of the day follows you**: tick a planned place off (early or late) or skip it, and the places still to come that day move up or back,
+  in the same order and length, leaving from where you actually are and fitted around your fixed items, with Undo. Places that no longer fit
+  before you leave (the flight home, the train on) stay on the day as ideas without a time, instead of being squeezed in after it.
 - **Getting between places**: per day (default in Settings) walk everywhere, walk short hops (up to N minutes) and go **public transport** or
   **taxi** for longer ones, or pick **whatever is quickest**. Walking and taxi use real routes (OSRM); public transport has no free routing service, so
   it's an estimate (wait + average speed), clearly labelled, with links to real timetables (Google Maps) and Uber on each place.
