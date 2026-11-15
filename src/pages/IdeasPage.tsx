@@ -9,6 +9,7 @@ import { countryLabel } from '../lib/countries'
 import { KIND_META } from '../components/kinds'
 import { copyText, toast } from '../components/ui'
 import { aiReady, askAI, useAiConfig } from '../lib/openai'
+import { fillUntimedTrip } from '../lib/favorites'
 import { BUDGET_LEVELS, STYLES } from './TripFields'
 import { useTripCtx } from './TripLayout'
 
@@ -246,7 +247,9 @@ function ItineraryIdeas() {
     await applyPlan(trip, o, settings.homeCurrency, replace)
     // Refresh rule-based checklist suggestions now that the itinerary exists.
     await refreshChecklist(trip.id, settings)
-    toast(`"${o.title}" is now your plan`)
+    // Activities the chatbot gave no time get one, around the times it did give, so every day reads as a schedule.
+    const timed = await fillUntimedTrip(trip.id, settings)
+    toast(`"${o.title}" is now your plan${timed ? ` · ${timed} item${timed > 1 ? 's' : ''} given a time` : ''}`)
     navigate('../plan')
   }
 

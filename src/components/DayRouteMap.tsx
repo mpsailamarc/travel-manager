@@ -33,7 +33,7 @@ export function DayRouteMap({ route, loading, onOpen, sizeKey = 'tm-day-route-ma
       {size !== 'hidden' && (
         <p className="tiny muted" style={{ margin: 0 }}>
           <span style={{ color: MODE_COLOR.walk }}>━</span> walk · <span style={{ color: MODE_COLOR.transit }}>┅</span> public transport (approximate path) ·{' '}
-          <span style={{ color: MODE_COLOR.taxi }}>━</span> taxi
+          <span style={{ color: MODE_COLOR.taxi }}>━</span> taxi · <span style={{ color: MODE_COLOR.drive }}>━</span> your car
         </p>
       )}
       <ol className="route-list">

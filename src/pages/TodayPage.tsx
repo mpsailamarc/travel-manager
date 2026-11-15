@@ -12,7 +12,7 @@ import { ItemEditor } from '../components/ItemEditor'
 import { DayProportions, DayTimeline } from '../components/DayTimeline'
 import { buildDayView, journeyNote } from '../lib/dayview'
 import { durationMin } from '../lib/tz'
-import { retimeAfter } from '../lib/favorites'
+import { fillUntimed, retimeAfter, untimedItems } from '../lib/favorites'
 import { planRipple } from '../lib/ripple'
 import { KIND_META, isTransport, needsBooking } from '../components/kinds'
 import { Empty, Modal, Section, toast } from '../components/ui'
@@ -35,6 +35,7 @@ export default function TodayPage() {
   const nowStr = nowHHMM()
   const day = days.find((d) => d.date === date)
   const dayItems = useMemo(() => sortItems(items.filter((i) => i.date === date)), [items, date])
+  const untimed = untimedItems(items, date)
   // The day's path: every item with a place, numbered in time order. The numbers in the list match the ones on the map.
   const { route, loading: routeLoading, stops: routeStops } = useDayRoute(items, date, day, settings)
   const stopNo = new Map(routeStops.map((i, n) => [i.id, n + 1]))
@@ -252,6 +253,23 @@ export default function TodayPage() {
               </div>
             </div>
             {dayItems.length === 0 && <Empty emoji="☕" title="Free day">Add something, build a walk, or just wander.</Empty>}
+            {untimed.length > 0 && (
+              <div className="notice row wrap between" style={{ marginBottom: 10 }}>
+                <span>
+                  ⏱ {untimed.length} {untimed.length === 1 ? 'item has' : 'items have'} no time yet: {untimed.map((i) => i.title).slice(0, 3).join(', ')}
+                  {untimed.length > 3 ? '…' : ''}
+                </span>
+                <button
+                  className="btn-sm btn-primary"
+                  onClick={async () => {
+                    const n = await fillUntimed(trip.id, date, settings)
+                    toast(n ? `${n} item${n > 1 ? 's' : ''} fitted into the day around what already has a time` : 'No room left that day: move something or give it a time by hand')
+                  }}
+                >
+                  Fit them into the day
+                </button>
+              </div>
+            )}
             {dayItems.length > 0 && (
               <div style={{ marginBottom: 14 }}>
                 <DayProportions entries={view.entries} />

@@ -6,7 +6,7 @@ import tzlookup from 'tz-lookup'
 import type { Day, HHMM, Item, ISODate, Trip } from '../types'
 import { addDays, hhmmToMin } from './dates'
 import { country } from './countries'
-import { cityIn } from './cities'
+import { cityIn, trustedPlace } from './cities'
 import type { Place } from '../types'
 
 export function tzAt(lat?: number, lon?: number): string | undefined {
@@ -21,8 +21,9 @@ export function tzAt(lat?: number, lon?: number): string | undefined {
 /** A place's zone: from its coordinates, else from a well-known city or airport code in its name ("Sydney Airport"). */
 export function tzOfPlace(p?: Pick<Place, 'name' | 'lat' | 'lon'>): string | undefined {
   if (!p) return undefined
-  const c = p.lat == null ? cityIn(p.name) : undefined
-  return tzAt(p.lat, p.lon) ?? tzAt(c?.lat, c?.lon)
+  const q = trustedPlace(p)
+  const c = q.lat == null ? cityIn(q.name) : undefined
+  return tzAt(q.lat, q.lon) ?? tzAt(c?.lat, c?.lon)
 }
 
 const formats = new Map<string, Intl.DateTimeFormat>()

@@ -211,3 +211,19 @@ export function cityIn(text?: string): City | undefined {
   }
   return best
 }
+
+/**
+ * Coordinates that contradict the name: a chatbot once gave "Athens International (ATH)" the coordinates of Sydney (it
+ * wrote the departure point into the arrival). When the name is a well-known city or airport more than 300 km from the
+ * coordinates, the name wins.
+ */
+export function trustedPlace<P extends { name: string; lat?: number; lon?: number }>(p: P): P {
+  const c = cityIn(p.name)
+  if (!c || p.lat == null || p.lon == null) return p
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(c.lat - p.lat)
+  const dLon = toRad(c.lon - p.lon)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(p.lat)) * Math.cos(toRad(c.lat)) * Math.sin(dLon / 2) ** 2
+  const km = 12742 * Math.asin(Math.sqrt(h))
+  return km > 300 ? { ...p, lat: c.lat, lon: c.lon } : p
+}

@@ -15,6 +15,7 @@ import { useAsync, useMapSize, useMediaQuery } from '../lib/hooks'
 import { findDuplicateGroups, markNotDuplicates, mergeGroups, notDuplicates, type DuplicateGroup } from '../lib/duplicates'
 import { KIND_META } from '../components/kinds'
 import { PlanStaleNotice } from '../components/PlanStale'
+import { fillUntimedTrip, untimedItems } from '../lib/favorites'
 import { useTripCtx } from './TripLayout'
 
 export default function PlanPage() {
@@ -291,6 +292,18 @@ export default function PlanPage() {
         {items.length > 0 && (
           <div className="row between wrap no-print">
             <h3>Days</h3>
+            {dates.some((d) => untimedItems(items, d).length) && (
+              <button
+                className="btn-sm"
+                title="Give a time to every activity, meal and walk that has none, around what already has one"
+                onClick={async () => {
+                  const n = await fillUntimedTrip(trip.id, settings)
+                  toast(n ? `${n} item${n > 1 ? 's' : ''} given a time` : 'No room left on those days: give them a time by hand')
+                }}
+              >
+                ⏱ Give times to {dates.reduce((s, d) => s + untimedItems(items, d).length, 0)} untimed items
+              </button>
+            )}
             <div className="chips">
               <button className={`chip ${!detailed ? 'on' : ''}`} onClick={() => setDetailed(false)}>
                 Headings

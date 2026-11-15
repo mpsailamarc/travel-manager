@@ -4,7 +4,7 @@
 import type { Day, GetAround, Item, Leg, Settings } from '../types'
 import { useAsync } from './hooks'
 import { haversineM } from './geo'
-import { DEFAULT_WALK_MAX_MIN, MODE_COLOR, MODE_DASHED, planLeg } from './legs'
+import { DEFAULT_WALK_MAX_MIN, getAroundFor, MODE_COLOR, MODE_DASHED, planLeg } from './legs'
 
 export interface RouteStop {
   item: Item
@@ -70,7 +70,7 @@ export async function buildRoute(stops: Item[], pref: GetAround, settings: Setti
 /** The day's route, rebuilt whenever its places, times or the way of getting around change. */
 export function useDayRoute(items: Item[], date: string, day: Day | undefined, settings: Settings) {
   const stops = routeItems(items, date)
-  const pref = day?.getAround ?? settings.getAround ?? 'transit'
+  const pref = getAroundFor(day, settings, items, date)
   const key = [pref, settings.walkMaxMin, settings.walkSpeedKmh, ...stops.map((i) => `${i.id}|${i.startTime}|${placeAt(i)?.lat}|${placeAt(i)?.lon}|${i.legIn?.minutes}`)].join(';')
   const r = useAsync(() => (stops.length ? buildRoute(stops, pref, settings) : Promise.resolve({ stops: [], segments: [] } as DayRoute)), [key])
   return { route: r.data, loading: r.loading, stops }

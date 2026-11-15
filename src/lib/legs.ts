@@ -2,7 +2,7 @@
 // routers; public transport has no free routing service, so it is an estimate (waiting + average speed) with a
 // link to real timetables.
 
-import type { GetAround, Leg } from '../types'
+import type { Day, GetAround, Item, Leg, Settings } from '../types'
 import { drivingRoute, walkingRoute } from './apis'
 import { haversineM, type LatLon } from './geo'
 
@@ -16,13 +16,25 @@ export const GET_AROUND_LABEL: Record<GetAround, string> = {
   transit: '🚇 Walk short hops, public transport for longer ones',
   taxi: '🚕 Walk short hops, taxi for longer ones',
   fastest: '⚡ Whatever is quickest',
+  car: '🚗 We have a car: walk short hops, drive the rest',
 }
 
-export const MODE_EMOJI = { walk: '🚶', transit: '🚇', taxi: '🚕' } as const
+/**
+ * How you get around that day: what you chose for the day, else "by car" when the day falls while you have a car
+ * (between the first and last car or drive item of the trip), else your default from Settings.
+ */
+export function getAroundFor(day: Day | undefined, settings: Settings, items: Item[], date: string): GetAround {
+  if (day?.getAround) return day.getAround
+  const carDates = items.filter((i) => (i.kind === 'car' || i.kind === 'drive') && i.status !== 'skipped').map((i) => i.date).sort()
+  if (carDates.length && date >= carDates[0] && date <= carDates[carDates.length - 1]) return 'car'
+  return settings.getAround ?? 'transit'
+}
+
+export const MODE_EMOJI = { walk: '🚶', transit: '🚇', taxi: '🚕', drive: '🚗' } as const
 
 /** Map colours: walking green, public transport blue (dashed: its path is approximate), taxi orange. */
-export const MODE_COLOR = { walk: '#16a34a', transit: '#2563eb', taxi: '#ea580c' } as const
-export const MODE_DASHED = { walk: false, transit: true, taxi: false } as const
+export const MODE_COLOR = { walk: '#16a34a', transit: '#2563eb', taxi: '#ea580c', drive: '#a16207' } as const
+export const MODE_DASHED = { walk: false, transit: true, taxi: false, drive: false } as const
 
 async function walkLeg(a: LatLon, b: LatLon, speedKmh: number): Promise<Leg> {
   const speed = (speedKmh * 1000) / 3600
@@ -63,6 +75,11 @@ async function transitLeg(a: LatLon, b: LatLon, streetM: number): Promise<Leg> {
 export async function planLeg(a: LatLon, b: LatLon, pref: GetAround, walkMaxMin = DEFAULT_WALK_MAX_MIN, speedKmh = 4.5): Promise<Leg> {
   const walk = await walkLeg(a, b, speedKmh)
   if (pref === 'walk' || walk.minutes <= walkMaxMin) return walk
+  if (pref === 'car') {
+    // Your own car: the road route, no waiting for it.
+    const t = await taxiLeg(a, b)
+    return { ...t, mode: 'drive', minutes: Math.max(1, t.minutes - TAXI_WAIT_MIN) }
+  }
   if (pref === 'transit') return transitLeg(a, b, walk.distanceM)
   if (pref === 'taxi') return taxiLeg(a, b)
   const [taxi, transit] = [await taxiLeg(a, b), await transitLeg(a, b, walk.distanceM)]

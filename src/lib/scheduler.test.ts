@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { db } from '../db'
 import type { Item } from '../types'
-import { applyCityPlan, applyProposal, linkWishlistToPlan, proposeDay, retimeAfter } from './favorites'
+import { applyCityPlan, applyProposal, fillUntimed, linkWishlistToPlan, proposeDay, retimeAfter } from './favorites'
 import { addFav, addItem, at, dayItems, LONDON, makeTrip, mins, SETTINGS } from '../test/fixtures'
 import { hoursWarning } from './hours'
 
@@ -144,10 +144,11 @@ describe('Plan my days', () => {
 
   it('on the day you leave, stops before the flight home', async () => {
     const trip = await makeTrip()
-    await addItem(trip, { date: D, kind: 'flight', title: 'Flight home', status: 'booked', startTime: '14:30', endTime: '17:45', from: at(LONDON.heathrow), to: { name: 'Home' } })
-    for (const p of [LONDON.tower, LONDON.stPauls, LONDON.nhm, LONDON.kensington]) await addFav(trip, { ...at(p), category: 'museum', visitMin: 90, date: D, pinned: true })
-    await applyCityPlan(trip, 'London', [D], SETTINGS)
-    const planned = (await dayItems(trip, D)).filter((i) => i.planner)
+    const LAST = trip.endDate // the day you go home
+    await addItem(trip, { date: LAST, kind: 'flight', title: 'Flight home', status: 'booked', startTime: '14:30', endTime: '17:45', from: at(LONDON.heathrow), to: { name: 'Home' } })
+    for (const p of [LONDON.tower, LONDON.stPauls, LONDON.nhm, LONDON.kensington]) await addFav(trip, { ...at(p), category: 'museum', visitMin: 90, date: LAST, pinned: true })
+    await applyCityPlan(trip, 'London', [LAST], SETTINGS)
+    const planned = (await dayItems(trip, LAST)).filter((i) => i.planner)
     for (const i of planned.filter((i) => i.startTime)) expect(mins(i.endTime)).toBeLessThanOrEqual(12 * 60 + 30) // 2 h before the flight
     expect(planned.some((i) => !i.startTime && i.status === 'idea')).toBe(true) // what doesn't fit stays on the day without a time
   })
@@ -177,5 +178,46 @@ describe('the rest of the day after ticking off or skipping', () => {
     const r = (await retimeAfter({ ...a, status: 'done' }, SETTINGS, 12 * 60))! // ticked off at noon, an hour late
     expect(r.shiftMin).toBeGreaterThan(0)
     expect(mins((await db.items.get(b.id))!.startTime)).toBeGreaterThanOrEqual(12 * 60 + 30)
+  })
+})
+
+describe('road trips and arrivals (from a real Greece itinerary)', () => {
+  it('the first day starts after the flight in and the taxi from the airport, not at 9:30', async () => {
+    const trip = await makeTrip()
+    await addItem(trip, { date: D, kind: 'flight', title: 'Sydney → Athens', startTime: '23:50', endTime: '18:30', from: { name: 'Sydney Airport (SYD)' }, to: at(LONDON.heathrow) })
+    await addItem(trip, { date: D, kind: 'taxi', title: 'Taxi from the airport', startTime: '19:30', from: { name: 'Heathrow airport' }, to: at(LONDON.hotel) })
+    const stroll = await addItem(trip, { date: D, kind: 'walk', title: 'Evening stroll in Covent Garden', location: at(LONDON.gallery) })
+    expect(await fillUntimed(trip.id, D, SETTINGS)).toBe(1)
+    expect(mins((await db.items.get(stroll.id))!.startTime)).toBeGreaterThanOrEqual(19 * 60 + 30)
+  })
+
+  it('on a driving day, a visit between two drives goes between them, where the first drive arrives', async () => {
+    const trip = await makeTrip()
+    const [athens, corinth, nemea] = [
+      { name: 'Athens', lat: 37.9755, lon: 23.7348 },
+      { name: 'Ancient Corinth', lat: 37.9057, lon: 22.8787 },
+      { name: 'Nemea', lat: 37.8, lon: 22.5833 },
+    ]
+    await db.days.update(`${trip.id}:${D}`, { city: 'Nafplio', lat: 37.562, lon: 22.808 })
+    await addItem(trip, { date: '2027-03-10', kind: 'stay', title: 'Hotel in Athens', status: 'booked', nights: 1, location: athens })
+    await addItem(trip, { date: D, kind: 'car', title: 'Pick up the car', startTime: '08:00' })
+    await addItem(trip, { date: D, kind: 'drive', title: 'Drive to Corinth', startTime: '09:00', from: { name: 'Athens' }, to: corinth })
+    await addItem(trip, { date: D, kind: 'drive', title: 'Drive to Nemea', startTime: '13:00', from: { name: 'Ancient Corinth' }, to: nemea })
+    const visit = await addItem(trip, { date: D, title: 'Ancient Corinth site', location: corinth })
+    await fillUntimed(trip.id, D, SETTINGS)
+    const v = (await db.items.get(visit.id))!
+    expect(mins(v.startTime)).toBeGreaterThanOrEqual(10 * 60)
+    expect(mins(v.endTime)).toBeLessThanOrEqual(13 * 60)
+  })
+
+  it('while you have a car, longer hops are drives', async () => {
+    const trip = await makeTrip()
+    await addItem(trip, { date: D, kind: 'car', title: 'Pick up the car', startTime: '08:00' })
+    await addItem(trip, { date: D, title: 'Tower of London', location: at(LONDON.tower) })
+    await addItem(trip, { date: D, title: 'Kensington Palace', location: at(LONDON.kensington) })
+    await fillUntimed(trip.id, D, SETTINGS)
+    const legs = (await dayItems(trip, D)).filter((i) => i.legIn).map((i) => i.legIn!.mode)
+    expect(legs).toContain('drive')
+    expect(legs).not.toContain('transit')
   })
 })

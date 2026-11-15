@@ -102,3 +102,15 @@ describe('wishlist, days and calendar stay in step', () => {
     expect(added.map((d) => d.city)).toEqual(['London', 'London'])
   })
 })
+
+describe('fixing what a chatbot got wrong', () => {
+  it('a flight whose coordinates contradict its name is corrected (the name wins)', async () => {
+    const trip = await makeTrip()
+    // "Athens International" with the coordinates of Sydney, as one itinerary had it.
+    const f = await addItem(trip, { date: D1, kind: 'flight', title: 'Sydney → Athens', startTime: '23:50', from: { name: 'Sydney Airport (SYD)' }, to: { name: 'Athens International (ATH)', lat: -33.94, lon: 151.17 } })
+    await reconcileTrip(trip.id)
+    const to = (await db.items.get(f.id))!.to!
+    expect(to.lat).toBeGreaterThan(37)
+    expect(to.lon).toBeGreaterThan(23)
+  })
+})

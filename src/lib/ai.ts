@@ -3,6 +3,7 @@
 
 import { z } from 'zod'
 import { planInputs } from './planbasis'
+import { trustedPlace } from './cities'
 import { db, touchTrip } from '../db'
 import type { BudgetCategory, Day, Item, ItemKind, Settings, Trip } from '../types'
 import { BUDGET_CATEGORIES, CHECKLIST_CATEGORIES } from '../types'
@@ -371,7 +372,7 @@ function toItem(a: AiItem & { bookingRef?: string; provider?: string }, tripId: 
     startTime: /^\d{1,2}:\d{2}$/.test(a.time ?? '') ? a.time!.padStart(5, '0') : undefined,
     endTime: /^\d{1,2}:\d{2}$/.test(a.endTime ?? '') ? a.endTime!.padStart(5, '0') : undefined,
     from: isTransport && a.from ? { name: a.from } : undefined,
-    to: isTransport && a.to ? { name: a.to, lat: a.lat, lon: a.lon } : undefined,
+    to: isTransport && a.to ? trustedPlace({ name: a.to, lat: a.lat, lon: a.lon }) : undefined,
     location: !isTransport && (a.place || a.lat != null) ? { name: a.place ?? a.title, lat: a.lat, lon: a.lon } : undefined,
     nights: kind === 'stay' ? a.nights ?? 1 : undefined,
     cost: a.estCost ? { amount: a.estCost, currency } : undefined,

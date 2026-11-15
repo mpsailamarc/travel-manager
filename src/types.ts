@@ -112,8 +112,8 @@ export interface WalkRoute {
 }
 
 /** How to get between two places in a day. Public transport is an estimate (there is no free routing service for it). */
-export type LegMode = 'walk' | 'transit' | 'taxi'
-export type GetAround = 'walk' | 'transit' | 'taxi' | 'fastest' // walk everywhere · walk short hops, else public transport · …else taxi · whichever is quickest
+export type LegMode = 'walk' | 'transit' | 'taxi' | 'drive'
+export type GetAround = 'walk' | 'transit' | 'taxi' | 'fastest' | 'car' // walk everywhere · walk short hops, else public transport · …else taxi · whichever is quickest · …else drive your car
 
 export interface Leg {
   mode: LegMode

@@ -6,7 +6,8 @@ import type { Day, Favorite, GetAround, Item, Leg, Place, Settings, Trip, TripSt
 import { POI_CATEGORIES } from './apis'
 import { matchesPlace } from './duplicates'
 import { openingWindow } from './hours'
-import { DEFAULT_WALK_MAX_MIN, planLeg } from './legs'
+import { cityIn, trustedPlace } from './cities'
+import { DEFAULT_WALK_MAX_MIN, getAroundFor, planLeg } from './legs'
 import { addDays, hhmmToMin, minToHHMM, today } from './dates'
 import { centroid, haversineM, type LatLon } from './geo'
 import { uid } from './ids'
@@ -45,9 +46,15 @@ function itemMinutes(it: Item): number {
       return 300
     case 'train':
     case 'ferry':
-    case 'car':
-    case 'drive':
       return 180
+    case 'car':
+      return 30 // picking up or returning a rental car
+    case 'drive': {
+      // A drive without an end time: the distance at about 60 km/h on the road, when both ends are known; else an hour and a half.
+      const a = it.from?.lat != null && it.from.lon != null ? { lat: it.from.lat, lon: it.from.lon } : undefined
+      const b = it.to?.lat != null && it.to.lon != null ? { lat: it.to.lat, lon: it.to.lon } : undefined
+      return a && b ? Math.max(20, Math.round(((haversineM(a, b) * 1.3) / 1000 / 60) * 60)) : 90
+    }
     case 'bus':
       return 45
     case 'activity':
@@ -374,7 +381,7 @@ function ownMovable(i: Item, favs: Favorite[]): Movable {
   const at = i.location?.lat != null && i.location.lon != null ? { lat: i.location.lat, lon: i.location.lon } : i.walk?.stops[0]
   const own = i.startTime && i.endTime ? hhmmToMin(i.endTime) - hhmmToMin(i.startTime) : undefined
   const visitMin =
-    own != null && own > 0 ? own : linked ? linked.visitMin : i.walk ? Math.round(i.walk.walkS / 60 + i.walk.stops.reduce((a, x) => a + x.visitMin, 0)) : i.kind === 'meal' ? 60 : i.kind === 'note' ? 30 : 90
+    own != null && own > 0 ? own : linked ? linked.visitMin : i.walk ? Math.round(i.walk.walkS / 60 + i.walk.stops.reduce((a, x) => a + x.visitMin, 0)) : i.kind === 'meal' ? 60 : i.kind === 'note' ? 30 : /\bshort\b|quick|brief/i.test(i.title) ? 30 : i.kind === 'walk' ? 60 : 90
   return {
     key: i.id,
     name: i.title,
@@ -408,6 +415,7 @@ function guessMin(a: LatLon, b: LatLon, pref: GetAround, walkMax: number, speedK
   const d = haversineM(a, b) * 1.3
   const walk = d / ((speedKmh * 1000) / 60)
   if (pref === 'walk' || walk <= walkMax) return walk
+  if (pref === 'car') return d / 1000 // about 60 km/h on the road
   const transit = 10 + d / 300 // 18 km/h
   const taxi = 5 + d / 417 // 25 km/h
   return pref === 'transit' ? transit : pref === 'taxi' ? taxi : Math.min(walk, transit, taxi)
@@ -421,12 +429,14 @@ function guessMin(a: LatLon, b: LatLon, pref: GetAround, walkMax: number, speedK
  */
 export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: Movable[]): Promise<DayPlan> {
   const { trip, date, city, day, items, settings } = ctx
-  const pref = day?.getAround ?? settings.getAround ?? 'transit'
+  const pref = getAroundFor(day, settings, items, date)
   const walkMax = settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN
   const speed = settings.walkSpeedKmh
   const guess = (a: LatLon, b: LatLon) => guessMin(a, b, pref, walkMax, speed)
 
-  const stay = items.find((i) => i.kind === 'stay' && i.date <= date && date < addDays(i.date, i.nights ?? 1) && i.location?.lat != null)
+  // The day starts where you slept (on a moving day that's last night's hotel, not tonight's).
+  const covers = (d: string) => (i: Item) => i.kind === 'stay' && i.date <= d && d < addDays(i.date, i.nights ?? 1) && i.location?.lat != null
+  const stay = items.find(covers(addDays(date, -1))) ?? items.find(covers(date))
   const located = movable.filter((m) => m.lat != null && m.lon != null) as (Movable & LatLon)[]
   const startPlace: Place | undefined =
     day?.walkStart?.lat != null
@@ -441,9 +451,10 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
   const home = startPlace?.lat != null && startPlace.lon != null ? { lat: startPlace.lat, lon: startPlace.lon } : undefined
   const roundTrip = !!day?.walkRoundTrip && !!home
 
-  const startTime = day?.walkStartTime ? hhmmToMin(day.walkStartTime) : hhmmToMin(firstFreeSlot(fixedItems, ctx.arriving))
-  const fixed = fixedWindows(fixedItems)
-  const cutoff = departureCutoff(fixedItems, startTime, ctx.arriving)
+  const here = home ?? (day?.lat != null && day.lon != null ? { lat: day.lat, lon: day.lon } : undefined)
+  const fixed = fixedWindows(fixedItems, here, ctx.arriving)
+  const startTime = day?.walkStartTime ? hhmmToMin(day.walkStartTime) : dayStart(fixedItems, fixed, here, ctx.arriving)
+  const cutoff = departureCutoff(fixedItems, startTime, ctx.arriving, date === trip.endDate)
   const dayEnd = cutoff ?? 22 * 60
 
   // Where you are at the start: the hotel (or chosen start), or wherever something fixed earlier that morning left you.
@@ -457,7 +468,7 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
   const stretches: Stretch[] = []
   let cur: { t: number; at?: LatLon } = { t: from.t, at: from.at }
   for (const w of anchors) {
-    if (w.s > cur.t) stretches.push({ s: cur.t, e: w.s, a: cur.at, b: w.at, seq: [] })
+    if (w.s > cur.t) stretches.push({ s: cur.t, e: w.s, a: cur.at, b: w.startAt, seq: [] })
     cur = { t: Math.max(cur.t, w.e), at: w.at }
   }
   stretches.push({ s: cur.t, e: dayEnd, a: cur.at, b: roundTrip ? home : undefined, seq: [] })
@@ -534,7 +545,9 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
     const last = st === stretches[stretches.length - 1]
     const over = simulate(st, st.seq).end - st.e
     // Running into something fixed isn't a matter of degree: the place would really be pushed after it, so it's all but forbidden.
-    return over > 0 && !(last && cutoff == null) ? over * 1000 : 0
+    if (over > 0 && !(last && cutoff == null)) return over * 1000
+    const pastMidnight = simulate(st, st.seq).end - 24 * 60
+    return pastMidnight > 0 ? pastMidnight * 1000 : over > 0 ? over * 2 : 0
   }
   const total = () => stretches.reduce((sum, st) => sum + travelOnly(st, st.seq) + overrun(st), 0)
   for (let pass = 0; pass < 6; pass++) {
@@ -675,7 +688,7 @@ async function travelOf(dayItems: Item[], pref: GetAround, settings: Settings) {
 }
 
 /** "Optimise this day": a proposal (nothing is saved) that reorders what can move to cut travel, around what's kept. */
-export async function proposeDay(tripId: string, date: string, settings: Settings): Promise<DayProposal | undefined> {
+export async function proposeDay(tripId: string, date: string, settings: Settings, opts: { onlyUntimed?: boolean } = {}): Promise<DayProposal | undefined> {
   const trip = await db.trips.get(tripId)
   if (!trip) return undefined
   const [items, days, favs] = await Promise.all([
@@ -686,13 +699,14 @@ export async function proposeDay(tripId: string, date: string, settings: Setting
   const day = days.find((d) => d.date === date)
   const city = day?.city
   const dayItems = items.filter((i) => i.date === date && i.status !== 'skipped')
-  const movableItems = dayItems.filter(isMovable)
+  // onlyUntimed: give times to what has none, leaving everything already timed where it is (the itinerary's own times).
+  const movableItems = dayItems.filter((i) => isMovable(i) && (!opts.onlyUntimed || !i.startTime))
   if (!movableItems.length) return undefined
   const ids = new Set(movableItems.map((i) => i.id))
   const cityDays = city ? cityDates(days, city) : []
   const arriving = arrivalTest(city, day, date === cityDays[0])
   const plan = await scheduleDay({ trip, date, city, day, days, items, settings, arriving }, dayItems.filter((i) => !ids.has(i.id)), movableItems.map((i) => ownMovable(i, favs)))
-  const pref = day?.getAround ?? settings.getAround ?? 'transit'
+  const pref = getAroundFor(day, settings, items, date)
 
   const changes: DayProposal['changes'] = []
   const after = dayItems.map((i) => {
@@ -713,6 +727,26 @@ export async function proposeDay(tripId: string, date: string, settings: Setting
   return { changes, order, travelBefore, travelAfter }
 }
 
+/** Activities, meals, walks and notes on the day that can be planned but have no time yet. */
+export const untimedItems = (items: Item[], date: string) => items.filter((i) => i.date === date && isMovable(i) && !i.startTime)
+
+/** "Fit them into the day": times for what has none on that day, around everything that already has a time. */
+export async function fillUntimed(tripId: string, date: string, settings: Settings): Promise<number> {
+  const p = await proposeDay(tripId, date, settings, { onlyUntimed: true })
+  if (!p) return 0
+  await applyProposal(p)
+  return p.changes.filter((c) => c.startTime).length
+}
+
+/** The same for every day of the trip (after choosing an itinerary, or from the Plan tab). */
+export async function fillUntimedTrip(tripId: string, settings: Settings): Promise<number> {
+  const trip = await db.trips.get(tripId)
+  if (!trip) return 0
+  let n = 0
+  for (let d = trip.startDate; d <= trip.endDate; d = addDays(d, 1)) n += await fillUntimed(tripId, d, settings)
+  return n
+}
+
 export async function applyProposal(p: DayProposal) {
   if (!p.changes.length) return
   await db.items.bulkUpdate(p.changes.map((c) => ({ key: c.item.id, changes: { startTime: c.startTime, endTime: c.endTime, legIn: c.legIn, autoTime: true } })))
@@ -724,7 +758,8 @@ export async function applyProposal(p: DayProposal) {
 interface Window {
   s: number
   e: number
-  at?: LatLon
+  at?: LatLon // where you are once it's over
+  startAt?: LatLon // where it starts (a journey's departure point): what to reach before it
   title: string
 }
 
@@ -736,30 +771,73 @@ const JOURNEYS = new Set(['flight', 'train', 'bus', 'ferry', 'car', 'drive'])
  * coordinates or name), its start is elsewhere, or, when nothing says, it is the first day in that city.
  */
 export function arrivalTest(city: string | undefined, day: Day | undefined, firstDayInCity: boolean) {
-  const nearCity = (p?: Place) =>
-    p?.lat != null && p.lon != null && day?.lat != null && day.lon != null ? haversineM({ lat: p.lat, lon: p.lon }, { lat: day.lat, lon: day.lon }) < 40000 : undefined
+  const nearCity = (raw?: Place) => {
+    const p = raw && trustedPlace(raw)
+    return p?.lat != null && p.lon != null && day?.lat != null && day.lon != null ? haversineM({ lat: p.lat, lon: p.lon }, { lat: day.lat, lon: day.lon }) < 40000 : undefined
+  }
   const named = (p?: Place) => (city && p?.name ? p.name.toLowerCase().includes(city.trim().toLowerCase()) : undefined)
   return (i: Item) => nearCity(i.to) ?? named(i.to) ?? (nearCity(i.from) === true || named(i.from) === true ? false : firstDayInCity)
 }
 
 /** When the day's sightseeing has to end: before the first journey that leaves after it starts (the flight home, the train on). */
-function departureCutoff(dayItems: Item[], startMin: number, arriving: (i: Item) => boolean): number | undefined {
+/**
+ * When the day's sightseeing has to end: on the day you go home, before the journey out (2 h before a flight). On other days
+ * a journey just moves you on (a drive to the next town, a flight to the islands): what comes after it happens there.
+ */
+function departureCutoff(dayItems: Item[], startMin: number, arriving: (i: Item) => boolean, lastDay = true): number | undefined {
+  if (!lastDay) return undefined
   const leave = dayItems
     .filter((i) => i.startTime && !i.planner && i.status !== 'skipped' && JOURNEYS.has(i.kind) && !arriving(i) && hhmmToMin(i.startTime) > startMin)
     .sort((a, b) => a.startTime!.localeCompare(b.startTime!))[0]
   return leave ? hhmmToMin(leave.startTime!) - (leave.kind === 'flight' ? 120 : 30) : undefined
 }
 
-function fixedWindows(dayItems: Item[]): Window[] {
-  return dayItems
+/**
+ * The fixed parts of a day. `here` is the day's city, the starting point of a journey that doesn't say where it leaves from.
+ * A journey without an end time lasts its distance at road speed; one that ends after midnight fills the rest of the day;
+ * a flight out needs you at the airport 2 hours before.
+ */
+/** Where a place is: its coordinates (unless its name says otherwise), or a well-known city in its name. */
+function placeLL(p?: Place): LatLon | undefined {
+  if (!p) return undefined
+  const q = trustedPlace(p)
+  if (q.lat != null && q.lon != null) return { lat: q.lat, lon: q.lon }
+  const c = cityIn(p.name)
+  return c ? { lat: c.lat, lon: c.lon } : undefined
+}
+
+/** A journey that brings you here from far away (the flight in, a long train), as opposed to moving on from here. */
+function arrivesFromAfar(i: Item, here: LatLon | undefined, arriving: (i: Item) => boolean) {
+  if (!JOURNEYS.has(i.kind) || !arriving(i)) return false
+  const from = placeLL(i.from)
+  return from && here ? haversineM(from, here) > 60000 : i.kind === 'flight'
+}
+
+function fixedWindows(dayItems: Item[], here?: LatLon, arriving: (i: Item) => boolean = () => false): Window[] {
+  // `here`: where the day starts (last night's hotel, or the city).
+  const ll = placeLL
+  let lastAt = here
+  return [...dayItems]
     .filter((i) => i.startTime && i.status !== 'skipped' && i.kind !== 'stay')
+    .sort((a, b) => a.startTime!.localeCompare(b.startTime!))
     .map((i) => {
+      const journey = JOURNEYS.has(i.kind) || i.kind === 'taxi'
       // Where you are once it's over: the place itself, a tour's first stop, or where a journey lands.
-      const p = i.location?.lat != null ? i.location : JOURNEYS.has(i.kind) && i.to?.lat != null ? i.to : undefined
-      const at = p?.lat != null && p.lon != null ? { lat: p.lat, lon: p.lon } : i.walk?.stops[0]
-      // Something with a time but no length (a taxi, a meal) still takes a moment: half an hour.
-      return { s: hhmmToMin(i.startTime!), e: i.endTime ? hhmmToMin(i.endTime) : hhmmToMin(i.startTime!) + (itemMinutes(i) || 30), at, title: i.title }
+      const at = ll(i.location) ?? (journey ? ll(i.to) : undefined) ?? i.walk?.stops[0]
+      // A journey that doesn't say where it leaves from leaves from wherever the previous fixed thing left you.
+      const startAt = journey ? ll(i.from) ?? lastAt : at
+      lastAt = at ?? lastAt
+      const s = hhmmToMin(i.startTime!)
+      let length = itemMinutes(i) || 30 // something with a time but no length (a taxi, a meal) still takes a moment
+      if (journey && !i.endTime && startAt && at) length = Math.max(20, Math.round((haversineM(startAt, at) * 1.3) / 1000 / (i.kind === 'bus' ? 40 : 60) * 60))
+      let e = i.endTime ? hhmmToMin(i.endTime) : s + length
+      // Arriving from far away: its departure time is another place's clock; what counts here is when it lands.
+      if (arrivesFromAfar(i, here, arriving)) return i.endTime ? { s: Math.max(0, e - 15), e, at, startAt: at, title: i.title } : undefined
+      if (e < s) e = 24 * 60 // overnight
+      const before = i.kind === 'flight' ? 120 : 0 // check-in for a flight out
+      return { s: s - before, e, at, startAt, title: i.title }
     })
+    .filter((w): w is NonNullable<typeof w> => !!w)
     .sort((x, y) => x.s - y.s)
 }
 
@@ -889,8 +967,13 @@ export async function retimeAfter(changed: Item, settings: Settings, nowMin?: nu
   if (!start) return undefined
 
   const day = days.find((d) => d.date === changed.date)
-  const pref = day?.getAround ?? settings.getAround ?? 'transit'
-  const fixed = fixedWindows(dayItems.filter((i) => !laterIds.has(i.id) && i.id !== changed.id && i.status !== 'done'))
+  const pref = getAroundFor(day, settings, await db.items.where('tripId').equals(changed.tripId).toArray(), changed.date)
+  const here = day?.lat != null && day.lon != null ? { lat: day.lat, lon: day.lon } : undefined
+  const fixed = fixedWindows(
+    dayItems.filter((i) => !laterIds.has(i.id) && i.id !== changed.id && i.status !== 'done'),
+    here,
+  )
+  const lastDay = changed.date === (await db.trips.get(changed.tripId))?.endDate
   const cityDays = days.filter((d) => sameCity(d.city, day?.city)).map((d) => d.date).sort()
   const arriving = arrivalTest(day?.city, day, changed.date === cityDays[0])
   // Close the gap that opened, not every gap of the day: nothing moves up by more than the time freed
@@ -904,7 +987,7 @@ export async function retimeAfter(changed: Item, settings: Settings, nowMin?: nu
     visitMin: length(i),
     notBefore: Math.max(hhmmToMin(i.startTime!) - freed, hoursOf({ title: i.title, kind: i.kind, category: i.category, hours: i.hours }, i.date).open ?? 0),
   }))
-  const slots = await layoutStops(stops, start, fixed, pref, settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN, settings.walkSpeedKmh, departureCutoff(dayItems.filter((i) => i.id !== changed.id), start.t, arriving))
+  const slots = await layoutStops(stops, start, fixed, pref, settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN, settings.walkSpeedKmh, departureCutoff(dayItems.filter((i) => i.id !== changed.id), start.t, arriving, lastDay))
   const updates = later
     .flatMap((i, n) => {
       const slot = slots[n]
@@ -969,6 +1052,15 @@ async function reconcileNow(tripId: string): Promise<string[]> {
     Object.assign(f, c)
   }
   const released: string[] = []
+
+  // Journeys whose stored coordinates contradict their names (a chatbot's slip): the name's city wins, once and for all.
+  const fixedPlaces = items.flatMap((i) => {
+    if (!JOURNEYS.has(i.kind) && i.kind !== 'taxi') return []
+    const to = i.to && trustedPlace(i.to)
+    const from = i.from && trustedPlace(i.from)
+    return to !== i.to || from !== i.from ? [{ key: i.id, changes: { to, from } }] : []
+  })
+  if (fixedPlaces.length) await db.items.bulkUpdate(fixedPlaces)
 
   // Planner items you have acted on are yours from now on.
   const touched = items.filter((i) => i.planner && i.favId && !ACTIVE.has(i.status)).map((i) => i.id)
@@ -1045,18 +1137,22 @@ async function reconcileNow(tripId: string): Promise<string[]> {
 }
 
 /** Start the walk after whatever is already planned in the morning (or after arriving), never before 09:30. */
-function firstFreeSlot(dayItems: Item[], arriving: (i: Item) => boolean): string {
-  let t = hhmmToMin('09:30')
-  for (const i of [...dayItems].sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''))) {
-    if (!i.startTime || i.status === 'skipped' || i.kind === 'stay') continue
-    const s = hhmmToMin(i.startTime)
-    const e = i.endTime ? hhmmToMin(i.endTime) : s + itemMinutes(i)
-    const journey = JOURNEYS.has(i.kind)
-    if (journey && !arriving(i)) continue // leaving later that day doesn't push the start: it ends the day instead
-    if (s <= t + 30 || (journey && s < hhmmToMin('15:00'))) t = Math.max(t, e + (journey ? 60 : 0))
+/**
+ * When the day can start: 9:30, or after arriving from far away (the flight in, plus an hour; the taxi from the airport),
+ * or after whatever is fixed first thing. Moving on during the day (a drive to the next town) doesn't delay the start:
+ * the time before it is used where you are.
+ */
+function dayStart(dayItems: Item[], fixed: Window[], here: LatLon | undefined, arriving: (i: Item) => boolean): number {
+  let t = 9 * 60 + 30
+  for (const i of dayItems) {
+    if (!i.startTime || i.status === 'skipped') continue
+    if (arrivesFromAfar(i, here, arriving) && i.endTime) t = Math.max(t, hhmmToMin(i.endTime) + 60)
+    if (i.kind === 'taxi' && arriving(i) && /airport|station|port|pier|harbou?r|\(\w{3}\)/i.test(i.from?.name ?? '')) t = Math.max(t, hhmmToMin(i.startTime) + (itemMinutes(i) || 30))
   }
-  return minToHHMM(Math.min(t, hhmmToMin('17:00')))
+  for (const w of fixed) if (w.s <= t + 30 && w.s >= t - 60 && w.e > t) t = Math.max(t, w.e)
+  return Math.min(t, 22 * 60)
 }
+
 
 /** The dates of the trip whose city is `city`. */
 export function cityDates(days: Day[], city: string) {

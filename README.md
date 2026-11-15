@@ -119,6 +119,13 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   shows have no limit). It's a guess, so it only steers the order and warns ("🕘 may be closed then") on the item and in the Optimise preview.
 - **Quarter hours everywhere**: Optimise, Plan my days and re-timing start things on the quarter hour (9:15, never 9:02).
 - **Calendar**: dragging snaps to the clock's quarter hours (15:00, 15:15, 15:30…); a 📌 on a block shows it's locked, tap it to let it move.
+- **Nothing left without a time**: after you choose an itinerary, every activity, meal and walk the chatbot gave no time gets one,
+  around the times it did give. Day by day shows "⏱ N items have no time yet · Fit them into the day" for any that are left, and the
+  Plan tab has "⏱ Give times to N untimed items" for the whole trip.
+- **Road trips and arrivals**: a day starts after the flight in (and the taxi from the airport), from wherever you slept; on a driving
+  day, a visit between two drives goes where the first drive arrives; a drive with no end time lasts its distance at road speed; while
+  you have a car, longer hops are drives (🚗). Only the day you go home ends early, before the journey out. Places whose coordinates
+  contradict their name (a chatbot once put Athens airport in Sydney) are corrected.
 - **Plan my days schedules the whole day**: besides the wishlist, it gives times to what the day already holds without one (an itinerary's
   "Tower of London", "Lunch at Borough Market"), and ties wishlist places to those items instead of adding them again on another day. Lunch
   goes in around noon. Anything 📌 locked, booked, or a journey stays put and the rest fits around it. Planning again gives the same result.
