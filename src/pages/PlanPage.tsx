@@ -260,9 +260,11 @@ export default function PlanPage() {
   )
 
   // "San Francisco → Yosemite → San Francisco": the shape of the trip at a glance.
-  const places: string[] = []
-  for (const d of days) if (d.city && places[places.length - 1] !== d.city) places.push(d.city)
-  const routeLine = [trip.startPlace?.name, ...places, trip.endPlace?.name || trip.startPlace?.name].filter((x, i, a): x is string => !!x && a[i - 1] !== x)
+  // The trip in a line: Sydney → San Pedro de Atacama → … → Sydney. A day's city loses its details ("Sydney (overnight
+  // flight)", "Santiago → Sydney (return)" read as Sydney and Santiago), so each place shows once per visit.
+  const base = (c?: string) => (c ?? '').split(/\s*[(/]|\s+(?:→|->)\s+/)[0].trim()
+  const places = [trip.startPlace?.name, ...days.map((d) => d.city), trip.endPlace?.name || trip.startPlace?.name].map((c) => base(c?.split(',')[0]))
+  const routeLine = places.filter((x, i, a) => !!x && a.slice(0, i).reverse().find(Boolean)?.toLowerCase() !== x.toLowerCase())
 
   return (
     <div className="grid-2 wide-left">

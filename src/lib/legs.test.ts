@@ -35,3 +35,13 @@ describe('walking at the all-out pace', () => {
     expect(forPace({ walkMaxMin: 15 } as Settings, 'packed').walkMaxMin).toBe(15)
   })
 })
+
+describe('lines on the map', () => {
+  it('go across the Pacific from Sydney to Santiago, and carry on from there', async () => {
+    const { unwrapPath, unwrapSegments } = await import('./geo')
+    expect(unwrapPath([[151.2, -33.9], [-70.7, -33.4]])).toEqual([[151.2, -33.9], [289.3, -33.4]])
+    const segs = unwrapSegments([{ coords: [[151.2, -33.9], [-70.7, -33.4]] as [number, number][] }, { coords: [[-70.7, -33.4], [-68.2, -22.9]] as [number, number][] }])
+    expect(segs[1].coords[1][0]).toBeCloseTo(291.8, 5) // the next leg stays on the same side of the world
+    expect(unwrapPath([[-9.1, 38.7], [-8.6, 41.1]])).toEqual([[-9.1, 38.7], [-8.6, 41.1]]) // nothing to do in Portugal
+  })
+})

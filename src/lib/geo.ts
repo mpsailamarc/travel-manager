@@ -79,3 +79,23 @@ export function centroid(points: LatLon[]): LatLon | undefined {
     lon: points.reduce((s, p) => s + p.lon, 0) / points.length,
   }
 }
+
+// Lines go the short way round the globe: Sydney → Santiago crosses the Pacific, not Africa. Each point is moved by a
+// whole turn (±360°) to be within half a turn of the one before; the map draws that on the next copy of the world.
+export const nearLon = (lon: number, ref: number) => lon + 360 * Math.round((ref - lon) / 360)
+export function unwrapPath(coords: [number, number][], ref = coords[0]?.[0] ?? 0): [number, number][] {
+  let prev = ref
+  return coords.map(([lon, lat]) => {
+    prev = nearLon(lon, prev)
+    return [prev, lat]
+  })
+}
+/** The segments in order, each carrying on from where the one before ended. */
+export function unwrapSegments<S extends { coords: [number, number][] }>(segments: S[]): S[] {
+  let ref: number | undefined
+  return segments.map((s) => {
+    const coords = unwrapPath(s.coords, ref ?? s.coords[0]?.[0])
+    if (coords.length) ref = coords[coords.length - 1][0]
+    return { ...s, coords }
+  })
+}

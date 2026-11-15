@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
+import { nearLon, unwrapPath, unwrapSegments } from '../lib/geo'
 
 // MapLibre locates its worker relative to its own file, which breaks once bundled; point it at the emitted asset.
 maplibregl.setWorkerUrl(workerUrl)
@@ -159,7 +160,10 @@ export default function MapView({ markers, line, dashed, segments, className = '
   useEffect(() => {
     const m = map.current
     if (!m) return
-    const pts: [number, number][] = [...markers.map((x) => [x.lon, x.lat] as [number, number]), ...(line ?? []), ...(segments ?? []).flatMap((s) => s.coords)]
+    // Fit to the lines as drawn (across the Pacific if need be), and to the markers on the same side of the world.
+    const drawn: [number, number][] = [...unwrapPath(line ?? []), ...unwrapSegments(segments ?? []).flatMap((s) => s.coords)]
+    const ref = drawn[0]?.[0] ?? markers[0]?.lon ?? 0
+    const pts: [number, number][] = [...markers.map((x) => [nearLon(x.lon, ref), x.lat] as [number, number]), ...drawn]
     if (pts.length === 0) return
     if (pts.length === 1) {
       m.easeTo({ center: pts[0], zoom: Math.max(m.getZoom(), 14) })
@@ -182,12 +186,12 @@ export default function MapView({ markers, line, dashed, segments, className = '
 function segData(segments: Props['segments'], dashed: boolean) {
   return {
     type: 'FeatureCollection' as const,
-    features: (segments ?? [])
+    features: unwrapSegments(segments ?? [])
       .filter((s) => s.dashed === dashed && s.coords.length > 1)
       .map((s) => ({ type: 'Feature' as const, properties: { color: s.color ?? '#0f766e' }, geometry: { type: 'LineString' as const, coordinates: s.coords } })),
   }
 }
 
 function lineData(line?: [number, number][]) {
-  return { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: line && line.length > 1 ? line : [] } }
+  return { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: line && line.length > 1 ? unwrapPath(line) : [] } }
 }
