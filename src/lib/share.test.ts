@@ -45,3 +45,32 @@ describe('budget lines', () => {
     expect(budgetFromLines(lines, {})).toMatchObject({ stays: 360, food: 100 })
   })
 })
+
+describe('the budget follows the group and the dates', () => {
+  it('more travellers: per-person lines, flights and rooms grow; typed amounts stay', async () => {
+    const { adjustLinesToTrip, estimateBudgetLines } = await import('./budget')
+    const adult = (id: string) => ({ id, name: id, type: 'adult' as const })
+    const two = await makeTrip({ travellers: [adult('a'), adult('b')], countryCodes: ['GR'] })
+    const { lines } = await estimateBudgetLines(two, 'FR', 'EUR')
+    const typed = { id: 'own', category: 'other' as const, label: 'Souvenirs', amount: 100 }
+    const four = { ...two, travellers: [adult('a'), adult('b'), adult('c'), adult('d')] }
+    const after = adjustLinesToTrip([...lines, typed], two, four)
+    const find = (ls: typeof lines, re: RegExp) => ls.find((l) => re.test(l.label))!
+    expect(find(after, /^Flights/).qty).toBe(4)
+    expect(find(after, /^Food/).amount).toBeCloseTo(find(lines, /^Food/).amount * 2, -1)
+    expect(find(after, /^Food/).label).toContain('4 adults')
+    expect(find(after, /^Accommodation/).label).toContain('2 rooms')
+    expect(find(after, /^Accommodation/).amount).toBeGreaterThan(find(lines, /^Accommodation/).amount * 1.8)
+    expect(after.find((l) => l.id === 'own')).toEqual(typed)
+  })
+
+  it('a longer trip: more nights and more days of food', async () => {
+    const { adjustLinesToTrip, estimateBudgetLines } = await import('./budget')
+    const trip = await makeTrip({ travellers: [{ id: 'a', name: 'a', type: 'adult' }], countryCodes: ['GR'] })
+    const { lines } = await estimateBudgetLines(trip, 'FR', 'EUR')
+    const longer = { ...trip, endDate: '2027-03-15' } // 3 days → 6 days
+    const after = adjustLinesToTrip(lines, trip, longer)
+    expect(after.find((l) => /^Accommodation/.test(l.label))!.qty).toBe(5)
+    expect(after.find((l) => /^Food/.test(l.label))!.qty).toBe(6)
+  })
+})

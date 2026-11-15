@@ -114,6 +114,52 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   return { lines, basis }
 }
 
+/** Who is travelling and for how long, as the estimate counts it. */
+function party(trip: Trip) {
+  const nights = Math.max(1, daysBetween(trip.startDate, trip.endDate))
+  const adults = trip.travellers.filter((t) => t.type === 'adult').length || 1
+  const kids = trip.travellers.filter((t) => t.type === 'child').length
+  const rooms = Math.max(1, Math.ceil(adults / 2))
+  return {
+    nights,
+    days: nights + 1,
+    adults,
+    kids,
+    people: adults + kids * 0.6,
+    travellers: adults + kids,
+    rooms,
+    roomFactor: rooms + kids * 0.2,
+    group: `${plural(adults, 'adult')}${kids ? ` + ${plural(kids, 'child', 'children')}` : ''}`,
+  }
+}
+
+/**
+ * The trip changed (more or fewer travellers, other dates): estimate lines that depend on it follow, so the budget at the top
+ * changes too. Per-person-per-day lines scale with people × days, flights with the number of travellers, accommodation
+ * with the nights and rooms, moves between places with the group. Amounts typed without a quantity × price stay as they are.
+ */
+export function adjustLinesToTrip(lines: BudgetLine[], before: Trip, after: Trip): BudgetLine[] {
+  const a = party(before)
+  const b = party(after)
+  if (a.days === b.days && a.adults === b.adults && a.kids === b.kids) return lines
+  const round1 = (n: number) => Math.round(n * 10) / 10
+  return lines.map((l) => {
+    if (!l.qty || !l.price) return l
+    const unit = l.unit ?? ''
+    let { qty, price } = l
+    if (/person-day/.test(unit)) qty = round1((qty * (b.days * b.people)) / (a.days * a.people))
+    else if (/^travellers?$/.test(unit) && qty === a.travellers) qty = b.travellers
+    else if (l.category === 'stays' && /^nights?$/.test(unit)) {
+      if (qty === a.nights) qty = b.nights
+      price = Math.round((price * b.roomFactor) / a.roomFactor)
+    } else if (/^moves?$/.test(unit)) price = Math.round((price * b.people) / a.people)
+    const label = l.label.replace(`(${a.group})`, `(${b.group})`).replace(`(${plural(a.rooms, 'room')})`, `(${plural(b.rooms, 'room')})`)
+    const unitFixed = /^travellers?$/.test(unit) ? (qty === 1 ? 'traveller' : 'travellers') : /^nights?$/.test(unit) ? (qty === 1 ? 'night' : 'nights') : l.unit
+    const next = { ...l, qty, price, label, unit: unitFixed }
+    return { ...next, amount: lineAmount(next) }
+  })
+}
+
 /** "per night", "per person per day", "each": what a unit price is for, so "A$263" is never a mystery. */
 export function perPhrase(unit = ''): string {
   const u = unit.toLowerCase()

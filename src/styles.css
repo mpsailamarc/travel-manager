@@ -1595,3 +1595,75 @@ hr {
 .tl-pin:hover {
   background: rgba(0, 0, 0, 0.08);
 }
+
+/* Budget by type: a pale track for the budget, a solid fill for what's spent, red past the budget */
+.bb {
+  display: grid;
+  gap: 8px;
+}
+
+.bb-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 9.5rem) 1fr;
+  grid-template-areas: 'name track' '. value';
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+}
+
+.bb-name {
+  grid-area: name;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bb-track {
+  grid-area: track;
+  position: relative;
+  height: 14px;
+}
+
+.bb-budget,
+.bb-spent,
+.bb-over {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 0 4px 4px 0; /* rounded at the data end, square at the baseline */
+}
+
+.bb-budget {
+  background: var(--primary-soft);
+}
+
+.bb-spent {
+  background: var(--primary);
+}
+
+.bb-over {
+  background: var(--danger);
+  border-radius: 0 4px 4px 0;
+}
+
+.bb-value {
+  grid-area: value;
+  color: var(--text, inherit);
+}
+
+.bb-key {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.bb-key-spent {
+  background: var(--primary);
+}
+
+.bb-key-budget {
+  background: var(--primary-soft);
+  border: 1px solid #99f6e4;
+}

@@ -4,6 +4,7 @@ import { db, deleteTrip, extendTripDays } from '../db'
 import type { Trip } from '../types'
 import { Modal, toast } from '../components/ui'
 import { locatePlace } from '../lib/apis'
+import { adjustLinesToTrip, budgetFromLines } from '../lib/budget'
 import { TripFields } from './TripFields'
 
 export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
@@ -22,9 +23,12 @@ export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () =>
     const startPlace = await locatePlace(draft.startPlace)
     const endPlace = draft.endPlace?.name ? await locatePlace(draft.endPlace) : undefined
     // The dates saved here are yours: an itinerary idea no longer counts as having stretched them.
-    await db.trips.put({ ...draft, startPlace, endPlace, userEndDate: undefined, updatedAt: Date.now() })
+    // More or fewer travellers, other dates: the estimate's lines (and so the budget totals) follow.
+    const budgetLines = draft.budgetLines ? adjustLinesToTrip(draft.budgetLines, trip, draft) : undefined
+    const budget = budgetLines && budgetLines !== draft.budgetLines ? budgetFromLines(budgetLines, draft.budget, draft.budgetLines) : draft.budget
+    await db.trips.put({ ...draft, budgetLines, budget, startPlace, endPlace, userEndDate: undefined, updatedAt: Date.now() })
     await extendTripDays(trip.id, trip, draft)
-    toast('Trip saved')
+    toast(budgetLines && budgetLines !== draft.budgetLines ? 'Trip saved · budget updated for the new group and dates' : 'Trip saved')
     onClose()
   }
 

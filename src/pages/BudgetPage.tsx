@@ -164,6 +164,11 @@ export default function BudgetPage() {
         />
       </div>
 
+      <BudgetBars
+        rows={BUDGET_CATEGORIES.map((c) => ({ c, budget: catTotal(c), spent: spent[c] })).filter((r) => r.budget > 0 || r.spent > 0)}
+        home={home}
+      />
+
       <div className="grid-2 wide-left">
         <div className="card">
           <div className="card-title">
@@ -504,6 +509,56 @@ function Kpi({ k, v, sub, warn }: { k: string; v: string; sub?: string; warn?: b
       </div>
       <div style={{ fontSize: '1.4rem', fontWeight: 700, color: warn ? 'var(--danger)' : undefined }}>{v}</div>
       {sub && <div className="tiny muted">{sub}</div>}
+    </div>
+  )
+}
+
+/**
+ * Budget by type: one bar per category, longest first. The pale track is the budget, the solid fill what's spent so far,
+ * with the amounts written at the end (a bar chart reads better than a pie for comparing six amounts). Spending past the
+ * budget continues in red with a "⚠ over" label, so it never relies on colour alone. The table below has every figure.
+ */
+function BudgetBars({ rows, home }: { rows: { c: BudgetCategory; budget: number; spent: number }[]; home: string }) {
+  if (!rows.length) return null
+  const sorted = [...rows].sort((a, b) => b.budget - a.budget || b.spent - a.spent)
+  const max = Math.max(...sorted.map((r) => Math.max(r.budget, r.spent)), 1)
+  const pct = (v: number) => `${(v / max) * 100}%`
+  return (
+    <div className="card stack" style={{ gap: 10 }}>
+      <div className="row between wrap">
+        <h3>📊 Budget by type</h3>
+        <div className="row small muted" style={{ gap: 12 }} aria-hidden>
+          <span className="row" style={{ gap: 4 }}>
+            <i className="bb-key bb-key-spent" /> spent
+          </span>
+          <span className="row" style={{ gap: 4 }}>
+            <i className="bb-key bb-key-budget" /> budget
+          </span>
+        </div>
+      </div>
+      <div className="bb" role="list">
+        {sorted.map((r) => {
+          const over = r.spent > r.budget
+          const label = `${BUDGET_LABELS[r.c].label}: ${money(r.spent, home)} spent of ${money(r.budget, home)}${over ? `, ${money(r.spent - r.budget, home)} over` : ''}`
+          return (
+            <div key={r.c} className="bb-row" role="listitem" title={label} aria-label={label}>
+              <span className="bb-name small">
+                {BUDGET_LABELS[r.c].emoji} {BUDGET_LABELS[r.c].label}
+              </span>
+              <span className="bb-track">
+                <span className="bb-budget" style={{ width: pct(r.budget) }} />
+                <span className="bb-spent" style={{ width: pct(Math.min(r.spent, r.budget)) }} />
+                {over && <span className="bb-over" style={{ left: `calc(${pct(r.budget)} + 2px)`, width: `calc(${pct(r.spent - r.budget)} - 2px)` }} />}
+              </span>
+              <span className="bb-value small">
+                <b>{money(r.budget, home)}</b>
+                <span className="muted">{r.spent > 0 ? ` · ${money(r.spent, home)} spent` : ''}</span>
+                {over && <span style={{ color: 'var(--danger)' }}> · ⚠ {money(r.spent - r.budget, home)} over</span>}
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

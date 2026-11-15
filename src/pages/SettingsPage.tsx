@@ -64,8 +64,9 @@ export default function SettingsPage() {
             </select>
           </label>
           <label>
-            Usual departure airport
-            <input defaultValue={s.homeAirport ?? ''} key={s.homeAirport} placeholder="e.g. Paris CDG" onBlur={(e) => set({ homeAirport: e.target.value || undefined })} />
+            Home city or usual airport
+            <input defaultValue={s.homeAirport ?? ''} key={s.homeAirport} placeholder="e.g. Paris, or Paris CDG" onBlur={(e) => set({ homeAirport: e.target.value || undefined })} />
+            <span className="tiny muted">New trips (and trips with no start set) start and end here.</span>
           </label>
           <label>
             Walking speed

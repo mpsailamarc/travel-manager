@@ -17,7 +17,7 @@ import { KIND_META } from '../components/kinds'
 import { useTripCtx } from './TripLayout'
 
 export default function PlanPage() {
-  const { trip, items, days } = useTripCtx()
+  const { trip, items, days, settings } = useTripCtx()
   const navigate = useNavigate()
   const [editing, setEditing] = useState<(Partial<Item> & { date: string }) | null>(null)
   const [dayEdit, setDayEdit] = useState<Day | null>(null)
@@ -27,6 +27,11 @@ export default function PlanPage() {
   const dayByDate = new Map(days.map((d) => [d.date, d]))
   const outside = items.filter((i) => i.date < trip.startDate || i.date > trip.endDate)
   const now = today()
+
+  // No start set: it's home (Settings → Home city or usual airport), when that is set. The effect below then locates it.
+  useEffect(() => {
+    if (!trip.startPlace?.name?.trim() && settings.homeAirport?.trim()) db.trips.update(trip.id, { startPlace: { name: settings.homeAirport.trim() } })
+  }, [trip.id, trip.startPlace?.name, settings.homeAirport])
 
   // A start/return that has a name but no coordinates yet (typed without "Find") is located once, so the map can draw it.
   useEffect(() => {

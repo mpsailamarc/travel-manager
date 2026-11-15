@@ -54,7 +54,8 @@ export default function NewTripPage() {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
-    trip.startPlace = await locatePlace(t.startPlace)
+    // Nothing typed for the start: it's home (Settings → Home city or usual airport), when that is set.
+    trip.startPlace = await locatePlace(t.startPlace?.name?.trim() ? t.startPlace : settings.homeAirport ? { name: settings.homeAirport } : undefined)
     trip.endPlace = t.endPlace?.name ? await locatePlace(t.endPlace) : undefined
     const cap = t.countryCodes.length === 1 && !t.cities.length ? country(t.countryCodes[0])?.capital : undefined
     await db.transaction('rw', [db.trips, db.days], async () => {
