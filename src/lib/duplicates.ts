@@ -5,6 +5,7 @@ import { db, touchTrip } from '../db'
 import type { Item, ItemStatus } from '../types'
 import { hhmmToMin } from './dates'
 import { haversineM } from './geo'
+import { saveLocal } from './storage'
 
 // Words that say what kind of thing it is, not which one: they never decide whether two titles match.
 const GENERIC = new Set(
@@ -141,4 +142,4 @@ export const notDuplicates = (): Set<string> => {
     return new Set()
   }
 }
-export const markNotDuplicates = (keys: string[]) => localStorage.setItem(IGNORE_KEY, JSON.stringify([...new Set([...notDuplicates(), ...keys])]))
+export const markNotDuplicates = (keys: string[]) => saveLocal(IGNORE_KEY, JSON.stringify([...new Set([...notDuplicates(), ...keys])]))

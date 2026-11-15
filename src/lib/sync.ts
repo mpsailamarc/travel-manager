@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react'
 import { db } from '../db'
+import { saveLocal } from './storage'
 
 const TABLES = ['trips', 'days', 'items', 'checklist', 'expenses', 'favorites', 'settings'] as const
 type SyncTable = (typeof TABLES)[number]
@@ -48,7 +49,7 @@ export function getConfig(): SyncConfig | undefined {
 }
 
 function saveConfig(c: SyncConfig | undefined) {
-  if (c) localStorage.setItem(CONFIG_KEY, JSON.stringify(c))
+  if (c) saveLocal(CONFIG_KEY, JSON.stringify(c))
   else localStorage.removeItem(CONFIG_KEY)
 }
 

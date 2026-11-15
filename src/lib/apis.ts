@@ -5,8 +5,8 @@
 
 import { haversineM, type LatLon } from './geo'
 import type { WalkStop } from '../types'
+import { CACHE_PREFIX, saveLocal } from './storage'
 
-const CACHE_PREFIX = 'tm-cache:'
 
 function cacheGet<T>(key: string, maxAgeMs: number): T | undefined {
   try {
@@ -24,11 +24,8 @@ function cacheGetStale<T>(key: string): T | undefined {
 }
 
 function cacheSet(key: string, v: unknown) {
-  try {
-    localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({ t: Date.now(), v }))
-  } catch {
-    /* storage full: caching is best-effort */
-  }
+  // Best-effort: when storage is full, older cached answers make room (and if it still doesn't fit, it isn't cached).
+  saveLocal(CACHE_PREFIX + key, JSON.stringify({ t: Date.now(), v }))
 }
 
 async function getJSON<T>(url: string, init?: RequestInit, timeoutMs = 15000): Promise<T> {
@@ -582,7 +579,7 @@ export function manualRates(): Record<string, number> {
 export function setManualRate(from: string, to: string, rate: number) {
   const r = manualRates()
   r[`${from}>${to}`] = rate
-  localStorage.setItem(MANUAL_RATES_KEY, JSON.stringify(r))
+  saveLocal(MANUAL_RATES_KEY, JSON.stringify(r))
 }
 
 /**

@@ -3,6 +3,7 @@
 // and requests go straight from this device to api.openai.com.
 
 import { useSyncExternalStore } from 'react'
+import { saveLocal } from './storage'
 
 export interface AiConfig {
   mode: 'paste' | 'api'
@@ -32,7 +33,7 @@ export function getAiConfig(): AiConfig {
 }
 
 export function setAiConfig(patch: Partial<AiConfig>) {
-  localStorage.setItem(STORE, JSON.stringify({ ...getAiConfig(), ...patch }))
+  saveLocal(STORE, JSON.stringify({ ...getAiConfig(), ...patch }))
   window.dispatchEvent(new Event(EVENT))
 }
 

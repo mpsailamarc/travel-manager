@@ -23,6 +23,7 @@ import LazyMap from '../components/LazyMap'
 import { BackupIdeas } from '../components/BackupIdeas'
 import { tripPhase, useTripCtx } from './TripLayout'
 import { AnswerBox, PromptBox } from './IdeasPage'
+import { saveLocal } from '../lib/storage'
 
 export default function TodayPage() {
   const { trip, items, days, settings } = useTripCtx()
@@ -50,7 +51,7 @@ export default function TodayPage() {
   const [mode, setViewState] = useState<'timeline' | 'list'>(() => (localStorage.getItem('tm-day-view') === 'list' ? 'list' : 'timeline'))
   const setMode = (v: 'timeline' | 'list') => {
     setViewState(v)
-    localStorage.setItem('tm-day-view', v)
+    saveLocal('tm-day-view', v)
   }
   const [editing, setEditing] = useState<(Partial<Item> & { date: string }) | null>(null)
   // Opened from elsewhere (the Budget's plan lines) to show one item: open it, then forget the link so it doesn't reopen.
@@ -345,7 +346,7 @@ export default function TodayPage() {
               <Section
                 open={mapOpen}
                 onToggle={() => {
-                  localStorage.setItem('tm-day-map', mapOpen ? '0' : '1')
+                  saveLocal('tm-day-map', mapOpen ? '0' : '1')
                   setMapOpen(!mapOpen)
                 }}
                 title="🗺️ Day on the map"

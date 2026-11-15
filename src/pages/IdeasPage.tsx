@@ -12,6 +12,7 @@ import { aiReady, askAI, useAiConfig } from '../lib/openai'
 import { fillUntimedTrip } from '../lib/favorites'
 import { BUDGET_LEVELS, STYLES } from './TripFields'
 import { useTripCtx } from './TripLayout'
+import { saveLocal } from '../lib/storage'
 
 type Tab = 'ideas' | 'bookings' | 'template'
 
@@ -158,6 +159,11 @@ export function useAiWords() {
   return aiReady(useAiConfig())
 }
 
+/** Keeps the pasted answers on this device; if even that doesn't fit, they still work until you leave the page. */
+function keep(key: string, replies: string[]) {
+  if (!saveLocal(key, JSON.stringify(replies))) toast("This device's storage is full: the answer works now but won't be kept if you leave the page")
+}
+
 function ItineraryIdeas() {
   const api = useAiWords()
   const { trip, items, settings } = useTripCtx()
@@ -179,7 +185,7 @@ function ItineraryIdeas() {
     const next = [...replies.slice(0, i), text]
     setReplies(next)
     setChosen(undefined)
-    localStorage.setItem(storeKey, JSON.stringify(next))
+    keep(storeKey, next)
   }
 
   function startOver() {
@@ -454,7 +460,7 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
     // Editing an earlier reply invalidates the follow-ups built from it.
     const trimmed = next.slice(0, i + 1)
     setReplies(trimmed)
-    localStorage.setItem(storeKey, JSON.stringify(trimmed))
+    keep(storeKey, trimmed)
   }
 
   // Walk through the replies in order, tracking which days are still missing before each one.

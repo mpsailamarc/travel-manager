@@ -18,6 +18,7 @@ import { KIND_META } from '../components/kinds'
 import { PlanStaleNotice } from '../components/PlanStale'
 import { fillUntimedTrip, untimedItems } from '../lib/favorites'
 import { useTripCtx } from './TripLayout'
+import { saveLocal } from '../lib/storage'
 
 export default function PlanPage() {
   const { trip, items, days, settings } = useTripCtx()
@@ -28,7 +29,7 @@ export default function PlanPage() {
   const [detailed, setDetailedState] = useState(() => localStorage.getItem('tm-plan-detail') === '1')
   const setDetailed = (v: boolean) => {
     setDetailedState(v)
-    localStorage.setItem('tm-plan-detail', v ? '1' : '0')
+    saveLocal('tm-plan-detail', v ? '1' : '0')
   }
   const [mapSize, setMapSize] = useMapSize('tm-plan-map')
   const wide = useMediaQuery('(min-width: 721px)')
@@ -59,7 +60,7 @@ export default function PlanPage() {
   const [fromHome, setFromHomeState] = useState(() => localStorage.getItem('tm-plan-from-home') !== '0')
   const setFromHome = (v: boolean) => {
     setFromHomeState(v)
-    localStorage.setItem('tm-plan-from-home', v ? '1' : '0')
+    saveLocal('tm-plan-from-home', v ? '1' : '0')
   }
 
   const { markers } = useMemo(() => {

@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
 import { DEFAULT_SETTINGS, db, getSettings } from '../db'
 import type { Day, Item } from '../types'
+import { saveLocal } from './storage'
 
 export function useSettings() {
   return useLiveQuery(() => getSettings(), [], DEFAULT_SETTINGS)
@@ -79,7 +80,7 @@ export function useMapSize(storageKey: string, initial: MapSize = 'small') {
     size,
     (v: MapSize) => {
       setSize(v)
-      localStorage.setItem(storageKey, v)
+      saveLocal(storageKey, v)
     },
   ] as const
 }

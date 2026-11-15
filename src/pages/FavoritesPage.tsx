@@ -22,6 +22,7 @@ import LazyMap, { type MapMarker, type MapViewState } from '../components/LazyMa
 import { tripadvisorSearch } from '../lib/links'
 import { AnswerBox, PromptBox, useAiWords } from './IdeasPage'
 import { useTripCtx } from './TripLayout'
+import { saveLocal } from '../lib/storage'
 
 type Source = 'sights' | 'ai' | 'own'
 
@@ -251,7 +252,7 @@ export default function FavoritesPage() {
   const [mapSize, setMapSizeState] = useState<'small' | 'large' | 'hidden'>(() => (localStorage.getItem('tm-fav-map') as 'small' | 'large' | 'hidden') || 'small')
   const setMapSize = (v: 'small' | 'large' | 'hidden') => {
     setMapSizeState(v)
-    localStorage.setItem('tm-fav-map', v)
+    saveLocal('tm-fav-map', v)
   }
   const shown = detail && (detail.fav ? cityFavs.find((f) => f.id === detail.fav!.id) : findFav(detail.subject.name, detail.subject.wikidata))
   const findIsOpen = findOpen ?? (favs !== undefined && cityFavs.length === 0)
@@ -797,7 +798,7 @@ function AiIdeas({ city, isFav, inPlan, onToggle, onOpen }: { city: string; isFa
         prompt={cityIdeasPrompt(trip, settings, city)}
         onAnswer={(t) => {
           setAnswer(t)
-          localStorage.setItem(key, t)
+          saveLocal(key, t)
         }}
       />
       <AnswerBox
@@ -807,7 +808,7 @@ function AiIdeas({ city, isFav, inPlan, onToggle, onOpen }: { city: string; isFa
         placeholder='{"ideas": [ … ]}'
         onChange={(t) => {
           setAnswer(t)
-          localStorage.setItem(key, t)
+          saveLocal(key, t)
         }}
       />
       {parsed.error && <div className="notice error">{parsed.error}</div>}
