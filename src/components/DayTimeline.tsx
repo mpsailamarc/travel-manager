@@ -9,7 +9,7 @@ const PX_PER_HOUR = 52
 const GUTTER = 46 // room for the hour labels
 const SNAP = 15 // minutes
 const MIN_LEN = 15
-const HOLD_MS = 350 // touch: hold this long before a block can be dragged, so scrolling past it still works
+const HOLD_MS = 550 // touch: hold this long before a block (or its edge) can be dragged, so a swipe over it is just a scroll
 
 type Group = 'travel' | 'activities' | 'meals' | 'stay' | 'other'
 
@@ -276,11 +276,12 @@ export function DayTimeline({
       },
     }
     gesture.current = g
-    if (mode !== 'move') {
-      e.stopPropagation()
-      g.activate() // the edge handles start at once: they don't compete with scrolling
-    } else if (g.touch) {
+    if (mode !== 'move') e.stopPropagation()
+    if (g.touch) {
+      // A finger has to hold still first, for moving and for changing the length alike: a swipe across the calendar only scrolls.
       g.timer = window.setTimeout(g.activate, HOLD_MS)
+    } else if (mode !== 'move') {
+      g.activate() // with a mouse, the edge handles start at once
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -377,7 +378,7 @@ export function DayTimeline({
       </div>
       {editable && (
         <p className="tiny muted">
-          ✋ Hold a block and drag it to move it (it snaps to the quarter hour); drag its top or bottom edge to change when it starts or ends. What you place is 📌 locked there:
+          ✋ Press and hold a block, then drag it to move it (it snaps to the quarter hour); press and hold its top or bottom edge, then drag, to change when it starts or ends. What you place is 📌 locked there:
           tap the 📌 to let it move again. Booked items stay fixed.
         </p>
       )}
