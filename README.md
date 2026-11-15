@@ -166,6 +166,15 @@ Open each day (and each walk map) once while online so maps and weather are cach
 
 Every request has a timeout, and results are cached on the device, so a slow or blocked service never freezes the app.
 
+## Tests
+
+`npm test` runs the automated tests (Vitest, in Node, with an in-memory database and no network, so the offline
+fallbacks are what's checked and results never change). They cover time zones and flights across them, opening hours,
+"is it the same place?" matching, pushing a day back, getting between places, the day scheduler (Optimise, Plan my days,
+locks, meals, opening hours, departure days, re-timing after ticking off or skipping), keeping the wishlist, days and
+calendar in step, reading chatbot answers and importing bookings, encrypted sync between two devices (against a fake
+server), sharing a trip as a file, and budget lines. GitHub runs them before every publish: a failing test stops it.
+
 ## Code map
 
 - `src/types.ts`: data model (trip, day, item, checklist, expense, document)

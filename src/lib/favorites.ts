@@ -533,7 +533,8 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
   const overrun = (st: Stretch) => {
     const last = st === stretches[stretches.length - 1]
     const over = simulate(st, st.seq).end - st.e
-    return over > 0 && !(last && cutoff == null) ? over * 20 : 0
+    // Running into something fixed isn't a matter of degree: the place would really be pushed after it, so it's all but forbidden.
+    return over > 0 && !(last && cutoff == null) ? over * 1000 : 0
   }
   const total = () => stretches.reduce((sum, st) => sum + travelOnly(st, st.seq) + overrun(st), 0)
   for (let pass = 0; pass < 6; pass++) {
@@ -998,6 +999,15 @@ async function reconcileNow(tripId: string): Promise<string[]> {
     if (it.favId) {
       const f = favById.get(it.favId)
       if (!f || f.itemId || f.date !== it.date || !cityDays(f.city).has(it.date)) remove.add(it.id)
+      else {
+        // You added the same place yourself that day (a booked ticket, say): the wishlist place follows your item and the
+        // planner's copy goes, so it isn't there twice.
+        const yours = items.find((o) => o.date === it.date && !o.planner && !favs.some((g) => g.itemId === o.id) && matchesPlace(o, f))
+        if (yours) {
+          remove.add(it.id)
+          change(f, { itemId: yours.id, pinned: true })
+        }
+      }
     } else if (it.kind === 'walk') {
       // A tour from the earlier version (one block for the whole day): rebuilt as one item per place.
       remove.add(it.id)

@@ -77,7 +77,8 @@ export type AiOption = z.infer<typeof AiOption>
 const PlanResponse = z.object({ options: lenientArray(AiOption).refine((o) => o.some((x) => x.days.length), 'no complete option') })
 const DetailResponse = z.object({ days: lenientArray(AiDay), checklist: lenientArray(ChecklistSuggestion) })
 const DayResponse = z.object({ items: lenientArray(AiItem) })
-const BookingResponse = z.object({ items: lenientArray(AiItem.extend({ date: z.string() })) })
+// Booking references and providers are what an imported confirmation is for: they must survive the parsing.
+const BookingResponse = z.object({ items: lenientArray(AiItem.extend({ date: z.string(), bookingRef: str, provider: str })) })
 
 /* ------------------------------- Prompts ---------------------------------- */
 
@@ -337,7 +338,7 @@ export function parseDetail(text: string) {
 }
 export const parseDayItems = (text: string) => friendly(DayResponse, text).data.items
 export const parseBookings = (text: string) =>
-  friendly(BookingResponse, text).data.items as (AiItem & { date: string; bookingRef?: string; provider?: string })[]
+  friendly(BookingResponse, text).data.items
 
 /** Combines the outline with detailed days from one or more replies; days without detail keep their highlights. */
 export function mergeDetail(option: AiOption, replies: { days: AiDay[]; checklist: AiOption['checklist'] }[]): AiOption {
