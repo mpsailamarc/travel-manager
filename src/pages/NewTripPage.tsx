@@ -8,7 +8,7 @@ import { uid } from '../lib/ids'
 import { locatePlace } from '../lib/apis'
 import { plural } from '../lib/format'
 import { useSettings } from '../lib/hooks'
-import { BUDGET_LEVELS, ChipToggle, ChoiceGrid, CitiesInput, CountryPicker, INTERESTS, StartEndFields, STYLES, TravellersEditor } from './TripFields'
+import { BUDGET_LEVELS, ChipToggle, ChoiceGrid, CitiesInput, CountryPicker, FOCUS, INNER_FLIGHTS, INTERESTS, RouteFields, StartEndFields, STYLES, TravellersEditor } from './TripFields'
 
 const STEPS = ['Where', 'When', 'Who', 'What', 'Review']
 
@@ -152,6 +152,7 @@ export default function NewTripPage() {
               <ChoiceGrid options={STYLES} value={t.style} onChange={(v) => set('style', v)} />
               <label>Budget</label>
               <ChoiceGrid options={BUDGET_LEVELS} value={t.budgetLevel} onChange={(v) => set('budgetLevel', v)} />
+              <RouteFields value={t} onChange={(v) => setT((s) => ({ ...s, ...v }))} />
               <label>What do you enjoy?</label>
               <ChipToggle options={INTERESTS} value={t.interests} onChange={(v) => set('interests', v)} />
             </>
@@ -169,6 +170,7 @@ export default function NewTripPage() {
                 <Tile k="When" v={`${formatDate(t.startDate)} · ${days} days`} />
                 <Tile k="Who" v={`${plural(t.travellers.filter((x) => x.type === 'adult').length, 'adult')}, ${plural(t.travellers.filter((x) => x.type === 'child').length, 'child', 'children')}`} />
                 <Tile k="Style" v={`${STYLES[t.style].label} · ${BUDGET_LEVELS[t.budgetLevel].label}`} />
+                <Tile k="Route" v={`${FOCUS[t.focus ?? 'mix'].label} · ${INNER_FLIGHTS[t.innerFlights ?? 'auto'].label}`} />
               </div>
               {t.interests.length > 0 && <p className="small">Interests: {t.interests.join(', ')}</p>}
               <p className="small muted">

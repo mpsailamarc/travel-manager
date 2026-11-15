@@ -26,6 +26,8 @@ export interface Traveller {
 
 export type TripStyle = 'relaxed' | 'balanced' | 'packed'
 export type BudgetLevel = 'shoestring' | 'mid' | 'comfort' | 'luxury'
+export type TripFocus = 'cities' | 'mix' | 'outdoors'
+export type InnerFlights = 'auto' | 'fly' | 'few' | 'none'
 
 export const BUDGET_CATEGORIES = ['flights', 'transport', 'stays', 'food', 'activities', 'other'] as const
 export type BudgetCategory = (typeof BUDGET_CATEGORIES)[number]
@@ -53,6 +55,8 @@ export interface Trip {
   style: TripStyle
   budgetLevel: BudgetLevel
   interests: string[]
+  focus?: TripFocus // cities and sights, a mix, or a road trip with hikes (unset = a mix)
+  innerFlights?: InnerFlights // flights between places inside the trip (unset = 'auto': the planner decides, by group size)
   notes?: string
   budget: Partial<Record<BudgetCategory, number>> // in home currency
   budgetLines?: BudgetLine[] // the estimate's breakdown; per-category totals in `budget` follow these

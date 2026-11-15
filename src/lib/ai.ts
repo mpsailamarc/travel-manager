@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { planInputs } from './planbasis'
 import { trustedPlace } from './cities'
 import { db, touchTrip } from '../db'
-import type { BudgetCategory, Day, Item, ItemKind, Settings, Trip } from '../types'
+import type { BudgetCategory, Day, Item, ItemKind, Settings, Trip, TripFocus } from '../types'
 import { BUDGET_CATEGORIES, CHECKLIST_CATEGORIES } from '../types'
 import { addDays, daysBetween, formatDate } from './dates'
 import { country } from './countries'
@@ -106,12 +106,40 @@ function tripBrief(trip: Trip, settings: Settings) {
     `Pace: ${trip.style}`,
     `Budget level: ${trip.budgetLevel}`,
     trip.interests.length ? `Interests: ${trip.interests.join(', ')}` : '',
+    `Focus: ${FOCUS_LINE[trip.focus ?? 'mix']}`,
+    `Getting between places: ${movesLine(trip)}`,
     settings.nationality ? `Nationality: ${country(settings.nationality)?.name ?? settings.nationality}` : '',
     startLine(trip) ?? (settings.homeAirport ? `Departing from: ${settings.homeAirport}` : ''),
     `Currency for costs: ${settings.homeCurrency}`,
     trip.notes ? `Other wishes: ${trip.notes}` : '',
   ]
   return lines.filter(Boolean).join('\n')
+}
+
+const FOCUS_LINE: Record<TripFocus, string> = {
+  cities: 'mostly cities and towns (sights, museums, food); nature only as day trips',
+  mix: 'a balance of cities, countryside, scenic drives and some walks',
+  outdoors: 'a road trip: scenic drives, small towns, nature and hikes; keep big cities short (1–2 days)',
+}
+
+/**
+ * How to travel between places. Every seat on a flight is paid per person, while a rental car (plus fuel) costs the same
+ * for the whole group — so unless you chose, groups of 2 or more lean towards driving or trains.
+ */
+export function movesLine(trip: Trip) {
+  const n = trip.travellers.length
+  switch (trip.innerFlights ?? 'auto') {
+    case 'fly':
+      return 'flying between places is fine when it saves time'
+    case 'few':
+      return 'at most one or two flights inside the trip, only for the longest hops; otherwise drive, train or ferry'
+    case 'none':
+      return 'no flights inside the trip (only to get there and back): drive, train or ferry between places'
+    default:
+      return n >= 2
+        ? `we are ${n}, so every flight is paid ${n} times while a rental car costs the same for all of us: prefer driving (or a train or ferry) between places when it takes under about 6 hours, and fly only for long hops`
+        : 'fly between places only when it saves a lot of time over the train, bus or ferry'
+  }
 }
 
 const ITEM_SCHEMA = `{ "kind": one of ${KINDS.map((k) => `"${k}"`).join('|')},
@@ -144,7 +172,7 @@ export function outlinePrompt(trip: Trip, settings: Settings) {
 ${tripBrief(trip, settings)}
 
 Guidelines:
-- Respect the pace and the children's ages.
+- Respect the pace, the children's ages, the focus and how we want to get between places.
 - Keep it short: per day only the city, a title and 2–3 highlights of a few words each.
 - Budget totals are for the whole group in ${settings.homeCurrency}, using categories: ${BUDGET_CATEGORIES.join(', ')}.
 - Write compact JSON: one line per day.

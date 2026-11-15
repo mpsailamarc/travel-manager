@@ -6,7 +6,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 ## What it does
 
 **Before the trip**
-- **New trip questionnaire**: where, when, who (kids' ages), pace, budget level and interests.
+- **New trip questionnaire**: where, when, who (kids' ages), pace, budget level, interests, **cities or the outdoors** (cities,
+  a mix, or a road trip with hikes) and **flights between places** (you decide, fly when faster, only long hops, no flights).
+  Left to "you decide", a group of 2 or more is steered towards driving or trains: every flight is paid per person, a rental car once.
 - **Ideas (AI, free)**: the app writes a prompt. Paste it into any free chatbot (Claude, Gemini, ChatGPT) and paste the answer back.
   Options come one per reply (free chatbots cut off long replies), then the full day-by-day detail of the one you pick, with
   follow-up prompts for anything that was cut off. Answers are validated before anything is saved.
@@ -110,7 +112,7 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   it follows: per-person lines, rooms, fares and other estimated plan prices (booked prices stay). Trip details only shows it.
 - **The budget follows the trip details**: other dates, budget level or destination in Trip details and the estimate's lines, its
   note, figures from an itinerary idea and estimated plan prices follow (levels scale prices, flights by less).
-- **The itinerary knows what it was made for**: change the dates, destination, pace, budget level, interests or start/end after
+- **The itinerary knows what it was made for**: change the dates, destination, pace, budget level, interests, cities-or-outdoors, flights between places or start/end after
   choosing an itinerary and the Plan says what changed, with "✨ New itinerary ideas" (fresh ideas for the trip as it is now; with
   ChatGPT set up the first one is asked for straight away) or "Keep this plan".
 - **No "Estimate for me" button**: a trip with no budget starts from the estimate on its own; "↻ Start the estimate again" is under

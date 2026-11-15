@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { parseBookings, parseCityIdeas, parseDetail, parsePlan } from './ai'
+import { movesLine, outlinePrompt, parseBookings, parseCityIdeas, parseDetail, parsePlan } from './ai'
+import type { Settings, Trip } from '../types'
 
 const option = (title: string) => ({ title, summary: 's', route: ['Lisbon'], days: [{ day: 1, city: 'Lisbon', title: 'Alfama', highlights: ['Castle'] }], budget: { stays: 500 }, tips: [] })
 
@@ -56,5 +57,28 @@ describe('importing bookings into the plan', () => {
     const flights = await db.items.where({ tripId: trip.id, date: '2027-03-10' }).toArray()
     expect(flights).toHaveLength(1)
     expect(flights[0]).toMatchObject({ status: 'booked', bookingRef: 'ABC123', startTime: '07:05' })
+  })
+})
+
+describe('the itinerary prompt knows how you want to travel', () => {
+  const people = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `p${i}`, type: 'adult' as const }))
+  const trip = (over: Partial<Trip> = {}): Trip => ({
+    id: 't', name: 'T', countryCodes: ['GR'], cities: [], startDate: '2027-07-01', endDate: '2027-07-10',
+    travellers: people(1), style: 'balanced', budgetLevel: 'mid', interests: [], budget: {}, createdAt: 0, updatedAt: 0, ...over,
+  } as Trip)
+  const settings = { homeCurrency: 'EUR' } as Settings
+
+  it('leans towards driving for a group, unless you chose', () => {
+    expect(movesLine(trip())).toMatch(/only when it saves a lot of time/)
+    expect(movesLine(trip({ travellers: people(3) }))).toMatch(/every flight is paid 3 times.*prefer driving/)
+    expect(movesLine(trip({ travellers: people(3), innerFlights: 'fly' }))).toMatch(/flying between places is fine/)
+    expect(movesLine(trip({ innerFlights: 'none' }))).toMatch(/no flights inside the trip/)
+  })
+
+  it('puts the focus and the way of travelling into the outline prompt', () => {
+    const p = outlinePrompt(trip({ travellers: people(2), focus: 'outdoors' }), settings)
+    expect(p).toContain('Focus: a road trip')
+    expect(p).toContain('Getting between places: we are 2')
+    expect(outlinePrompt(trip(), settings)).toContain('Focus: a balance of cities')
   })
 })

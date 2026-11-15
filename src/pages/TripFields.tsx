@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { BudgetLevel, Traveller, Trip, TripStyle } from '../types'
+import type { BudgetLevel, InnerFlights, Traveller, Trip, TripFocus, TripStyle } from '../types'
 import { COUNTRIES, countryLabel, flag } from '../lib/countries'
 import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
@@ -20,6 +20,41 @@ export const BUDGET_LEVELS: Record<BudgetLevel, { label: string; desc: string }>
   mid: { label: '🏨 Mid-range', desc: '3★ hotels, nice restaurants sometimes' },
   comfort: { label: '🛎️ Comfort', desc: '4★ hotels, taxis when useful' },
   luxury: { label: '💎 Luxury', desc: 'The best of everything' },
+}
+
+export const FOCUS: Record<TripFocus, { label: string; desc: string }> = {
+  cities: { label: '🏛️ Cities', desc: 'Sights, museums and food; nature as day trips' },
+  mix: { label: '⚖️ A mix', desc: 'Cities, countryside and some walks' },
+  outdoors: { label: '🥾 Road trip & hikes', desc: 'Scenic drives, small towns, trails; short city stops' },
+}
+
+export const INNER_FLIGHTS: Record<InnerFlights, { label: string; desc: string }> = {
+  auto: { label: '🤔 You decide', desc: 'With 2 or more people, lean towards driving or trains' },
+  fly: { label: '✈️ Fly when faster', desc: 'Time matters more than cost' },
+  few: { label: '🛬 Only long hops', desc: 'One or two flights at most' },
+  none: { label: '🚗 No flights', desc: 'Road, train or ferry between places' },
+}
+
+/** Why the planner leans away from flights for a group, in a line (nothing for one person or when you chose). */
+export function groupTravelHint(t: Trip) {
+  const n = t.travellers.length
+  return n >= 2 && (t.innerFlights ?? 'auto') === 'auto'
+    ? `With ${n} travellers every flight is paid ${n} times, while a rental car costs the same for everyone, so the plan will drive or take the train when that's reasonable.`
+    : undefined
+}
+
+/** Cities or the outdoors, and flights between places: the two questions that shape the route. */
+export function RouteFields({ value: t, onChange }: { value: Trip; onChange: (v: Partial<Pick<Trip, 'focus' | 'innerFlights'>>) => void }) {
+  const hint = groupTravelHint(t)
+  return (
+    <>
+      <label>Cities or the outdoors?</label>
+      <ChoiceGrid options={FOCUS} value={t.focus ?? 'mix'} onChange={(v) => onChange({ focus: v })} />
+      <label>Flights between places</label>
+      <ChoiceGrid options={INNER_FLIGHTS} value={t.innerFlights ?? 'auto'} onChange={(v) => onChange({ innerFlights: v })} />
+      {hint && <p className="tiny muted" style={{ margin: 0 }}>👥 {hint}</p>}
+    </>
+  )
 }
 
 export const EMOJIS = ['🧳', '🏖️', '🏔️', '🏙️', '🏛️', '🌴', '🗺️', '🚂', '⛩️', '🏝️', '🎒', '🐘', '❄️', '🍝', '🍣', '🌋']
@@ -212,6 +247,7 @@ export function TripFields({ value: t, onChange }: { value: Trip; onChange: (t: 
       <ChoiceGrid options={STYLES} value={t.style} onChange={(v) => set('style', v)} />
       <label>Budget level</label>
       <ChoiceGrid options={BUDGET_LEVELS} value={t.budgetLevel} onChange={(v) => set('budgetLevel', v)} />
+      <RouteFields value={t} onChange={(v) => onChange({ ...t, ...v })} />
       <label>Interests</label>
       <ChipToggle options={INTERESTS} value={t.interests} onChange={(v) => set('interests', v)} />
       <label>

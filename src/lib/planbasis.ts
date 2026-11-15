@@ -1,5 +1,5 @@
 // What an itinerary was made for. When the trip's details change afterwards (other dates, destination, pace, budget level,
-// interests, start or end), the plan may no longer fit: the app says what changed and offers new itinerary ideas.
+// interests, cities or outdoors, flights between places, start or end), the plan may no longer fit: the app says what changed and offers new itinerary ideas.
 // Who is travelling is not part of it: that's set in the Budget tab and only changes the costs.
 
 import type { Trip } from '../types'
@@ -12,6 +12,8 @@ interface Basis {
   style: string
   level: string
   interests: string[]
+  focus: string
+  flights: string
   from: string
   to: string
 }
@@ -25,6 +27,8 @@ function basisOf(t: Trip): Basis {
     style: t.style,
     level: t.budgetLevel,
     interests: [...t.interests].sort(),
+    focus: t.focus ?? '',
+    flights: t.innerFlights ?? '',
     from: t.startPlace?.name ?? '',
     to: t.endPlace?.name ?? '',
   }
@@ -40,6 +44,8 @@ const LABELS: Record<keyof Basis, string> = {
   style: 'pace',
   level: 'budget level',
   interests: 'interests',
+  focus: 'cities or outdoors',
+  flights: 'flights between places',
   from: 'start or end',
   to: 'start or end',
 }
@@ -54,7 +60,7 @@ export function planChanges(t: Trip): string[] {
     return []
   }
   const now = basisOf(t)
-  const changed = (Object.keys(LABELS) as (keyof Basis)[]).filter((k) => JSON.stringify(was[k] ?? null) !== JSON.stringify(now[k]))
+  const changed = (Object.keys(LABELS) as (keyof Basis)[]).filter((k) => JSON.stringify(was[k] ?? '') !== JSON.stringify(now[k]))
   // The places follow the itinerary itself (its route), so a change there alone isn't news.
   const words = [...new Set(changed.filter((k) => k !== 'cities').map((k) => LABELS[k]))]
   return words

@@ -13,6 +13,15 @@ describe('the itinerary knows what it was made for', () => {
     expect(planChanges({ ...made, countryCodes: ['FR'] })).toEqual(['destination'])
     expect(planChanges({ ...made, travellers: [...trip.travellers, { id: 'b', name: 'b', type: 'adult' }] })).toEqual([])
     expect(planChanges({ ...trip })).toEqual([]) // no itinerary yet: nothing to say
+    expect(planChanges({ ...made, focus: 'outdoors', innerFlights: 'none' })).toEqual(['cities or outdoors', 'flights between places'])
+  })
+
+  it('an itinerary made before the route questions existed still fits', async () => {
+    const trip = await makeTrip({})
+    const old = JSON.parse(planInputs(trip))
+    delete old.focus
+    delete old.flights
+    expect(planChanges({ ...trip, planBasis: JSON.stringify(old) })).toEqual([])
   })
 })
 
