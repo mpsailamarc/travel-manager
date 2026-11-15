@@ -4,6 +4,7 @@ import { db } from '../db'
 import type { Day, Item, Place } from '../types'
 import { dateRange, formatDate, formatDuration, today } from '../lib/dates'
 import { distance, money } from '../lib/format'
+import { haversineM } from '../lib/geo'
 import { drivingRoute, locatePlace } from '../lib/apis'
 import { journeyNote } from '../lib/dayview'
 import { ItemRow } from '../components/ItemRow'
@@ -89,9 +90,12 @@ export default function PlanPage() {
     }
     // Item dots go first so the numbered day markers are drawn on top of them.
     const dots: MapMarker[] = []
+    // "The trip only": leave out what's far from every day of the trip (the flights' airports at home), so the map zooms on the trip.
+    const dayPoints = days.filter((d) => d.lat != null && d.lon != null).map((d) => ({ lat: d.lat!, lon: d.lon! }))
+    const onTrip = (p: { lat: number; lon: number }) => fromHome || !dayPoints.length || dayPoints.some((d) => haversineM(d, p) < 250000)
     for (const it of items) {
       const p = it.location ?? it.to
-      if (p?.lat != null && p.lon != null && it.kind !== 'stay') dots.push({ id: it.id, lat: p.lat, lon: p.lon, variant: 'dot', title: `${it.title}: open its day`, onClick: () => navigate(`../today?date=${it.date}`) })
+      if (p?.lat != null && p.lon != null && it.kind !== 'stay' && onTrip({ lat: p.lat, lon: p.lon })) dots.push({ id: it.id, lat: p.lat, lon: p.lon, variant: 'dot', title: `${it.title}: open its day`, onClick: () => navigate(`../today?date=${it.date}`) })
     }
     return { markers: [...dots, ...markers], line }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -339,9 +343,6 @@ export default function PlanPage() {
                   </div>
                 </Link>
                 <div className="row no-print">
-                  <button className="btn-sm btn-ghost" title="City, title and notes" onClick={() => setDayEdit(d ?? { id: `${trip.id}:${date}`, tripId: trip.id, date })}>
-                    ✏️
-                  </button>
                   <Link to={`../today?date=${date}`} className="btn btn-sm" aria-label={`Open day ${i + 1}`}>
                     Open ›
                   </Link>

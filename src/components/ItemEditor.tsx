@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useNavigate } from 'react-router-dom'
 import { adoptPlannerItems, db, deleteItem, touchTrip } from '../db'
 import type { Item, ItemKind, ItemStatus, Trip } from '../types'
 import { addDays, daysBetween, dateRange, formatDate, formatDuration, hhmmToMin, minToHHMM, nowHHMM, today } from '../lib/dates'
@@ -61,7 +60,6 @@ interface Props {
 
 export function ItemEditor({ trip, item, city, area, onClose }: Props) {
   const settings = useSettings()
-  const navigate = useNavigate()
   const isNew = !item.id
   const [newId] = useState(uid) // fixed when the form opens: tapping Save twice saves one item
   const [saving, setSaving] = useState(false)
@@ -378,13 +376,6 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
             lang={localWiki(trip.countryCodes[0])}
             country={country(trip.countryCodes[0])?.name}
           />
-        )}
-        {saved.kind === 'walk' && (
-          <div>
-            <button type="button" onClick={() => navigate(saved.planner && city ? `/trip/${trip.id}/favorites?city=${encodeURIComponent(city)}` : `/trip/${trip.id}/walk?item=${saved.id}`)}>
-              {saved.planner ? '🗺️ Change in the City planner' : '🗺️ Open in the walk builder'}
-            </button>
-          </div>
         )}
         <details className="card tight edit-panel" open={editOpen} onToggle={(e) => setEditOpen(e.currentTarget.open)}>
           <summary>✏️ Edit details</summary>

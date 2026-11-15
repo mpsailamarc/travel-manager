@@ -332,9 +332,6 @@ export default function TodayPage() {
                         dashed={it.walk.routedBy === 'straight-line'}
                         fitKey={it.id}
                       />
-                      <Link className="btn btn-sm" to={it.planner && day?.city ? `../favorites?city=${encodeURIComponent(day.city)}` : `../walk?item=${it.id}`}>
-                        {it.planner ? 'Change in the City planner' : 'Open walk'}
-                      </Link>
                     </div>
                   )}
                 </div>
