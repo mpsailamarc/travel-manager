@@ -644,7 +644,7 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
     const done = order.map((m, n) => ({ m, s: slotsArr[n] })).filter((x) => x.s && x.m.lat != null).sort((a, b) => b.s!.to - a.s!.to)[0]
     if (done) {
       const leg = { ...(await planLeg({ lat: done.m.lat!, lon: done.m.lon! }, home, pref, walkMax, speed)), fromName: done.m.name }
-      back = { to: startPlace, at: done.s!.to + leg.minutes, leg }
+      back = { to: startPlace, at: quarter(done.s!.to + leg.minutes), leg }
     }
   }
   return { slots, back }
@@ -765,6 +765,9 @@ function fixedWindows(dayItems: Item[]): Window[] {
  * Lays places out one after the other from a starting time and place: travel there, visit, travel on. When something
  * fixed is in the way, the place goes after it and is reached from where that fixed thing is.
  */
+/** Up to the next quarter hour: 9:02 → 9:15, 9:15 stays. */
+const quarter = (m: number) => Math.ceil(m / 15) * 15
+
 async function layoutStops(
   stops: { lat?: number; lon?: number; name: string; visitMin: number; notBefore?: number }[],
   from: { t: number; at?: LatLon; name: string },
@@ -791,13 +794,14 @@ async function layoutStops(
     const originName = passed ? passed.title : prevName
     const depart = passed ? Math.max(t, passed.e) : t
     let leg: Leg | undefined = here && origin ? { ...(await planLeg(origin, here, pref, walkMax, speedKmh)), fromName: originName } : undefined
-    let start = Math.max(depart + (leg?.minutes ?? 0), nb)
+    // Things start on the quarter hour (9:15, not 9:02): the few spare minutes are slack for the journey.
+    let start = quarter(Math.max(depart + (leg?.minutes ?? 0), nb))
     let clashed = false
     for (const w of fixed) {
       if (!(start < w.e && start + f.visitMin > w.s)) continue
       clashed = true
       if (w.at && here) leg = { ...(await planLeg(w.at, here, pref, walkMax, speedKmh)), fromName: w.title }
-      start = w.e + (w.at && here ? leg!.minutes : 0)
+      start = quarter(w.e + (w.at && here ? leg!.minutes : 0))
     }
     return { here, leg, start, clashed }
   }
