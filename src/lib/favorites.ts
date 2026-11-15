@@ -1,9 +1,11 @@
 // Favourites per city and "Plan my days": spread them over the days you spend in that city,
 // grouped by neighbourhood and sized to your pace. Runs entirely in the browser.
 
-import { db, touchTrip } from '../db'
-import type { Day, Favorite, Item, Settings, Trip, TripStyle } from '../types'
-import { POI_CATEGORIES, walkingRoute } from './apis'
+import { adoptPlannerItems, db, touchTrip } from '../db'
+import type { Day, Favorite, Item, Place, Settings, Trip, TripStyle } from '../types'
+import { POI_CATEGORIES } from './apis'
+import { matchesPlace } from './duplicates'
+import { DEFAULT_WALK_MAX_MIN, planLeg } from './legs'
 import { addDays, hhmmToMin, minToHHMM } from './dates'
 import { centroid, haversineM, optimiseOrder, type LatLon } from './geo'
 import { uid } from './ids'
@@ -185,82 +187,119 @@ export function applyCityPlan(trip: Trip, city: string, dates: string[], setting
 
 async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settings: Settings) {
   const tag = plannerTag(city)
-  const favs = (await db.favorites.where('tripId').equals(trip.id).toArray()).filter((f) => sameCity(f.city, city))
-  const items = await db.items.where('tripId').equals(trip.id).toArray()
+  let favs = (await db.favorites.where('tripId').equals(trip.id).toArray()).filter((f) => sameCity(f.city, city))
+  let items = await db.items.where('tripId').equals(trip.id).toArray()
   const days = await db.days.where('tripId').equals(trip.id).toArray()
-  const speed = (settings.walkSpeedKmh * 1000) / 3600
+
+  // What you have touched stays: planned places you marked done or skipped, or booked, are yours now and no longer rebuilt.
+  const touched = items.filter((i) => i.planner === tag && dates.includes(i.date) && i.favId && !['planned', 'idea'].includes(i.status)).map((i) => i.id)
+  if (touched.length) {
+    await adoptPlannerItems(touched)
+    favs = (await db.favorites.where('tripId').equals(trip.id).toArray()).filter((f) => sameCity(f.city, city))
+    items = await db.items.where('tripId').equals(trip.id).toArray()
+  }
 
   const built: Item[] = []
-  await Promise.all(
-    dates.map(async (date) => {
-      const mine = favs.filter((f) => scheduled(f) && f.date === date)
-      const day = days.find((d) => d.date === date)
-      const dayItems = items.filter((i) => i.date === date && i.planner !== tag)
-      const startTime = day?.walkStartTime ?? firstFreeSlot(dayItems)
-      let order = dayItems.reduce((m, i) => Math.max(m, i.order), -1) + 1
+  for (const date of dates) {
+    const day = days.find((d) => d.date === date)
+    const dayItems = items.filter((i) => i.date === date && i.planner !== tag)
 
-      const geo = mine.filter((f) => f.lat != null && f.lon != null && !isDayTrip(f))
-      if (geo.length) {
-        const stay = items.find((i) => i.kind === 'stay' && i.date <= date && date < addDays(i.date, i.nights ?? 1) && i.location?.lat != null)
-        const start =
-          day?.walkStart?.lat != null
-            ? day.walkStart
-            : stay?.location?.lat != null
-              ? { ...stay.location, name: stay.title }
-              : day?.lat != null ? { name: `${city} centre`, lat: day.lat, lon: day.lon } : { name: geo[0].name, lat: geo[0].lat, lon: geo[0].lon }
-        const s = { lat: start.lat!, lon: start.lon! }
-        const roundTrip = !!day?.walkRoundTrip
-        const stops = optimiseOrder(
-          s,
-          geo.map((f) => ({ id: f.id, name: f.name, lat: f.lat!, lon: f.lon!, category: f.category, visitMin: f.visitMin, wikipedia: f.wikipedia, wikidata: f.wikidata })),
-          roundTrip,
-        )
-        const pts = [s, ...stops, ...(roundTrip ? [s] : [])]
-        let walk: Item['walk']
-        try {
-          const r = await walkingRoute(pts)
-          walk = { start, roundTrip, stops, geometry: r.geometry, legs: r.legs.map((l) => ({ distanceM: l.distanceM, durationS: l.distanceM / speed })), distanceM: r.distanceM, walkS: r.distanceM / speed, routedBy: 'osrm' }
-        } catch {
-          const legs = pts.slice(1).map((p, i) => {
-            const d = haversineM(pts[i], p) * 1.3
-            return { distanceM: d, durationS: d / speed }
-          })
-          const total = legs.reduce((a, l) => a + l.distanceM, 0)
-          walk = { start, roundTrip, stops, geometry: pts.map((p) => [p.lon, p.lat]), legs, distanceM: total, walkS: total / speed, routedBy: 'straight-line' }
-        }
-        const minutes = walk.walkS / 60 + stops.reduce((a, x) => a + x.visitMin, 0)
+    // Places your plan already has (the itinerary's own "Visit the castle") are linked, not added a second time.
+    let mine = favs.filter((f) => scheduled(f) && f.date === date)
+    for (const f of mine) {
+      const match = dayItems.find((i) => matchesPlace(i, f))
+      if (match) {
+        await db.favorites.update(f.id, { itemId: match.id, pinned: true })
+        f.itemId = match.id
+      }
+    }
+    mine = mine.filter((f) => !f.itemId)
+
+    const startTime = day?.walkStartTime ?? firstFreeSlot(dayItems)
+    let order = dayItems.reduce((m, i) => Math.max(m, i.order), -1) + 1
+    const geo = mine.filter((f) => f.lat != null && f.lon != null && !isDayTrip(f))
+    const places = geo.map((f) => ({ id: f.id, name: f.name, lat: f.lat!, lon: f.lon!, category: f.category, visitMin: f.visitMin }))
+    if (geo.length) {
+      const stay = items.find((i) => i.kind === 'stay' && i.date <= date && date < addDays(i.date, i.nights ?? 1) && i.location?.lat != null)
+      const start: Place =
+        day?.walkStart?.lat != null
+          ? day.walkStart
+          : stay?.location?.lat != null
+            ? { ...stay.location, name: stay.title }
+            : day?.lat != null
+              ? { name: `${city} centre`, lat: day.lat, lon: day.lon }
+              : { name: geo[0].name, lat: geo[0].lat, lon: geo[0].lon }
+      const s = { lat: start.lat!, lon: start.lon! }
+      const roundTrip = !!day?.walkRoundTrip
+      const stops = optimiseOrder(s, places, roundTrip)
+      const pref = day?.getAround ?? settings.getAround ?? 'transit'
+      const walkMax = settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN
+
+      // Time runs through the day: leave the start, travel, visit, travel… and step around anything fixed (booked tickets, lunch).
+      const fixed = dayItems
+        .filter((i) => i.startTime && i.status !== 'skipped' && i.kind !== 'stay')
+        .map((i) => ({ s: hhmmToMin(i.startTime!), e: i.endTime ? hhmmToMin(i.endTime) : hhmmToMin(i.startTime!) + itemMinutes(i) }))
+        .sort((x, y) => x.s - y.s)
+      let t = hhmmToMin(startTime)
+      let prev: LatLon = s
+      let prevName = start.name
+      for (const f of stops) {
+        const leg = { ...(await planLeg(prev, f, pref, walkMax, settings.walkSpeedKmh)), fromName: prevName }
+        let from = t + leg.minutes
+        for (const w of fixed) if (from < w.e && from + f.visitMin > w.s) from = w.e
+        const to = from + f.visitMin
         built.push({
           id: uid(),
           tripId: trip.id,
           date,
-          kind: 'walk',
-          title: `${city}: ${stops.slice(0, 2).map((x) => x.name).join(' & ')}${stops.length > 2 ? ` +${stops.length - 2}` : ''}`,
-          startTime,
-          endTime: minToHHMM(hhmmToMin(startTime) + minutes),
-          location: { name: stops[0].name, lat: stops[0].lat, lon: stops[0].lon },
+          kind: f.category === 'food' ? 'meal' : 'activity',
+          title: f.name,
+          startTime: minToHHMM(Math.min(from, 1439)),
+          endTime: minToHHMM(Math.min(to, 1439)),
+          location: { name: f.name, lat: f.lat, lon: f.lon },
           status: 'planned',
           order: order++,
-          walk,
           planner: tag,
-          notes: 'Built from your wishlist.',
+          favId: f.id,
+          legIn: leg,
         })
+        t = to
+        prev = f
+        prevName = f.name
       }
-      for (const f of mine.filter((f) => !geo.includes(f))) {
+      if (roundTrip) {
+        const leg = { ...(await planLeg(prev, s, pref, walkMax, settings.walkSpeedKmh)), fromName: prevName }
         built.push({
           id: uid(),
           tripId: trip.id,
           date,
-          kind: isDayTrip(f) ? 'activity' : f.category === 'food' ? 'meal' : 'activity',
-          title: f.name,
-          location: { name: f.name, lat: f.lat, lon: f.lon },
-          status: 'idea',
+          kind: 'note',
+          title: `Back to ${start.name}`,
+          startTime: minToHHMM(Math.min(t + leg.minutes, 1439)),
+          status: 'planned',
           order: order++,
-          notes: f.notes,
+          location: start,
           planner: tag,
+          legIn: leg,
         })
       }
-    }),
-  )
+    }
+    for (const f of mine.filter((f) => !geo.includes(f))) {
+      built.push({
+        id: uid(),
+        tripId: trip.id,
+        date,
+        kind: f.category === 'food' ? 'meal' : 'activity',
+        title: f.name,
+        location: { name: f.name, lat: f.lat, lon: f.lon },
+        status: 'idea',
+        order: order++,
+        notes: f.notes,
+        planner: tag,
+        favId: f.id,
+      })
+    }
+  }
 
   await db.transaction('rw', db.items, async () => {
     const old = items.filter((i) => i.planner === tag && dates.includes(i.date))

@@ -4,6 +4,7 @@
 import { db, touchTrip } from '../db'
 import type { Item, ItemStatus } from '../types'
 import { hhmmToMin } from './dates'
+import { haversineM } from './geo'
 
 // Words that say what kind of thing it is, not which one: they never decide whether two titles match.
 const GENERIC = new Set(
@@ -19,6 +20,28 @@ function tokens(title: string): Set<string> {
       .split(/[^a-z0-9]+/)
       .filter((w) => w.length > 1 && !GENERIC.has(w)),
   )
+}
+
+// Words common to many place names: a single one of them never makes two names "the same place".
+const WEAK = new Set('museum tower castle church palace park square garden gardens market bridge cathedral monastery national city old town center centre street tour visit walk lunch dinner breakfast'.split(' '))
+
+/**
+ * Is this plan item the wishlist place? Same spot (within 150 m), or the place's name is contained in the item's title/location
+ * (or in the names of a walking tour's stops). Hotels and transport never match.
+ */
+export function matchesPlace(item: Item, place: { name: string; lat?: number; lon?: number }): boolean {
+  if (item.kind === 'stay' || TRANSPORT.has(item.kind) || item.status === 'skipped') return false
+  const loc = item.location
+  if (place.lat != null && place.lon != null && loc?.lat != null && loc.lon != null && haversineM({ lat: place.lat, lon: place.lon }, { lat: loc.lat, lon: loc.lon }) < 150) return true
+  const want = tokens(place.name)
+  if (!want.size) return false
+  const names = [item.title, loc?.name, ...(item.walk?.stops.map((s) => s.name) ?? [])].filter((x): x is string => !!x)
+  return names.some((n) => {
+    const have = tokens(n)
+    const inter = [...want].filter((w) => have.has(w))
+    if (inter.length !== want.size) return false // every word of the place must be there
+    return want.size >= 2 || (inter[0].length >= 4 && !WEAK.has(inter[0]))
+  })
 }
 
 const TRANSPORT = new Set(['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi'])

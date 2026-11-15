@@ -40,6 +40,7 @@ export function BackupIdeas({ tripId, day }: { tripId: string; day: Day }) {
       status: 'planned',
       order: sameDay.reduce((m, i) => Math.max(m, i.order), -1) + 1,
       notes: f.notes,
+      favId: f.id,
     })
     await db.favorites.update(f.id, { date: day.date, pinned: true, itemId: id })
     await touchTrip(tripId)

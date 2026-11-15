@@ -78,6 +78,7 @@ export interface Day {
   walkStart?: Place
   walkStartTime?: HHMM
   walkRoundTrip?: boolean
+  getAround?: GetAround // overrides the Settings default for this day
 }
 
 export const TRANSPORT_KINDS = ['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi'] as const
@@ -107,6 +108,19 @@ export interface WalkRoute {
   routedBy: 'osrm' | 'straight-line'
 }
 
+/** How to get between two places in a day. Public transport is an estimate (there is no free routing service for it). */
+export type LegMode = 'walk' | 'transit' | 'taxi'
+export type GetAround = 'walk' | 'transit' | 'taxi' | 'fastest' // walk everywhere · walk short hops, else public transport · …else taxi · whichever is quickest
+
+export interface Leg {
+  mode: LegMode
+  minutes: number
+  distanceM: number
+  estimated?: boolean // true for public transport, and for anything worked out without the routing service
+  geometry?: [number, number][] // [lon, lat]
+  fromName?: string
+}
+
 export interface Item {
   id: string
   tripId: string
@@ -130,6 +144,8 @@ export interface Item {
   fromTz?: string // zone of the start time of a transport item (e.g. Australia/Sydney), when not the obvious one
   toTz?: string // zone of its end time (e.g. Asia/Tokyo)
   planner?: string // set on items built from favourites ("fav:<city>") so they can be rebuilt
+  favId?: string // the wishlist place this item came from
+  legIn?: Leg // how to get here from the previous place of the day (set by the City planner)
 }
 
 export const CHECKLIST_CATEGORIES = ['documents', 'health', 'bookings', 'money', 'tech', 'packing', 'kids', 'other'] as const
@@ -204,4 +220,6 @@ export interface Settings {
   nationality: string // ISO alpha-2
   homeAirport?: string
   walkSpeedKmh: number
+  getAround?: GetAround // City planner default between places (default: walk short hops, public transport for longer ones)
+  walkMaxMin?: number // what counts as a short hop, in minutes of walking (default 15)
 }

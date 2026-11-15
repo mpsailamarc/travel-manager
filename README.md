@@ -66,9 +66,14 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   Wikipedia language editions with an article on it (Wikidata), from 1★ (a village chapel) to 5★ (Eiffel Tower, 170+ languages). Sights can be
   sorted most interesting first; the place window also shows Wikipedia page views per month. Tripadvisor stays a link out.
 - **Backup ideas on Today**: unscheduled wishlist places near today's city, switching to indoor ones when rain is forecast. "+ Today" adds one to the plan.
-- **Walking tours** are built in the City planner: each day gets one tour from its wishlist places, in the best order, with the real walking
-  route and a timeline of visit times. Per day you can set where it starts (default: tonight's hotel), what time, and whether it ends back at the start.
-  (A hand-made walk item still opens in the older walk builder.)
+- **Day plans from the wishlist**: "Plan my days" turns each day's wishlist places into **one timed item per place** in Day by day, in the best
+  order, fitted around anything already fixed (booked tickets, lunch). Places your plan already holds (the itinerary's own "Visit the castle") are
+  **linked, not duplicated**, in both directions. Change one by hand (time, day, tick it off) and it becomes yours: re-planning leaves it alone;
+  delete it and the place goes back to the wishlist's backup ideas.
+- **Getting between places**: per day (default in Settings) walk everywhere, walk short hops (up to N minutes) and go **public transport** or
+  **taxi** for longer ones, or pick **whatever is quickest**. Walking and taxi use real routes (OSRM); public transport has no free routing service, so
+  it's an estimate (wait + average speed), clearly labelled, with links to real timetables (Google Maps) and Uber on each place.
+  Per day you can also set where the day starts, when, and whether it ends back at the start. (A hand-made walk item still opens in the older walk builder.)
 - **About & links on every item**: tap an item on Today for its Wikipedia article (looked up automatically, also for
   AI-created activities), a map link, the city's Wikivoyage guide, and "Find on AllTrails" for hikes. Paste a trail,
   booking or ticket link into an item and it shows as a button (e.g. "Open in AllTrails").

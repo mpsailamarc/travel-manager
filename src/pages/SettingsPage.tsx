@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { db, requestPersistentStorage } from '../db'
-import type { Settings } from '../types'
+import type { GetAround, Settings } from '../types'
+import { DEFAULT_WALK_MAX_MIN, GET_AROUND_LABEL } from '../lib/legs'
 import { COUNTRIES, CURRENCIES, flag } from '../lib/countries'
 import { download, exportEverything, importAny } from '../lib/share'
 import { useAsync, useSettings } from '../lib/hooks'
@@ -73,6 +74,26 @@ export default function SettingsPage() {
               <option value={4}>Relaxed (4 km/h)</option>
               <option value={4.5}>Normal (4.5 km/h)</option>
               <option value={5.5}>Brisk (5.5 km/h)</option>
+            </select>
+          </label>
+          <label>
+            Short hop = walk up to
+            <select value={s.walkMaxMin ?? DEFAULT_WALK_MAX_MIN} onChange={(e) => set({ walkMaxMin: Number(e.target.value) })}>
+              {[5, 10, 15, 20, 30].map((m) => (
+                <option key={m} value={m}>
+                  {m} min
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="full">
+            Between places in the City planner
+            <select value={s.getAround ?? 'transit'} onChange={(e) => set({ getAround: e.target.value as GetAround })}>
+              {(Object.keys(GET_AROUND_LABEL) as GetAround[]).map((k) => (
+                <option key={k} value={k}>
+                  {GET_AROUND_LABEL[k]}
+                </option>
+              ))}
             </select>
           </label>
         </div>

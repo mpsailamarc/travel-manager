@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { db, touchTrip } from '../db'
+import { adoptPlannerItems, db, touchTrip } from '../db'
 import type { Item } from '../types'
 import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin, nowHHMM, today } from '../lib/dates'
 import { forecast, weatherEmoji } from '../lib/apis'
@@ -57,6 +57,7 @@ export default function TodayPage() {
 
   async function setStatus(it: Item, status: Item['status']) {
     await db.items.update(it.id, { status: it.status === status ? 'planned' : status })
+    await adoptPlannerItems([it.id]) // ticked off or skipped: the City planner keeps it
     await touchTrip(trip.id)
   }
 
@@ -69,12 +70,14 @@ export default function TodayPage() {
       { key: it.id, changes: { order: other.order, startTime: other.startTime && it.startTime ? other.startTime : it.startTime } },
       { key: other.id, changes: { order: it.order, startTime: other.startTime && it.startTime ? it.startTime : other.startTime } },
     ])
+    await adoptPlannerItems([it.id, other.id])
   }
 
   async function postpone(it: Item) {
     const tomorrow = addDays(it.date, 1)
     if (tomorrow > trip.endDate) return toast('That’s the last day of the trip')
     await db.items.update(it.id, { date: tomorrow, startTime: undefined })
+    await adoptPlannerItems([it.id])
     toast(`Moved to ${formatDate(tomorrow)}`)
   }
 
@@ -82,6 +85,7 @@ export default function TodayPage() {
   async function moveOnCalendar(it: Item, times: { startTime: string; endTime?: string }) {
     const before = { startTime: it.startTime, endTime: it.endTime }
     await db.items.update(it.id, { startTime: times.startTime, endTime: times.endTime ?? it.endTime })
+    await adoptPlannerItems([it.id])
     await touchTrip(trip.id)
     const shown = `${it.title}: ${times.startTime}${times.endTime ? `–${times.endTime}` : ''}`
     const ripple = planRipple(await db.items.where({ tripId: trip.id, date: it.date }).toArray(), { id: it.id, startTime: times.startTime, endTime: times.endTime }, before)
@@ -94,6 +98,7 @@ export default function TodayPage() {
         label: 'Push them back',
         run: async () => {
           await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.start, endTime: m.end } })))
+          await adoptPlannerItems(ripple.moves.map((m) => m.item.id))
           await touchTrip(trip.id)
           toast('Pushed back', { label: 'Undo', run: async () => {
             await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.item.startTime, endTime: m.item.endTime } })))

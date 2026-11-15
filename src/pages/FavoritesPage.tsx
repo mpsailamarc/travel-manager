@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
-import type { Day, Favorite, Place } from '../types'
+import type { Day, Favorite, GetAround, Place } from '../types'
 import { fetchPois, interestOf, interestTier, type Interest, type Poi } from '../lib/apis'
 import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
 import { applyCityPlan, plannerTag, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
-import { addDays, dateRange, daysBetween, formatDate, formatDuration, today } from '../lib/dates'
+import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin, today } from '../lib/dates'
 import { distance, plural } from '../lib/format'
 import { haversineM, type LatLon } from '../lib/geo'
 import { useAsync, useOnline } from '../lib/hooks'
@@ -14,6 +14,8 @@ import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
 import { Empty, Progress, Section, Stars, toast } from '../components/ui'
 import { PlaceModal, type PlaceSubject } from '../components/PlaceModal'
+import { matchesPlace } from '../lib/duplicates'
+import { GET_AROUND_LABEL, legText } from '../lib/legs'
 import LazyMap, { type MapMarker, type MapViewState } from '../components/LazyMap'
 import { tripadvisorSearch } from '../lib/links'
 import { PromptBox } from './IdeasPage'
@@ -65,13 +67,16 @@ export default function FavoritesPage() {
     // Checked in the database, not on screen: two quick taps on ＋ add it once.
     const already = (await db.favorites.where('tripId').equals(trip.id).toArray()).some((x) => sameCity(x.city, city) && x.name.toLowerCase() === f.name.toLowerCase())
     if (already) return
-    await db.favorites.add({ ...f, id: uid(), tripId: trip.id, city, addedAt: Date.now() })
-    toast(`🎯 ${f.name} added to your wishlist`)
+    // Already in your plan (say the itinerary has "Visit the castle")? Link it instead of planning it twice.
+    const match = items.find((i) => !i.planner && dates.includes(i.date) && matchesPlace(i, f))
+    await db.favorites.add({ ...f, id: uid(), tripId: trip.id, city, addedAt: Date.now(), ...(match ? { date: match.date, itemId: match.id, pinned: true } : {}) })
+    toast(match ? `🎯 ${f.name} is already in your plan on day ${daysBetween(trip.startDate, match.date) + 1}: linked` : `🎯 ${f.name} added to your wishlist`)
   }
 
   async function removeFav(f: Favorite) {
+    const linked = f.itemId ? await db.items.get(f.itemId) : undefined
     await db.favorites.delete(f.id)
-    if (f.itemId) await db.items.delete(f.itemId)
+    if (linked?.favId === f.id) await db.items.delete(linked.id) // only what the wishlist created; items of your own plan stay
     await rebuild([f.date])
   }
 
@@ -89,8 +94,15 @@ export default function FavoritesPage() {
   }
 
   async function move(f: Favorite, date: string | undefined) {
+    const linked = f.itemId ? await db.items.get(f.itemId) : undefined
+    if (linked && date) {
+      // Linked to a plan item: the item moves with it.
+      await db.items.update(linked.id, { date })
+      await db.favorites.update(f.id, { date, pinned: true })
+      return rebuild([f.date, date])
+    }
+    if (linked?.favId === f.id) await db.items.delete(linked.id)
     await db.favorites.update(f.id, { date, pinned: !!date, itemId: undefined })
-    if (f.itemId) await db.items.delete(f.itemId)
     await rebuild([f.date, date])
   }
 
@@ -180,7 +192,18 @@ export default function FavoritesPage() {
   // One day shown on the map: its places numbered in walking order, joined by the walking route.
   const [focus, setFocus] = useState<string>()
   useEffect(() => setFocus(undefined), [city])
-  const focusWalk = focus && city ? items.find((i) => i.date === focus && i.kind === 'walk' && i.planner === plannerTag(city)) : undefined
+  const focusItems = useMemo(
+    () =>
+      focus && city
+        ? items
+            .filter((i) => i.date === focus && i.location?.lat != null && (i.planner === plannerTag(city) || cityFavs.some((f) => f.itemId === i.id)) && i.kind !== 'note')
+            .sort((a, b) => (a.startTime ?? '99').localeCompare(b.startTime ?? '99') || a.order - b.order)
+        : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [focus, city, items, favs],
+  )
+  const focusSegments = focusItems.filter((i) => i.legIn?.geometry?.length).map((i) => ({ coords: i.legIn!.geometry!, dashed: i.legIn!.mode === 'transit' }))
+  const focusStart = focusItems[0]?.legIn?.geometry?.[0]
   const mapBox = useRef<HTMLDivElement>(null)
   function showOnMap(d: string) {
     setFocus(d)
@@ -196,12 +219,10 @@ export default function FavoritesPage() {
         m.push({ id: p.id, lat: p.lat, lon: p.lon, label: categoryMeta(p.category).emoji, variant: 'dim', title: p.name, onClick: () => openPoi(p) })
       }
     if (focus) {
-      const stops = focusWalk?.walk?.stops ?? []
-      const st = focusWalk?.walk?.start
-      if (st?.lat != null && st.lon != null) m.push({ id: 'start', lat: st.lat, lon: st.lon, label: 'S', variant: 'start', title: st.name })
-      stops.forEach((s, n) => {
-        const f = cityFavs.find((x) => x.id === s.id)
-        m.push({ id: s.id, lat: s.lat, lon: s.lon, label: String(n + 1), variant: 'on', title: s.name, onClick: f ? () => openFav(f) : undefined })
+      if (focusStart) m.push({ id: 'start', lat: focusStart[1], lon: focusStart[0], label: 'S', variant: 'start', title: focusItems[0]?.legIn?.fromName ?? 'Start' })
+      focusItems.forEach((it, n) => {
+        const f = cityFavs.find((x) => x.id === it.favId || x.itemId === it.id)
+        m.push({ id: it.id, lat: it.location!.lat!, lon: it.location!.lon!, label: String(n + 1), variant: 'on', title: it.title, onClick: f ? () => openFav(f) : undefined })
       })
       return m
     }
@@ -211,10 +232,10 @@ export default function FavoritesPage() {
     }
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sights.data, favs, source, city, focus, focusWalk])
+  }, [sights.data, favs, source, city, focus, focusItems])
 
   // Re-fit when the city, the sights or the day plan change — not on every star, which would jump while browsing.
-  const fitKey = `${city}-${source}-${focus ?? ''}-${focusWalk?.walk?.distanceM ?? ''}-${cityFavs.filter((f) => f.date).map((f) => f.id + f.date).join()}`
+  const fitKey = `${city}-${source}-${focus ?? ''}-${focusItems.map((i) => i.id).join()}-${cityFavs.filter((f) => f.date).map((f) => f.id + f.date).join()}`
 
   // What's folded: the sights/ideas search (once you have favourites), days (when there are many), the map (small by default).
   const [findOpen, setFindOpen] = useState<boolean>()
@@ -341,6 +362,7 @@ export default function FavoritesPage() {
                     <WalkSettings
                       key={d + (days.find((x) => x.date === d)?.walkStart?.name ?? '')}
                       day={days.find((x) => x.date === d)}
+                      defaultAround={settings.getAround ?? 'transit'}
                       stay={items.find((i) => i.kind === 'stay' && i.date <= d && d < addDays(i.date, i.nights ?? 1) && i.location?.lat != null)?.title}
                       onSave={async (changes) => {
                         const day = days.find((x) => x.date === d)
@@ -350,6 +372,13 @@ export default function FavoritesPage() {
                       }}
                     />
                   )}
+                  {items
+                    .filter((i) => i.date === d && !i.planner && ['activity', 'meal', 'walk'].includes(i.kind) && i.status !== 'skipped')
+                    .map((i) => (
+                      <div key={i.id} className="tiny muted">
+                        📌 In your plan{i.startTime ? ` · ${i.startTime}` : ''} · {i.title}
+                      </div>
+                    ))}
                   {list.length === 0 && <span className="small muted">Nothing from your wishlist yet.</span>}
                   {list.map((f) => (
                     <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onOpen={() => openFav(f)} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
@@ -397,18 +426,22 @@ export default function FavoritesPage() {
                     <b>
                       Day {dayNo(focus)} · {formatDate(focus)}
                     </b>
-                    {focusWalk?.walk ? (
+                    {focusItems.length ? (
                       <>
                         <span className="muted">
-                          🚶 {focusWalk.walk.stops.length} {focusWalk.walk.stops.length === 1 ? 'stop' : 'stops'} · {distance(focusWalk.walk.distanceM)} on foot · about{' '}
-                          {formatDuration(focusWalk.walk.walkS + focusWalk.walk.stops.reduce((a, x) => a + x.visitMin, 0) * 60)} in all
-                          {focusWalk.startTime && ` · starts ${focusWalk.startTime}`}
-                          {focusWalk.walk.routedBy === 'straight-line' && ' · straight-line estimate'}
+                          {focusItems.length} {focusItems.length === 1 ? 'place' : 'places'} · {GET_AROUND_LABEL[days.find((x) => x.date === focus)?.getAround ?? settings.getAround ?? 'transit']}
                         </span>
                         <ol style={{ margin: 0, paddingLeft: 20 }}>
-                          {focusWalk.walk.stops.map((x) => (
-                            <li key={x.id}>
-                              {x.name} <span className="tiny muted">~{formatDuration(x.visitMin * 60)}</span>
+                          {focusItems.map((it) => (
+                            <li key={it.id}>
+                              {it.startTime && <b>{it.startTime} </b>}
+                              {it.title} <span className="tiny muted">~{formatDuration(((hhmmToMin(it.endTime ?? it.startTime ?? '00:00') - hhmmToMin(it.startTime ?? '00:00')) || 0) * 60)}</span>
+                              {it.legIn && (
+                                <div className="tiny muted">
+                                  {legText(it.legIn, distance)}
+                                  {it.legIn.fromName ? ` from ${it.legIn.fromName}` : ''}
+                                </div>
+                              )}
                             </li>
                           ))}
                         </ol>
@@ -434,7 +467,7 @@ export default function FavoritesPage() {
                     )}
                   </div>
                 )}
-                {mapSize !== 'hidden' && <LazyMap key={mapSize} markers={markers} line={focusWalk?.walk?.geometry} dashed={focusWalk?.walk?.routedBy === 'straight-line'} center={center} zoom={13} fitKey={fitKey} className={mapSize === 'large' ? 'tall' : 'short'} locate onMoveEnd={setView} />}
+                {mapSize !== 'hidden' && <LazyMap key={mapSize} markers={markers} segments={focusSegments} center={center} zoom={13} fitKey={fitKey} className={mapSize === 'large' ? 'tall' : 'short'} locate onMoveEnd={setView} />}
               </div>
             )}
 
@@ -516,20 +549,31 @@ export default function FavoritesPage() {
 }
 
 /** How the day's walking tour is built: where and when it starts, and whether it ends back at the start. Changing one rebuilds the walk. */
-function WalkSettings({ day, stay, onSave }: { day?: Day; stay?: string; onSave: (changes: Partial<Day>) => void }) {
+function WalkSettings({ day, stay, defaultAround, onSave }: { day?: Day; stay?: string; defaultAround: GetAround; onSave: (changes: Partial<Day>) => void }) {
   const [place, setPlace] = useState<Place | undefined>(day?.walkStart)
   const from = day?.walkStart?.name ?? stay ?? `${day?.city ?? 'city'} centre`
   return (
     <details className="card tight">
       <summary className="small strong" style={{ cursor: 'pointer' }}>
         🚶 Walk · {day?.walkStartTime ? `starts ${day.walkStartTime}` : 'starts after what is already planned'} · from {from}
-        {day?.walkRoundTrip ? ' · back to the start' : ''}
+        {day?.walkRoundTrip ? ' · back to the start' : ''} · {GET_AROUND_LABEL[day?.getAround ?? defaultAround].slice(0, 2)}
       </summary>
       <div className="stack" style={{ marginTop: 8, gap: 8 }}>
         <div className="form-grid">
           <label>
             Start time
             <input type="time" defaultValue={day?.walkStartTime ?? ''} onBlur={(e) => e.target.value !== (day?.walkStartTime ?? '') && onSave({ walkStartTime: e.target.value || undefined })} />
+          </label>
+          <label className="full">
+            Between places
+            <select value={day?.getAround ?? ''} onChange={(e) => onSave({ getAround: (e.target.value || undefined) as GetAround | undefined })}>
+              <option value="">Default ({GET_AROUND_LABEL[defaultAround]})</option>
+              {(Object.keys(GET_AROUND_LABEL) as GetAround[]).map((k) => (
+                <option key={k} value={k}>
+                  {GET_AROUND_LABEL[k]}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="inline" style={{ alignSelf: 'end' }}>
             <input type="checkbox" checked={!!day?.walkRoundTrip} onChange={(e) => onSave({ walkRoundTrip: e.target.checked || undefined })} /> End back at the start
@@ -599,7 +643,7 @@ function FavRow({ fav: f, dates, dayNo, onOpen, onMove, onRemove }: { fav: Favor
           {isIndoor(f) && ' · indoor'}
           {f.lat == null && ' · no location'}
           {f.pinned && ' · 📌 your choice'}
-          {f.itemId && ' · added on the day'}
+          {f.itemId && ' · in your plan'}
           {f.notes && ` · ${f.notes}`}
         </div>
       </div>

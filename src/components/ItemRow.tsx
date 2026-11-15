@@ -5,6 +5,7 @@ import { StatusBadge } from './ui'
 import { linkLabel } from './PlaceInfo'
 import { money, distance, plural } from '../lib/format'
 import { formatDuration } from '../lib/dates'
+import { legText } from '../lib/legs'
 
 export function itemSubtitle(it: Item): string {
   const parts: string[] = []
@@ -35,6 +36,12 @@ export function ItemRow({ item, onClick, actions, showStatus = true, zoneNote }:
         </div>
         {itemSubtitle(item) && <div className="item-sub">{itemSubtitle(item)}</div>}
         {zoneNote && <div className="item-sub">🌏 {zoneNote}</div>}
+        {item.legIn && (
+          <div className="item-sub">
+            {legText(item.legIn, distance)}
+            {item.legIn.fromName ? ` from ${item.legIn.fromName}` : ''}
+          </div>
+        )}
         {item.notes && <div className="item-sub">{item.notes}</div>}
         {item.url && (
           <a className="item-sub" href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: 'inline-block', marginTop: 2 }}>

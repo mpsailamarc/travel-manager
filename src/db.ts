@@ -85,6 +85,28 @@ export async function extendTripDays(tripId: string, was: { startDate: string; e
   await fill(before, byDate.get(was.startDate) ?? [...days].filter((d) => d.city && d.date >= was.startDate).sort((a, b) => a.date.localeCompare(b.date))[0])
 }
 
+/**
+ * A place the City planner built that you then change (time, day, status, notes) becomes your own item: the planner stops
+ * rebuilding it, and its wishlist place follows it (same day, kept there).
+ */
+export async function adoptPlannerItems(ids: string[]) {
+  for (const id of ids) {
+    const it = await db.items.get(id)
+    if (!it?.planner || !it.favId) continue
+    await db.items.update(id, { planner: undefined })
+    await db.favorites.update(it.favId, { date: it.date, itemId: id, pinned: true })
+  }
+}
+
+/** Deleting a plan item sends the wishlist place it came from back to the backup list. */
+export async function deleteItem(id: string) {
+  const it = await db.items.get(id)
+  await db.items.delete(id)
+  if (!it) return
+  const favs = await db.favorites.where('tripId').equals(it.tripId).filter((f) => f.itemId === id || f.id === it.favId).toArray()
+  for (const f of favs) await db.favorites.update(f.id, { date: undefined, pinned: false, itemId: undefined })
+}
+
 export async function deleteTrip(tripId: string) {
   await db.transaction('rw', [db.trips, db.days, db.items, db.checklist, db.expenses, db.documents, db.favorites], async () => {
     await db.favorites.where('tripId').equals(tripId).delete()

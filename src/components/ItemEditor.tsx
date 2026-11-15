@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
-import { db, touchTrip } from '../db'
+import { adoptPlannerItems, db, deleteItem, touchTrip } from '../db'
 import type { Item, ItemKind, ItemStatus, Trip } from '../types'
 import { addDays, daysBetween, dateRange, formatDate, formatDuration, hhmmToMin, minToHHMM } from '../lib/dates'
 import { country, CURRENCIES } from '../lib/countries'
@@ -14,6 +14,8 @@ import { PlaceInfo } from './PlaceInfo'
 import { localWiki } from '../lib/apis'
 import { planRipple } from '../lib/ripple'
 import { journeyNote } from '../lib/dayview'
+import { legText, taxiLink, transitLink } from '../lib/legs'
+import { distance } from '../lib/format'
 import { itemZones, offsetMin, transportSpan, tzAt, tzCity, tzLabel, zonedToUtc } from '../lib/tz'
 import { CITIES } from '../lib/cities'
 import { useSettings } from '../lib/hooks'
@@ -123,10 +125,15 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       cost: it.cost?.amount ? it.cost : undefined,
       notes: it.notes || undefined,
       walk: it.walk,
+      planner: it.planner,
+      favId: it.favId,
+      legIn: it.legIn,
     }
     await db.items.put(full)
+    if (full.planner) await adoptPlannerItems([full.id]) // changed by hand: it is yours now, the City planner leaves it alone
     if (push && ripple.moves.length) {
       await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.start, endTime: m.end } })))
+      await adoptPlannerItems(ripple.moves.map((m) => m.item.id))
     }
     await touchTrip(trip.id)
     toast(push && ripple.moves.length ? `Saved · pushed ${ripple.moves.length} later item${ripple.moves.length > 1 ? 's' : ''} back` : isNew ? 'Added' : 'Saved')
@@ -135,10 +142,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
 
   async function remove() {
     if (!it.id || !confirm(`Delete "${it.title}"?`)) return
-    await db.items.delete(it.id)
-    // A favourite added on the day goes back to the backup list.
-    const fav = await db.favorites.where('tripId').equals(trip.id).filter((f) => f.itemId === it.id).first()
-    if (fav) await db.favorites.update(fav.id, { date: undefined, pinned: false, itemId: undefined })
+    await deleteItem(it.id) // a wishlist place goes back to the backup list
     await touchTrip(trip.id)
     onClose()
   }
@@ -329,6 +333,24 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
     >
       <div className="stack">
         <ItemSummary item={saved} />
+        {saved.legIn?.geometry?.length && saved.location?.lat != null && saved.location.lon != null && (
+          <div className="stack" style={{ gap: 4 }}>
+            <p className="small" style={{ margin: 0 }}>
+              {legText(saved.legIn, distance)}
+              {saved.legIn.fromName ? ` from ${saved.legIn.fromName}` : ''}
+            </p>
+            <div className="row wrap">
+              {[
+                { label: '🚇 Public transport (real times)', href: transitLink({ lat: saved.legIn.geometry[0][1], lon: saved.legIn.geometry[0][0] }, { lat: saved.location.lat, lon: saved.location.lon }) },
+                { label: '🚕 Uber / taxi', href: taxiLink({ lat: saved.legIn.geometry[0][1], lon: saved.legIn.geometry[0][0] }, { lat: saved.location.lat, lon: saved.location.lon }) },
+              ].map((l) => (
+                <a key={l.label} className="btn btn-sm btn-ghost" href={l.href} target="_blank" rel="noreferrer">
+                  {l.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {journeyNote(saved, zoneCtx) && <p className="small" style={{ margin: 0 }}>🌏 {journeyNote(saved, zoneCtx)}</p>}
         {saved.kind !== 'note' && (
           <PlaceInfo
