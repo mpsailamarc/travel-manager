@@ -204,7 +204,14 @@ const plain = (s: string) =>
 export function cityIn(text?: string): City | undefined {
   if (!text) return undefined
   const t = ` ${plain(text)} `
-  const codes = new Set(text.match(/\b[A-Z]{3}\b/g) ?? [])
+  // Airport codes only where they're written as codes: "(SYD)", "(CDG/ORY)", "SYD → LHR", or on their own — not a
+  // capitalised word ("SEA LIFE London Aquarium" isn't Seattle).
+  const codes = new Set([
+    ...[...text.matchAll(/\(([A-Z]{3}(?:\s*\/\s*[A-Z]{3})*)\)/g)].flatMap((m) => m[1].split(/\s*\/\s*/)),
+    ...[...text.matchAll(/\b([A-Z]{3})\s*(?:→|->|–|—)/g)].map((m) => m[1]),
+    ...[...text.matchAll(/(?:→|->|–|—)\s*([A-Z]{3})\b/g)].map((m) => m[1]),
+    ...(/^\s*[A-Z]{3}\s*$/.test(text) ? [text.trim()] : []),
+  ])
   let best: City | undefined
   for (const c of CITIES) {
     if ((t.includes(` ${plain(c.name)} `) || c.codes.some((k) => codes.has(k))) && (!best || c.name.length > best.name.length)) best = c

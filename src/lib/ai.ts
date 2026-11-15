@@ -12,7 +12,7 @@ import { country } from './countries'
 import { uid } from './ids'
 import { carKind } from './drive'
 import { isSameItem } from './duplicates'
-import { CATEGORY_META } from './favorites'
+import { CATEGORY_META, visitMinutes } from './favorites'
 
 export const CHATBOTS = [
   { name: 'Claude', url: 'https://claude.ai/new' },
@@ -290,8 +290,11 @@ ${outline}
 Guidelines:
 - Include transport between places (typical duration in notes), one "stay" item on each arrival day with "nights", and 2–5 activities or meals per day with times.
 - Each day's "city", "lat" and "lon" are the town where we sleep that night (on a day we fly in, where we land; not home, nor an excursion spot). Day trips and excursions are items of that day.
-- Flights: a real schedule for that route (usual departure time and flight time, with the time difference); if it lands the next day, say "arrives next day" in notes.
-- Things at sunrise or sunset start at that place's real sunrise or sunset time on that date.
+- Flights: a real schedule for that route (usual departure time and flight time, with the time difference); "time" and "endTime" are never the same. If it lands the next day, say "arrives next day" in notes.
+- If the trip starts with a long flight from home, day 1 is the day it leaves: put it on day 1, and plan nothing at the destination until after it has landed (on day 1 or day 2, whichever it is). The flight home goes on the day it leaves.
+- Nothing is planned during a journey, and the first thing after landing starts at least 1 hour later (2 hours after a long-haul flight).
+- Things at sunrise or sunset start at that place's real sunrise or sunset time on that date; evening and night things are in the evening.
+- Visits last a realistic time (a big museum 2–3 hours, a viewpoint 30–60 minutes, a meal 1 hour or more).
 - Give real coordinates for each day's town and for places. Every journey needs both ends: "fromLat"/"fromLon" where it leaves and "lat"/"lon" where it arrives — the actual airport, station, port or car-rental office, not the city centre.
 - On a travel day, list each step as its own item, in order: getting to the airport or station (drive, taxi…), returning the rental car, the flight or train, then getting from where it arrives to the next place.
 - Keep "notes" under 15 words.${continuing ? '' : `
@@ -316,7 +319,7 @@ ${tripBrief(trip, settings)}
 Keep "notes" under 15 words. Give real coordinates when the place is a fixed location.
 Reply with ONLY a JSON code block, no other text:
 { "ideas": [ { "name": string, "category": one of ${Object.keys(CATEGORY_META).map((c) => `"${c}"`).join('|')},
-  "lat": number, "lon": number, "visitMin": number (typical time spent), "indoor": boolean, "estCost": number (group total, ${settings.homeCurrency}), "notes": string } ] }`
+  "lat": number, "lon": number, "visitMin": number (typical time spent, in MINUTES — e.g. 90 for an hour and a half), "indoor": boolean, "estCost": number (group total, ${settings.homeCurrency}), "notes": string } ] }`
 }
 
 export function replanPrompt(trip: Trip, settings: Settings, day: Day, items: Item[], reason: string, fromTime: string) {
@@ -437,7 +440,8 @@ const CityIdea = z.object({
   notes: str,
 })
 export type CityIdea = z.infer<typeof CityIdea>
-export const parseCityIdeas = (text: string) => friendly(z.object({ ideas: lenientArray(CityIdea) }), text).data.ideas
+export const parseCityIdeas = (text: string) =>
+  friendly(z.object({ ideas: lenientArray(CityIdea) }), text).data.ideas.map((i) => ({ ...i, visitMin: visitMinutes(i.visitMin) }))
 
 export function parseDetail(text: string) {
   const { data, truncated } = friendly(DetailResponse, text)

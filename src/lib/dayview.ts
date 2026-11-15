@@ -32,7 +32,8 @@ export function journeyNote(it: Item, ctx: ZoneCtx): string | undefined {
   return span?.zonesDiffer ? `${it.startTime} ${tzCity(span.fromTz)} → ${it.endTime} ${tzCity(span.toTz)} · ${formatDuration(span.durationMin * 60)}` : undefined
 }
 
-export function buildDayView(allItems: Item[], date: ISODate, ctx: ZoneCtx): DayView {
+export function buildDayView(allItems: Item[], date: ISODate, zoneCtx: ZoneCtx): DayView {
+  const ctx = { ...zoneCtx, items: zoneCtx.items ?? allItems }
   const tz = zoneOfDate(date, ctx)
   const entries: DayEntry[] = []
   const untimed: Item[] = []

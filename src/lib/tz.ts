@@ -74,6 +74,7 @@ export const tzLabel = (tz: string, utcMs?: number) => `${tzCity(tz)} (${tzOffse
 export interface ZoneCtx {
   trip: Trip
   days: Day[]
+  items?: Item[] // the trip's items, when at hand: they tell which day a long flight lands on
 }
 
 const TRANSPORT = new Set(['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi'])
@@ -154,6 +155,22 @@ export function transportSpan(it: Item, ctx: ZoneCtx): TransportSpan | undefined
     }
   }
   if (!isFinite(arrUtc)) return undefined
+  // The trip's first day already at the destination, with things planned there that day ("Day 1, London": the flight
+  // from Sydney, then the South Bank at 10:05): the flight lands that day, so it left the day before (or earlier) — not
+  // one that lands tomorrow while day 1 is spent in London.
+  const toTz = z.to
+  const lands = zonedToUtc(it.date, it.endTime, toTz)
+  const plannedThere = ctx.items?.some((o) => {
+    if (o.date !== it.date || o.id === it.id || !o.startTime || isTransportKind(o.kind) || o.kind === 'stay' || o.status === 'skipped') return false
+    const t = zonedToUtc(it.date, o.startTime, toTz)
+    return t >= lands && t < arrUtc
+  })
+  if (it.kind === 'flight' && it.date === ctx.trip.startDate && arrDate > it.date && z.from !== z.to && zoneOfDate(it.date, ctx) === z.to && plannedThere) {
+    for (const k of [0, -1, -2]) {
+      const leaves = zonedToUtc(addDays(it.date, k), it.startTime, z.from)
+      if (lands > leaves + shortest) return { depUtc: leaves, arrUtc: lands, durationMin: Math.round((lands - leaves) / 60000), fromTz: z.from, toTz: z.to, arrDate: it.date, zonesDiffer: true }
+    }
+  }
   return { depUtc, arrUtc, durationMin: Math.round((arrUtc - depUtc) / 60000), fromTz: z.from, toTz: z.to, arrDate, zonesDiffer: z.from !== z.to }
 }
 

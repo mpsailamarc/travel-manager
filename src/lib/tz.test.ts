@@ -77,3 +77,30 @@ describe('a day out by a border', () => {
     expect(zoneOfDate('2027-02-05', { trip: t, days: ds })).toBe('America/Santiago')
   })
 })
+
+describe('the flight from home on a day 1 already at the destination', () => {
+  const eu = { id: 'E', startDate: '2027-07-01', endDate: '2027-07-14', countryCodes: ['GB'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as Trip
+  const edays = [{ id: 'E:1', tripId: 'E', date: '2027-07-01', city: 'London', lat: 51.5074, lon: -0.1278 }]
+  const syd = { id: 's', tripId: 'E', date: '2027-07-01', kind: 'flight', title: 'Sydney (SYD) → London (LHR)', status: 'planned', order: 0, startTime: '09:00', endTime: '09:00', from: { name: 'Sydney (SYD)' }, to: { name: 'London (LHR)' } } as Item
+  const southBank = { id: 'w', tripId: 'E', date: '2027-07-01', kind: 'walk', title: 'South Bank stroll', status: 'planned', order: 1, startTime: '10:05', endTime: '12:45' } as Item
+
+  it('lands that morning when day 1 is planned in London, so nothing clashes', () => {
+    const v = buildDayView([syd, southBank], '2027-07-01', { trip: eu, days: edays })
+    const f = v.entries.find((e) => e.item.id === 's')!
+    expect(f).toMatchObject({ start: 0, end: 9 * 60, clippedStart: true })
+  })
+
+  it('with nothing else planned on day 1, it leaves that day and lands the next', () => {
+    expect(transportSpan(syd, { trip: eu, days: edays, items: [syd] })!.arrDate).toBe('2027-07-02')
+  })
+})
+
+describe('reading place names', () => {
+  it('reads airport codes only where they are written as codes', async () => {
+    const { cityIn } = await import('./cities')
+    expect(cityIn('SEA LIFE London Aquarium')?.name).not.toBe('Seattle')
+    expect(cityIn('Sydney Airport (SYD)')?.name).toBe('Sydney')
+    expect(cityIn('Flight SYD → LHR')).toBeTruthy()
+    expect(cityIn('Paris (CDG/ORY)')?.name).toBe('Paris')
+  })
+})

@@ -32,6 +32,9 @@ const isDayTrip = (f: Favorite) => f.category === 'daytrip' || f.visitMin >= 300
 export const sameCity = (a?: string, b?: string) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase()
 export const plannerTag = (city: string) => `fav:${city.trim().toLowerCase()}`
 
+/** A visit time in minutes. Chatbots sometimes answer in hours ("1.5"): nothing worth a visit takes under 10 minutes. */
+export const visitMinutes = (v?: number) => (v == null || v <= 0 ? undefined : v < 10 ? Math.round(v * 60) : Math.round(v))
+
 /** Favourites that belong to a plan day as part of its rebuilt walk (not the ones added on the day itself). */
 const scheduled = (f: Favorite) => !!f.date && !f.itemId
 
@@ -373,17 +376,23 @@ function hoursOf(x: { title: string; kind?: string; category?: string; hours?: s
 
 /**
  * When something about the sun should start: sunset things so they end half an hour after the sun goes down, sunrise
- * things half an hour before it comes up (at the place, else the day's city).
+ * things half an hour before it comes up, night things (night photos, stars) once it's dark, and evening things in the
+ * last hour of daylight (at the place, else the day's city). Meals keep their own times.
  */
-function sunAt(m: Pick<Movable, 'name' | 'lat' | 'lon' | 'visitMin'>, ctx: Pick<DayContext, 'trip' | 'date' | 'day' | 'days'>): number | undefined {
-  const sunset = /sunset|golden hour|puesta de sol|atardecer/i.test(m.name)
-  const sunrise = !sunset && /sunrise|dawn|amanecer/i.test(m.name)
-  if (!sunset && !sunrise) return undefined
+function sunAt(m: Pick<Movable, 'name' | 'lat' | 'lon' | 'visitMin' | 'meal'>, ctx: Pick<DayContext, 'trip' | 'date' | 'day' | 'days'>): number | undefined {
+  if (m.meal) return undefined
+  const sunset = /sunset|golden hour|puesta de sol|atardecer|coucher de soleil|tramonto/i.test(m.name)
+  const sunrise = !sunset && /sunrise|dawn|amanecer|lever de soleil|alba\b/i.test(m.name)
+  const night = !sunset && !sunrise && /\bnight\b|stargaz|\bstars\b|after dark|nocturn/i.test(m.name)
+  const evening = !sunset && !sunrise && !night && /\bevening\b/i.test(m.name)
+  if (!sunset && !sunrise && !night && !evening) return undefined
   const lat = m.lat ?? ctx.day?.lat
   const lon = m.lon ?? ctx.day?.lon
   const tz = zoneOfDate(ctx.date, { trip: ctx.trip, days: ctx.days }) ?? tzAt(lat, lon)
   const sun = lat != null && lon != null && tz ? sunClock(ctx.date, lat, lon, tz) : undefined
   if (!sun) return undefined
+  if (night) return Math.min(sun.set + 45, 23 * 60)
+  if (evening) return Math.max(17 * 60, sun.set - 60)
   return Math.max(0, sunset ? sun.set + 30 - m.visitMin : sun.rise - 30)
 }
 
@@ -402,8 +411,9 @@ function ownMovable(i: Item, favs: Favorite[]): Movable {
   const linked = favs.find((f) => f.itemId === i.id || f.id === i.favId)
   const at = i.location?.lat != null && i.location.lon != null ? { lat: i.location.lat, lon: i.location.lon } : i.walk?.stops[0]
   const own = i.startTime && i.endTime ? hhmmToMin(i.endTime) - hhmmToMin(i.startTime) : undefined
+  // A visit of a few minutes is a slip (a time squeezed in, or hours read as minutes), not a real length.
   const visitMin =
-    own != null && own > 0 ? own : linked ? linked.visitMin : i.walk ? Math.round(i.walk.walkS / 60 + i.walk.stops.reduce((a, x) => a + x.visitMin, 0)) : i.kind === 'meal' ? 60 : i.kind === 'note' ? 30 : /\bshort\b|quick|brief/i.test(i.title) ? 30 : i.kind === 'walk' ? 60 : 90
+    own != null && own >= (i.kind === 'note' ? 1 : i.kind === 'meal' ? 20 : 10) ? own : linked ? linked.visitMin : i.walk ? Math.round(i.walk.walkS / 60 + i.walk.stops.reduce((a, x) => a + x.visitMin, 0)) : i.kind === 'meal' ? 60 : i.kind === 'note' ? 30 : /\bshort\b|quick|brief/i.test(i.title) ? 30 : i.kind === 'walk' ? 60 : 90
   return {
     key: i.id,
     name: i.title,
@@ -478,7 +488,9 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
   const fixed = fixedWindows(fixedItems, here, ctx.arriving)
   const startTime = day?.walkStartTime ? hhmmToMin(day.walkStartTime) : dayStart(fixedItems, fixed, here, ctx.arriving, trip.style)
   const cutoff = departureCutoff(fixedItems, startTime, ctx.arriving, date === trip.endDate)
-  const dayEnd = cutoff ?? DAY_UNTIL(trip.style)
+  // A sunset or night outing may run past the pace's usual end (sunset in Paris in July is near 22:00).
+  const sunLate = Math.max(0, ...movable.filter((m) => !m.meal && m.mealAt != null).map((m) => m.mealAt! + m.visitMin))
+  const dayEnd = cutoff ?? Math.min(24 * 60, Math.max(DAY_UNTIL(trip.style), sunLate))
 
   // Where you are at the start: the hotel (or chosen start), or wherever something fixed earlier that morning left you.
   let from = { t: startTime, at: home, name: startPlace?.name ?? '' }
@@ -677,6 +689,21 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
   )
   const slots = new Map<string, { from: number; to: number; leg?: Leg } | undefined>(movable.map((m) => [m.key, undefined]))
   order.forEach((m, n) => slots.set(m.key, slotsArr[n]))
+
+  // A sunset or evening outing that no longer fits matters more than one more visit: the last ordinary visit before it
+  // stays off the day instead (an idea without a time), and the day is fitted again.
+  const missedSun = movable.find((m) => !m.meal && m.mealAt != null && !slots.get(m.key))
+  if (missedSun) {
+    const drop = order
+      .map((m, n) => ({ m, s: slotsArr[n] }))
+      .filter((x) => x.s && !x.m.meal && x.m.mealAt == null && x.s.from < missedSun.mealAt!)
+      .sort((p, q) => q.s!.from - p.s!.from)[0]
+    if (drop) {
+      const again = await scheduleDay(ctx, fixedItems, movable.filter((m) => m.key !== drop.m.key))
+      again.slots.set(drop.m.key, undefined)
+      return again
+    }
+  }
 
   let back: DayPlan['back']
   if (roundTrip && home && startPlace) {
@@ -878,8 +905,10 @@ function fixedWindows(dayItems: Item[], here?: LatLon, arriving: (i: Item) => bo
     .sort((a, b) => a.startTime!.localeCompare(b.startTime!))
     .map((i) => {
       const journey = JOURNEYS.has(i.kind) || i.kind === 'taxi'
-      // Where you are once it's over: the place itself, a tour's first stop, or where a journey lands.
-      const at = ll(i.location) ?? (journey ? ll(i.to) : undefined) ?? i.walk?.stops[0]
+      // Where you are once it's over: the place itself, a tour's first stop, or where a journey lands. A place's own
+      // coordinates are kept as they are: only journeys' ends are checked against their names ("Café de Paris" in London).
+      const own = i.location?.lat != null && i.location.lon != null ? { lat: i.location.lat, lon: i.location.lon } : undefined
+      const at = own ?? (journey ? ll(i.to) ?? ll(i.location) : undefined) ?? i.walk?.stops[0]
       // A journey that doesn't say where it leaves from leaves from wherever the previous fixed thing left you.
       const startAt = journey ? ll(i.from) ?? lastAt : at
       lastAt = at ?? lastAt
@@ -1133,16 +1162,30 @@ async function reconcileNow(tripId: string): Promise<string[]> {
       .filter((t) => t >= s + 15 && t < e)
     if (there.length) timeFixes.push({ key: it.id, changes: { endTime: minToHHMM(Math.min(...there)) } })
   }
-  // A sunset (or sunrise) outing the planner timed before it knew when the sun sets is fitted again, at sunset.
+  // Wishlist places whose visit time came in hours from a chatbot (1.5 = an hour and a half, not 90 seconds).
+  for (const f of favs) {
+    const fixed = visitMinutes(f.visitMin)
+    if (fixed != null && fixed !== f.visitMin) change(f, { visitMin: fixed })
+  }
+  // Things the planner timed badly before it knew better are fitted again: a sunset (or night) outing far from its time,
+  // and visits of a few minutes (squeezed in, or a wishlist place's hours read as minutes).
   const sunDates = new Set<string>()
   for (const it of items) {
-    if (!it.autoTime || !it.startTime || !isMovable(it)) continue
+    if (!it.autoTime || !it.startTime || !isMovable(it) || it.kind === 'note') continue
     const want = sunAt(ownMovable(it, favs), { trip, date: it.date, day: days.find((d) => d.date === it.date), days })
-    if (want != null && Math.abs(hhmmToMin(it.startTime) - want) > 90) {
-      timeFixes.push({ key: it.id, changes: { startTime: undefined, endTime: undefined, legIn: undefined } })
+    const length = it.endTime ? hhmmToMin(it.endTime) - hhmmToMin(it.startTime) : undefined
+    const fav = favs.find((f) => f.id === it.favId || f.itemId === it.id)
+    const tiny = length != null && length >= 0 && length < (it.kind === 'meal' ? 20 : 10)
+    const favLength = fav && favChanges.get(fav.id)?.visitMin
+    if ((want != null && Math.abs(hhmmToMin(it.startTime) - want) > 90) || tiny || favLength) {
+      if (it.planner && it.favId) continue // the City planner's own items are rebuilt below from the corrected place
       sunDates.add(it.date)
     }
   }
+  // On those days, everything the planner timed is placed again (your own times and the itinerary's stay as they are).
+  for (const it of items)
+    if (sunDates.has(it.date) && it.autoTime && it.startTime && isMovable(it) && !(it.planner && it.favId))
+      timeFixes.push({ key: it.id, changes: { startTime: undefined, endTime: undefined, legIn: undefined } })
   if (timeFixes.length) await db.items.bulkUpdate(timeFixes)
 
   // Planner items you have acted on are yours from now on.
@@ -1190,6 +1233,8 @@ async function reconcileNow(tripId: string): Promise<string[]> {
       if (city && it.planner === plannerTag(city)) markDirty(city, it.date)
     }
   }
+  // Days the City planner built from a place whose visit time was just corrected are built again.
+  for (const f of favs) if (favChanges.get(f.id)?.visitMin && f.date && !f.itemId && cityDays(f.city).has(f.date)) markDirty(f.city, f.date)
   // "Back to the hotel" notes go when their day has no other planner item left.
   for (const it of items) {
     if (!it.planner || it.favId || it.kind === 'walk' || remove.has(it.id)) continue

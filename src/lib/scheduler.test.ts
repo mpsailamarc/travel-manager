@@ -293,3 +293,13 @@ async function untimedCount(trip: { id: string }) {
   const { untimedItems } = await import('./favorites')
   return untimedItems(await db.items.where('tripId').equals(trip.id).toArray(), D).length
 }
+
+describe('wishlist places from an older chatbot answer', () => {
+  it('a visit time given in hours is corrected once, and its day planned again', async () => {
+    const { reconcileTrip } = await import('./favorites')
+    const trip = await makeTrip()
+    const f = await addFav(trip, { ...LONDON.tower, visitMin: 2 })
+    await reconcileTrip(trip.id)
+    expect((await db.favorites.get(f.id))!.visitMin).toBe(120)
+  })
+})

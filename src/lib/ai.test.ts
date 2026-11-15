@@ -140,3 +140,10 @@ describe('the detailed plan asks for times the app can trust', () => {
     expect(saved.find((i) => i.kind === 'note')!.startTime).toBeUndefined()
   })
 })
+
+describe('city ideas', () => {
+  it('reads visit times given in hours as hours', () => {
+    const text = JSON.stringify({ ideas: [{ name: 'Eiffel Tower', category: 'monument', visitMin: 2 }, { name: 'Louvre', category: 'museum', visitMin: 180 }, { name: 'Café', category: 'food', visitMin: 1.5 }] })
+    expect(parseCityIdeas(text).map((i) => i.visitMin)).toEqual([120, 180, 90])
+  })
+})
