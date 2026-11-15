@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, touchTrip } from '../db'
 import type { BudgetCategory, BudgetLine, Expense, ItemKind } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
-import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines, inferAssumption, lineAmount, perPhrase, unitFor } from '../lib/budget'
+import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines, inferAssumption, lineAmount, lineFormula, modernLine, unitFor } from '../lib/budget'
 import { fxRate } from '../lib/apis'
 import { country } from '../lib/countries'
 import { daysBetween, formatDate, today } from '../lib/dates'
@@ -46,7 +46,10 @@ export default function BudgetPage() {
     if (!old) return
     // An earlier estimate called fuel "from <home>" even when you fly in and rent a car there: just "Fuel".
     const flyIn = !!trip.startPlace?.country && trip.countryCodes.length > 0 && !trip.countryCodes.includes(trip.startPlace.country)
-    const next = old.map((l) => (l.qty && l.price ? l : inferAssumption(l))).map((l) => (flyIn && /^Fuel \(from .+\)$/.test(l.label) ? { ...l, label: 'Fuel' } : l))
+    const next = old
+      .map((l) => (l.qty && l.price ? l : inferAssumption(l)))
+      .map((l) => (flyIn && /^Fuel \(from .+\)$/.test(l.label) ? { ...l, label: 'Fuel' } : l))
+      .map((l) => modernLine(l, trip)) // 8.4 person-days becomes 4 days x 2 people x a price per person
     // Amounts don't change here, so the category totals stay as they are.
     if (next.some((l, i) => l !== old[i])) db.trips.update(trip.id, { budgetLines: next })
   }, [trip.id, trip.budgetLines, trip.startPlace?.country, trip.countryCodes])
@@ -95,6 +98,8 @@ export default function BudgetPage() {
   const pricedIn = (c: BudgetCategory) => items.filter((i) => i.cost?.amount && i.status !== 'skipped' && KIND_TO_CATEGORY[i.kind] === c)
   const inHome = (i: (typeof items)[number]) => i.cost!.amount * (rates?.[i.cost!.currency] ?? 1)
   const own = (c: BudgetCategory) => trip.budget[c] ?? 0
+  const group = trip.travellers.length || 1
+  const perPersonKind = (k: ItemKind) => ['flight', 'train', 'bus', 'ferry', 'activity', 'meal', 'walk'].includes(k)
   const lined = (c: BudgetCategory) => (trip.budgetLines ?? []).some((l) => l.category === c)
   // A figure typed for a category (or from an itinerary idea) is its total: what the plan's prices don't use of it shows as one
   // line, "rest of your budget", so the category always adds up to exactly the lines underneath.
@@ -157,7 +162,7 @@ export default function BudgetPage() {
   }
 
   /** Change a line's assumption; the amount follows (quantity × price) once both are filled in. */
-  async function setAssumption(l: BudgetLine, patch: Partial<Pick<BudgetLine, 'qty' | 'unit' | 'price'>>) {
+  async function setAssumption(l: BudgetLine, patch: Partial<Pick<BudgetLine, 'qty' | 'unit' | 'price' | 'per' | 'count'>>) {
     const next = { ...l, ...patch }
     next.amount = lineAmount(next)
     await saveLines(lines.map((x) => (x.id === l.id ? next : x)))
@@ -280,25 +285,40 @@ export default function BudgetPage() {
                             <span className="tiny muted">· day {daysBetween(trip.startDate, i.date) + 1}</span>
                           </td>
                           <td className="num small">
-                            <div className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
-                              <input
-                                type="number"
-                                min={0}
-                                style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
-                                defaultValue={i.cost!.amount}
-                                key={`${i.id}-${i.cost!.amount}`}
-                                aria-label={`Price of ${i.title} (${i.cost!.currency})`}
-                                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                                onBlur={async (e) => {
-                                  const v = Number(e.target.value) || 0
-                                  if (v === i.cost!.amount) return
-                                  await db.items.update(i.id, { cost: v ? { ...i.cost!, amount: v } : undefined })
-                                  await touchTrip(trip.id)
-                                }}
-                              />
-                              {i.cost!.currency !== home && <span className="tiny muted">{i.cost!.currency}</span>}
-                            </div>
-                            {i.cost!.currency !== home && <div className="tiny muted">≈ {money(inHome(i), home)}</div>}
+                            {(() => {
+                              // Fares, tickets and meals are bought per person: edit the price per person, the total follows the group.
+                              const n = perPersonKind(i.kind) ? group : 1
+                              const each = Math.round((i.cost!.amount / n) * 100) / 100
+                              return (
+                                <>
+                                  <div className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step="any"
+                                      style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
+                                      defaultValue={each}
+                                      key={`${i.id}-${i.cost!.amount}`}
+                                      aria-label={`Price of ${i.title}${n > 1 ? ' per person' : ''} (${i.cost!.currency})`}
+                                      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                                      onBlur={async (e) => {
+                                        const v = Math.round((Number(e.target.value) || 0) * n * 100) / 100
+                                        if (v === i.cost!.amount) return
+                                        await db.items.update(i.id, { cost: v ? { ...i.cost!, amount: v } : undefined })
+                                        await touchTrip(trip.id)
+                                      }}
+                                    />
+                                    {i.cost!.currency !== home && <span className="tiny muted">{i.cost!.currency}</span>}
+                                  </div>
+                                  {n > 1 && (
+                                    <div className="tiny muted">
+                                      per person × {n} = {money(i.cost!.amount, i.cost!.currency)}
+                                    </div>
+                                  )}
+                                  {i.cost!.currency !== home && <div className="tiny muted">≈ {money(inHome(i), home)}</div>}
+                                </>
+                              )
+                            })()}
                           </td>
                           <td />
                         </tr>
@@ -368,7 +388,7 @@ export default function BudgetPage() {
                         <tr key={l.id} className="budget-line">
                           <td style={{ paddingLeft: 14 }}>
                             <button className="btn-ghost btn-sm" style={{ minHeight: 24, padding: '0 4px', color: 'var(--primary)', textAlign: 'left' }} onClick={toggle} aria-expanded={open}>
-                              {calc ? `${l.qty} ${unitFor(l.qty!, l.unit)} × ${money(l.price!, home, l.price! < 10 ? 2 : 0)} ${perPhrase(l.unit)}` : '＋ assumption'} {open ? '▴' : '▾'}
+                              {calc ? lineFormula(l, (n) => money(n, home, Number.isInteger(n) ? 0 : 2)) : '＋ how it adds up'} {open ? '▴' : '▾'}
                             </button>
                           </td>
                           <td className="num">
@@ -422,12 +442,42 @@ export default function BudgetPage() {
                                   onBlur={(e) => e.target.value !== (l.unit ?? '') && setAssumption(l, { unit: e.target.value || undefined })}
                                 />
                                 <span className="muted">×</span>
+                                <select
+                                  style={{ width: 'auto' }}
+                                  aria-label="Who it's for"
+                                  value={l.per ?? ''}
+                                  onChange={(e) => {
+                                    const per = (e.target.value || undefined) as BudgetLine['per']
+                                    setAssumption(l, { per, count: per ? l.count ?? (per === 'person' ? trip.travellers.length || 1 : 1) : undefined })
+                                  }}
+                                >
+                                  <option value="">for everyone</option>
+                                  <option value="person">per person</option>
+                                  <option value="room">per room</option>
+                                </select>
+                                {l.per && (
+                                  <>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      step={1}
+                                      style={{ width: 64 }}
+                                      aria-label={l.per === 'person' ? 'How many people' : 'How many rooms'}
+                                      defaultValue={l.count ?? 1}
+                                      key={`${l.id}-c-${l.count}`}
+                                      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                                      onBlur={(e) => Number(e.target.value) !== (l.count ?? 1) && setAssumption(l, { count: Number(e.target.value) || 1 })}
+                                    />
+                                    <span className="small muted">{l.per === 'person' ? ((l.count ?? 1) === 1 ? 'person' : 'people') : (l.count ?? 1) === 1 ? 'room' : 'rooms'}</span>
+                                    <span className="muted">×</span>
+                                  </>
+                                )}
                                 <input
                                   type="number"
                                   min={0}
                                   step="any"
                                   style={{ width: 92 }}
-                                  placeholder={`Price per ${unitFor(1, l.unit) || 'unit'} (${home})`}
+                                  placeholder={`Price ${l.per === 'person' ? 'per person ' : l.per === 'room' ? 'per room ' : ''}per ${unitFor(1, l.unit) || 'unit'} (${home})`}
                                   aria-label="Price per unit"
                                   defaultValue={l.price ?? ''}
                                   key={`${l.id}-p-${l.price}`}
@@ -436,7 +486,7 @@ export default function BudgetPage() {
                                 />
                                 <b className="small">= {money(lineAmount(l), home)}</b>
                               </div>
-                              <span className="tiny muted">e.g. 4 days × {money(60, home)} a day, or 600 km × {money(0.2, home, 2)} a km. Leave it empty to type the amount directly.</span>
+                              <span className="tiny muted">e.g. 4 days × 2 people × {money(45, home)} per person per day, 3 nights × 1 room × {money(120, home)}, or 600 km × {money(0.2, home, 2)} per km (for everyone). Leave it empty to type the amount directly.</span>
                             </td>
                           </tr>,
                         )

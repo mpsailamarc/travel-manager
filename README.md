@@ -90,6 +90,11 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Maps show real paths**: everything follows the streets and roads (walks, taxis, public transport, trains, buses, drives), except flights
   and boats, which stay straight dashed lines. Colours say how you travel: walking green, public transport blue (dashed: its exact line isn't
   known), taxi orange; on the trip map car orange, train/bus blue, flights grey, boats cyan.
+- **Every budget line is a sum you can check**: "5 days × 3 people × €33 per person per day = €495", "4 nights × 1 room × €122 per
+  room per night", "600 km × €0.15 per km" (for everyone). Each line says whether it's paid per person, per room or once for everyone,
+  and how many people or rooms; prices are whole euros above €10 so the sum on screen is the sum that's added. Children's lower prices
+  are averaged into the price per person (and said so). Plan prices bought per person (fares, tickets, meals) are edited per person:
+  "€200 per person × 3 = €600". Older estimates are converted the first time you open the Budget, keeping their amounts.
 - **Budget ↔ Day by day**: a plan line in the Budget (📌) opens that item in Day by day, where you can change or remove it; the Budget
   follows straight away.
 - **One budget**: each category adds up exactly the lines under it: the prices of plan items (📌, editable right there: the plan item

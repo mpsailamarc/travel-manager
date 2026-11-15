@@ -47,7 +47,7 @@ describe('budget lines', () => {
 })
 
 describe('the budget follows the group and the dates', () => {
-  it('more travellers: per-person lines, flights and rooms grow; typed amounts stay', async () => {
+  it('more travellers: people and rooms are counted out on each line, and the amounts follow; typed amounts stay', async () => {
     const { adjustLinesToTrip, estimateBudgetLines } = await import('./budget')
     const adult = (id: string) => ({ id, name: id, type: 'adult' as const })
     const two = await makeTrip({ travellers: [adult('a'), adult('b')], countryCodes: ['GR'] })
@@ -56,11 +56,11 @@ describe('the budget follows the group and the dates', () => {
     const four = { ...two, travellers: [adult('a'), adult('b'), adult('c'), adult('d')] }
     const after = adjustLinesToTrip([...lines, typed], two, four)
     const find = (ls: typeof lines, re: RegExp) => ls.find((l) => re.test(l.label))!
-    expect(find(after, /^Flights/).qty).toBe(4)
+    expect(find(after, /^Flights/)).toMatchObject({ per: 'person', count: 4 })
+    expect(find(after, /^Food/)).toMatchObject({ per: 'person', count: 4 })
     expect(find(after, /^Food/).amount).toBeCloseTo(find(lines, /^Food/).amount * 2, -1)
-    expect(find(after, /^Food/).label).toContain('4 adults')
-    expect(find(after, /^Accommodation/).label).toContain('2 rooms')
-    expect(find(after, /^Accommodation/).amount).toBeGreaterThan(find(lines, /^Accommodation/).amount * 1.8)
+    expect(find(after, /^Accommodation/)).toMatchObject({ per: 'room', count: 2 })
+    expect(find(after, /^Accommodation/).amount).toBe(find(lines, /^Accommodation/).amount * 2)
     expect(after.find((l) => l.id === 'own')).toEqual(typed)
   })
 
@@ -71,7 +71,7 @@ describe('the budget follows the group and the dates', () => {
     const longer = { ...trip, endDate: '2027-03-15' } // 3 days → 6 days
     const after = adjustLinesToTrip(lines, trip, longer)
     expect(after.find((l) => /^Accommodation/.test(l.label))!.qty).toBe(5)
-    expect(after.find((l) => /^Food/.test(l.label))!.qty).toBe(6)
+    expect(after.find((l) => /^Food/.test(l.label))!).toMatchObject({ qty: 6, unit: 'days', per: 'person', count: 1 })
   })
 })
 
@@ -116,5 +116,37 @@ describe('prices and notes follow the group', () => {
     const four = { ...two, travellers: [adult('a'), adult('b'), adult('c'), adult('d')] }
     expect(adjustBasisToTrip(['For 2 adults, 3 days and 2 nights (1 room).', 'Other note.'], four)).toEqual(['For 4 adults, 3 days and 2 nights (2 rooms).', 'Other note.'])
     expect(adjustPlanBudgetToTrip({ flights: 800, food: 300, other: 50 }, ['flights', 'food'], undefined, two, four)).toEqual({ flights: 1600, food: 600, other: 50 })
+  })
+})
+
+describe('every budget line reads as a sum that adds up', () => {
+  const adult = (id: string) => ({ id, name: id, type: 'adult' as const })
+  const child = (id: string) => ({ id, name: id, type: 'child' as const, age: 8 })
+
+  it('each estimate line is quantity × people or rooms × price, and says so', async () => {
+    const { estimateBudgetLines, lineAmount, lineFormula } = await import('./budget')
+    const trip = await makeTrip({ travellers: [adult('a'), adult('b'), child('c')], countryCodes: ['GR'], cities: ['Athens', 'Naxos'] })
+    const { lines } = await estimateBudgetLines(trip, 'FR', 'EUR')
+    for (const l of lines) {
+      expect(l.amount).toBe(Math.round(l.qty! * l.price! * (l.per ? l.count! : 1)))
+      expect(l.amount).toBe(lineAmount(l))
+    }
+    const fmt = (n: number) => `€${n}`
+    const f = (re: RegExp) => lineFormula(lines.find((l) => re.test(l.label))!, fmt)
+    expect(f(/^Flights/)).toMatch(/^1 return flight × 3 people × €[\d.]+ per person$/)
+    expect(f(/^Food/)).toMatch(/^3 days × 3 people × €[\d.]+ per person per day$/)
+    expect(f(/^Accommodation/)).toMatch(/^2 nights × 1 room × €[\d.]+ per room per night$/)
+    expect(f(/^Moving/)).toMatch(/^1 move × 3 people × €[\d.]+ per person per move$/)
+  })
+
+  it('older "person-days" lines become days × people × price per person, keeping their amount', async () => {
+    const { modernLine } = await import('./budget')
+    const trip = await makeTrip({ travellers: [adult('a'), adult('b'), child('c')] }) // 3 days
+    const old = { id: 'x', category: 'food' as const, label: 'Food & drink (2 adults + 1 child)', qty: 7.8, unit: 'person-days', price: 45, amount: 351 }
+    const l = modernLine(old, trip)
+    expect(l).toMatchObject({ label: 'Food & drink', qty: 3, unit: 'days', per: 'person', count: 3 })
+    expect(Math.abs(l.qty! * l.count! * l.price! - 351)).toBeLessThan(1)
+    const flights = modernLine({ id: 'f', category: 'flights', label: 'Flights, return (2 adults + 1 child)', qty: 3, unit: 'travellers', price: 170, amount: 510 }, trip)
+    expect(flights).toMatchObject({ label: 'Flights, return', qty: 1, unit: 'return flight', per: 'person', count: 3, price: 170, amount: 510 })
   })
 })

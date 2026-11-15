@@ -42,8 +42,6 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   const lvl = LEVEL[trip.budgetLevel]
   const adults = trip.travellers.filter((t) => t.type === 'adult').length || 1
   const kids = trip.travellers.filter((t) => t.type === 'child').length
-  const people = adults + kids * 0.6
-  const personDays = Math.round(days * people * 10) / 10
   const rooms = Math.max(1, Math.ceil(adults / 2))
   const roomFactor = rooms + kids * 0.2
   const group = `${plural(adults, 'adult')}${kids ? ` + ${plural(kids, 'child', 'children')}` : ''}`
@@ -65,13 +63,16 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   const carSpan = hasCar ? daysBetween(carDates[0], carDates[carDates.length - 1]) + 1 : 0
   const carDays = hasCar ? (carSpan > 1 ? carSpan : days) : 0
 
-  type Raw = { category: BudgetCategory; label: string; qty: number; unit: string; price: number } // price in EUR
+  // Every line says how it's paid: per person (× the number of travellers), per room (× rooms), or once for everyone.
+  // Children's lower prices are averaged into the price per person, so "4 people × €40 per person per day" adds up.
+  type Raw = { category: BudgetCategory; label: string; qty: number; unit: string; price: number; per?: 'person' | 'room'; count?: number } // price in EUR
   const raw: Raw[] = []
-  const add = (category: BudgetCategory, label: string, qty: number, unit: string, price: number) => raw.push({ category, label, qty, unit, price })
+  const add = (category: BudgetCategory, label: string, qty: number, unit: string, price: number, per?: 'person' | 'room', count?: number) =>
+    raw.push({ category, label, qty, unit, price, per, count })
   const travellers = adults + kids
+  const avg = (childShare: number) => (adults + kids * childShare) / travellers // average price per person, adult = 1
   if (!domestic) {
-    // One line for everyone: children travel at 90% of an adult fare, so the price shown is the average per traveller.
-    add('flights', `Flights, return (${group})`, travellers, travellers === 1 ? 'traveller' : 'travellers', ((adults + kids * 0.9) / travellers) * flightPP * Math.sqrt(lvl))
+    add('flights', 'Flights, return', 1, 'return flight', flightPP * Math.sqrt(lvl) * avg(0.9), 'person', travellers)
   } else if (!hasCar) {
     add('transport', `Getting there and back from ${trip.startPlace?.name ?? 'home'} (fuel, parking or transit)`, 1, 'trip', 70 * idx * lvl)
   }
@@ -80,12 +81,12 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
     // "from home" only when you drive from there; flying in, the car is picked up at the destination.
     add('transport', `Fuel${domestic && trip.startPlace?.name ? ` (from ${trip.startPlace.name})` : ''}`, carDays * 150, 'km', 0.12 * Math.min(idx, 1.2))
   }
-  add('transport', 'Local transport', personDays, 'person-days', PER_PERSON_DAY.transport * idx * lvl)
-  if (hops) add('transport', 'Moving between places', hops, hops === 1 ? 'move' : 'moves', 40 * people * idx * lvl)
-  add('stays', `Accommodation (${plural(rooms, 'room')})`, nights, nights === 1 ? 'night' : 'nights', ROOM_NIGHT * roomFactor * idx * lvl)
-  add('food', `Food & drink (${group})`, personDays, 'person-days', PER_PERSON_DAY.food * idx * lvl)
-  add('activities', 'Activities & tickets', personDays, 'person-days', PER_PERSON_DAY.activities * idx * lvl)
-  add('other', 'Other & contingency', personDays, 'person-days', PER_PERSON_DAY.other * idx * lvl)
+  add('transport', 'Local transport', days, 'days', PER_PERSON_DAY.transport * idx * lvl * avg(0.6), 'person', travellers)
+  if (hops) add('transport', 'Moving between places', hops, hops === 1 ? 'move' : 'moves', 40 * idx * lvl * avg(0.6), 'person', travellers)
+  add('stays', 'Accommodation', nights, nights === 1 ? 'night' : 'nights', ROOM_NIGHT * idx * lvl * (roomFactor / rooms), 'room', rooms)
+  add('food', 'Food & drink', days, 'days', PER_PERSON_DAY.food * idx * lvl * avg(0.6), 'person', travellers)
+  add('activities', 'Activities & tickets', days, 'days', PER_PERSON_DAY.activities * idx * lvl * avg(0.6), 'person', travellers)
+  add('other', 'Other & contingency', days, 'days', PER_PERSON_DAY.other * idx * lvl * avg(0.6), 'person', travellers)
 
   const rate = (await fxRate('EUR', homeCurrency)) ?? 1
   const names = trip.countryCodes.map((c) => country(c)?.name).filter(Boolean).join(' & ')
@@ -95,6 +96,7 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
     `Prices start from typical Western-Europe costs and are scaled for ${where}: ${pct === 0 ? 'about the same as' : `about ${Math.abs(pct)}% ${pct > 0 ? 'above' : 'below'}`} Western Europe.`,
     `Budget level “${trip.budgetLevel}” scales them by ×${lvl}.`,
     `For ${group}, ${plural(days, 'day')} and ${plural(nights, 'night')} (${plural(rooms, 'room')}).`,
+    ...(kids ? ['Prices per person are averages for the group: children count as about 60% of an adult for food and activities, 90% for flights.'] : []),
     domestic
       ? `No flights: you start in the same country as the destination${trip.startPlace?.name ? ` (${trip.startPlace.name})` : ''}.`
       : `Flights: a return fare of about ${money(flightPP * Math.sqrt(lvl) * rate, homeCurrency)} per adult (${longHaul ? 'long-haul' : 'short-haul'}), children at 90%. Remove the line if you already have your tickets${trip.startPlace?.name ? '' : ', or set where you start in Trip details if you start close to the destination'}.`,
@@ -105,11 +107,13 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
     'These are rough guesses, not quotes. Change any quantity or price, remove lines you don\'t need, and swap in real prices as you book.',
   ]
   // Unit prices keep their cents when small (0.19 per km), whole amounts otherwise.
-  const roundPrice = (n: number) => (n >= 100 ? Math.round(n) : Math.round(n * 100) / 100)
+  // so the sum on screen is the sum that's added: "3 people × €29" really is €87.
+  const roundPrice = (n: number) => (n >= 10 ? Math.round(n) : Math.round(n * 100) / 100)
   const lines = raw
     .map((l) => {
       const price = roundPrice(l.price * rate)
-      return { id: uid(), category: l.category, label: l.label, qty: l.qty, unit: l.unit, price, amount: Math.round(l.qty * price) }
+      const line: BudgetLine = { id: uid(), category: l.category, label: l.label, qty: l.qty, unit: l.unit, price, per: l.per, count: l.count, amount: 0 }
+      return { ...line, amount: lineAmount(line) }
     })
     .filter((l) => l.amount > 0)
   return { lines, basis }
@@ -144,8 +148,27 @@ export function adjustLinesToTrip(lines: BudgetLine[], before: Trip, after: Trip
   const b = party(after)
   if (a.days === b.days && a.adults === b.adults && a.kids === b.kids) return lines
   const round1 = (n: number) => Math.round(n * 10) / 10
+  const avgA = (w: number) => (a.adults + a.kids * w) / a.travellers
+  const avgB = (w: number) => (b.adults + b.kids * w) / b.travellers
   return lines.map((l) => {
     if (!l.qty || !l.price) return l
+    if (l.per) {
+      // People and rooms are counted out, so they just follow; so do the days and nights when they were the trip's.
+      const next = { ...l }
+      if (l.per === 'person') {
+        if (l.count === a.travellers) next.count = b.travellers
+        const w = l.category === 'flights' ? 0.9 : 0.6
+        next.price = Math.round(((l.price * avgB(w)) / avgA(w)) * 100) / 100 // the children's share of the average
+      } else {
+        if (l.count === a.rooms) next.count = b.rooms
+        next.price = Math.round((l.price * (b.roomFactor / b.rooms)) / (a.roomFactor / a.rooms))
+      }
+      const u = (l.unit ?? '').toLowerCase()
+      if (/^days?$/.test(u) && l.qty === a.days) next.qty = b.days
+      if (/^nights?$/.test(u) && l.qty === a.nights) next.qty = b.nights
+      next.unit = /^days?$/.test(u) ? (next.qty === 1 ? 'day' : 'days') : /^nights?$/.test(u) ? (next.qty === 1 ? 'night' : 'nights') : l.unit
+      return { ...next, amount: lineAmount(next) }
+    }
     const unit = l.unit ?? ''
     let { qty, price } = l
     if (/person-day/.test(unit)) qty = round1((qty * (b.days * b.people)) / (a.days * a.people))
@@ -212,15 +235,28 @@ export function adjustPlanBudgetToTrip(budget: Trip['budget'], planBudget: Trip[
 }
 
 /** "per night", "per person per day", "each": what a unit price is for, so "A$263" is never a mystery. */
-export function perPhrase(unit = ''): string {
+export function perPhrase(unit = '', per?: BudgetLine['per']): string {
   const u = unit.toLowerCase()
+  const one = unitFor(1, unit)
+  if (per === 'person') return /^(days?|nights?|moves?)$/.test(u) ? `per person per ${one}` : 'per person'
+  if (per === 'room') return /^nights?$/.test(u) ? 'per room per night' : 'per room'
   if (!u) return ''
   if (u === 'person-days') return 'per person per day'
   if (/^(traveller|adult|child|children|person|people)s?$/.test(u)) return 'each'
   return `per ${unitFor(1, unit)}`
 }
 
-const UNIT_FORMS: Record<string, [string, string]> = { day: ['day', 'days'], night: ['night', 'nights'], move: ['move', 'moves'], traveller: ['traveller', 'travellers'], trip: ['trip', 'trips'], child: ['child', 'children'], ticket: ['ticket', 'tickets'], meal: ['meal', 'meals'] }
+const UNIT_FORMS: Record<string, [string, string]> = {
+  day: ['day', 'days'],
+  night: ['night', 'nights'],
+  move: ['move', 'moves'],
+  traveller: ['traveller', 'travellers'],
+  trip: ['trip', 'trips'],
+  child: ['child', 'children'],
+  ticket: ['ticket', 'tickets'],
+  meal: ['meal', 'meals'],
+  'return flight': ['return flight', 'return flights'],
+}
 
 /** "4 day" → "4 days", "1 days" → "1 day": units follow the quantity, whichever form was typed. */
 export function unitFor(qty: number, unit = ''): string {
@@ -244,8 +280,36 @@ export function inferAssumption(l: BudgetLine, fallback = false): BudgetLine {
   return { ...l, qty, unit, price: Math.round((l.amount / qty) * 100) / 100 }
 }
 
-/** The amount of a line: quantity × price when both are filled in, otherwise the amount typed in. */
-export const lineAmount = (l: BudgetLine) => (l.qty && l.price ? Math.round(l.qty * l.price) : l.amount)
+/** The amount of a line: quantity × (people or rooms) × price when filled in, otherwise the amount typed in. */
+export const lineAmount = (l: BudgetLine) => (l.qty && l.price ? Math.round(l.qty * l.price * (l.per ? l.count ?? 1 : 1)) : l.amount)
+
+/** "4 days × 2 people × €45 per person per day", "3 nights × 1 room × €120 per room per night", "600 km × €0.15 per km". */
+export function lineFormula(l: BudgetLine, fmt: (n: number) => string): string | undefined {
+  if (!l.qty || !l.price) return undefined
+  const parts = [`${l.qty} ${unitFor(l.qty, l.unit)}`.trim()]
+  if (l.per === 'person') parts.push(`${l.count ?? 1} ${(l.count ?? 1) === 1 ? 'person' : 'people'}`)
+  if (l.per === 'room') parts.push(plural(l.count ?? 1, 'room'))
+  return `${parts.join(' × ')} × ${fmt(l.price)} ${perPhrase(l.unit, l.per)}`.trim()
+}
+
+/**
+ * Lines from earlier estimates counted "person-days" (8.4 of them, with children at 60%) or a price per night for all rooms
+ * together, which didn't read as a sum. They become "days × people × price per person" and "nights × rooms × price per room",
+ * keeping the amount.
+ */
+export function modernLine(l: BudgetLine, trip: Trip): BudgetLine {
+  if (l.per || !l.qty || !l.price) return l
+  const p = party(trip)
+  const unit = (l.unit ?? '').toLowerCase()
+  const amount = lineAmount(l)
+  const label = l.label.replace(/\s*\((\d+ adults?( \+ \d+ child(ren)?)?|\d+ rooms?)\)/, '')
+  const two = (n: number) => Math.round(n * 100) / 100
+  if (unit === 'person-days') return { ...l, label, qty: p.days, unit: 'days', per: 'person', count: p.travellers, price: two(amount / (p.days * p.travellers)), amount }
+  if (/^travellers?$/.test(unit)) return { ...l, label: 'Flights, return', qty: 1, unit: 'return flight', per: 'person', count: l.qty, price: l.price, amount }
+  if (l.category === 'stays' && /^nights?$/.test(unit)) return { ...l, label, per: 'room', count: p.rooms, price: two(amount / (l.qty * p.rooms)), amount }
+  if (/^moves?$/.test(unit)) return { ...l, label, per: 'person', count: p.travellers, price: two(amount / (l.qty * p.travellers)), amount }
+  return l
+}
 
 /** Category totals for a trip: lines win where a category has them, manual amounts stay for the others. */
 export function budgetFromLines(lines: BudgetLine[], previous: Trip['budget'], previousLines: BudgetLine[] = []): Trip['budget'] {

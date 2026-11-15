@@ -278,7 +278,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
                 <input value={it.bookingRef ?? ''} onChange={(e) => set('bookingRef', e.target.value)} />
               </label>
               <label>
-                Cost
+                Cost (total for everyone)
                 <div className="row">
                   <input
                     type="number"
