@@ -3,7 +3,8 @@
 
 import type { BudgetCategory, BudgetLevel, BudgetLine, Day, Item, Trip } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
-import { daysBetween } from './dates'
+import { daysBetween, hhmmToMin } from './dates'
+import { cityIn } from './cities'
 import { haversineM, type LatLon } from './geo'
 import { fxRate } from './apis'
 import { db } from '../db'
@@ -365,7 +366,8 @@ export const FUEL_EUR_PER_KM = 0.13
 const MAX_DRIVE_M = 1000_000
 
 export function fuelEstimate(items: Item[], days: Day[]): { km: number; route: string[] } | undefined {
-  const car = items.filter((i) => (i.kind === 'car' || i.kind === 'drive') && i.status !== 'skipped').map((i) => i.date).sort()
+  const drives = items.filter((i) => (i.kind === 'car' || i.kind === 'drive') && i.status !== 'skipped')
+  const car = drives.map((i) => i.date).sort()
   if (!car.length) return undefined
   const [from, to] = [car[0], car[car.length - 1]]
   // From where you pick the car up: the place you slept the night before the first car day.
@@ -378,8 +380,7 @@ export function fuelEstimate(items: Item[], days: Day[]): { km: number; route: s
     if (!last || last.lat !== d.lat || last.lon !== d.lon) route.push({ name: d.city ?? '?', lat: d.lat!, lon: d.lon!, date: d.date })
   }
   // Only the hops you drive: not one you fly or sail (Sydney → Santiago the day before picking up the car), nor one
-  // too far to drive between two nights.
-  // A flight or boat on the first night's day counts only when it leaves from there (landing there is how you arrived).
+  // too far to drive between two nights. A flight or boat on the first night's day counts only when it leaves from there.
   const near = (p: { lat?: number; lon?: number } | undefined, q: LatLon) => p?.lat != null && p.lon != null && haversineM({ lat: p.lat, lon: p.lon }, q) < 100_000
   const crossed = (a: (typeof route)[number], b: (typeof route)[number]) =>
     items.some(
@@ -390,14 +391,46 @@ export function fuelEstimate(items: Item[], days: Day[]): { km: number; route: s
         (i.date > a.date || (i.date === a.date && i.to?.lat != null && !near(i.to, a))),
     )
   let m = 0
-  const driven = new Set<number>()
+  const chains: { date: string; names: string[] }[] = []
+  let chain: string[] = []
+  let chainDate = ''
+  const arrived = new Set<string>() // days reached by a counted hop
   for (let k = 1; k < route.length; k++) {
     const hop = haversineM(route[k - 1], route[k])
-    if (hop > MAX_DRIVE_M || crossed(route[k - 1], route[k])) continue
+    if (hop > MAX_DRIVE_M || crossed(route[k - 1], route[k])) {
+      if (chain.length) chains.push({ date: chainDate, names: chain })
+      chain = []
+      continue
+    }
     m += hop * 1.3
-    driven.add(k - 1).add(k)
+    arrived.add(route[k].date)
+    if (!chain.length) {
+      chain.push(route[k - 1].name)
+      chainDate = route[k].date
+    }
+    chain.push(route[k].name)
+  }
+  if (chain.length) chains.push({ date: chainDate, names: chain })
+  // On the days no counted hop reaches (you flew in, then drove on; or drove back to the airport), the drives themselves
+  // count: by their places when known, else by their driving time at about 70 km/h.
+  const placeOf = (p?: { name: string; lat?: number; lon?: number }) => {
+    if (!p) return undefined
+    if (p.lat != null && p.lon != null) return { lat: p.lat, lon: p.lon }
+    const c = cityIn(p.name)
+    if (c) return { lat: c.lat, lon: c.lon }
+    const base = (d: Day) => (d.city ?? '').split(/\s*[(/]/)[0].trim().toLowerCase()
+    const d = sorted.find((x) => base(x).length > 3 && p.name.toLowerCase().includes(base(x)))
+    return d ? { lat: d.lat!, lon: d.lon! } : undefined
+  }
+  for (const i of drives.filter((x) => x.kind === 'drive' && x.date >= from && x.date <= to && !arrived.has(x.date))) {
+    const a = placeOf(i.from)
+    const b = placeOf(i.to)
+    const hours = i.startTime && i.endTime ? (hhmmToMin(i.endTime) - hhmmToMin(i.startTime)) / 60 : 0
+    const km = a && b ? (haversineM(a, b) * 1.3) / 1000 : hours > 0 ? hours * 70 : 0
+    if (!km) continue
+    m += km * 1000
+    chains.push({ date: i.date, names: [i.from?.name ?? '?', i.to?.name ?? '?'] })
   }
   const carDays = daysBetween(from, to) + 1
-  const names = route.filter((_, k) => driven.has(k) || (route.length === 1 && k === 0)).map((r) => r.name)
-  return { km: Math.round(m / 1000 + carDays * 30), route: names }
+  return { km: Math.round(m / 1000 + carDays * 30), route: chains.sort((x, y) => x.date.localeCompare(y.date)).map((c) => c.names.join(' → ')) }
 }

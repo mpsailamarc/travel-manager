@@ -342,7 +342,7 @@ export default function BudgetPage() {
                             <tr key="fuel" className="budget-line">
                               <td style={{ paddingLeft: 14 }}>
                                 <span className="small">⛽ Fuel for your drives</span>{' '}
-                                <span className="tiny muted">· {fuel.route.join(' → ')}, plus local driving</span>
+                                <span className="tiny muted">· {fuel.route.join(' · ')}, plus local driving</span>
                                 <div className="row wrap" style={{ gap: 4, marginTop: 4 }}>
                                   <input
                                     type="number"

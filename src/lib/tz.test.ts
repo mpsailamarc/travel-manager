@@ -67,3 +67,13 @@ describe('flying Sydney → Santiago and driving the next morning', () => {
     expect(buildDayView([drive], '2027-01-02', c).entries[0]).toMatchObject({ start: 600, end: 630 })
   })
 })
+
+describe('a day out by a border', () => {
+  it('keeps the zone of the days around it (El Tatio, next to Bolivia, is on Chile time)', async () => {
+    const { zoneOfDate } = await import('./tz')
+    const t = { id: 'C', startDate: '2027-02-04', endDate: '2027-02-06', countryCodes: ['CL'] } as Trip
+    const d = (date: string, city: string, lat: number, lon: number) => ({ id: date, tripId: 'C', date, city, lat, lon })
+    const ds = [d('2027-02-04', 'San Pedro de Atacama', -22.9083, -68.1994), d('2027-02-05', 'El Tatio', -22.337, -68.01), d('2027-02-06', 'San Pedro de Atacama', -22.9083, -68.1994)]
+    expect(zoneOfDate('2027-02-05', { trip: t, days: ds })).toBe('America/Santiago')
+  })
+})

@@ -8,6 +8,8 @@ import { matchesPlace } from './duplicates'
 import { openingWindow } from './hours'
 import { cityIn, trustedPlace } from './cities'
 import { DEFAULT_WALK_MAX_MIN, getAroundFor, planLeg } from './legs'
+import { sunClock } from './sun'
+import { tzAt, zoneOfDate } from './tz'
 import { addDays, hhmmToMin, minToHHMM, today } from './dates'
 import { centroid, haversineM, type LatLon } from './geo'
 import { uid } from './ids'
@@ -369,6 +371,22 @@ function hoursOf(x: { title: string; kind?: string; category?: string; hours?: s
   return w === 'closed' ? { open: 0, close: 0 } : w ? { open: w.open, close: w.close } : {}
 }
 
+/**
+ * When something about the sun should start: sunset things so they end half an hour after the sun goes down, sunrise
+ * things half an hour before it comes up (at the place, else the day's city).
+ */
+function sunAt(m: Pick<Movable, 'name' | 'lat' | 'lon' | 'visitMin'>, ctx: Pick<DayContext, 'trip' | 'date' | 'day' | 'days'>): number | undefined {
+  const sunset = /sunset|golden hour|puesta de sol|atardecer/i.test(m.name)
+  const sunrise = !sunset && /sunrise|dawn|amanecer/i.test(m.name)
+  if (!sunset && !sunrise) return undefined
+  const lat = m.lat ?? ctx.day?.lat
+  const lon = m.lon ?? ctx.day?.lon
+  const tz = zoneOfDate(ctx.date, { trip: ctx.trip, days: ctx.days }) ?? tzAt(lat, lon)
+  const sun = lat != null && lon != null && tz ? sunClock(ctx.date, lat, lon, tz) : undefined
+  if (!sun) return undefined
+  return Math.max(0, sunset ? sun.set + 30 - m.visitMin : sun.rise - 30)
+}
+
 /** Lunch or dinner time for a meal, from its name or the time it was given; breakfast and snacks have none. */
 function mealTime(title: string, start?: string): number | undefined {
   if (/dinner|supper|evening/i.test(title)) return 19 * 60
@@ -433,6 +451,7 @@ function guessMin(a: LatLon, b: LatLon, pref: GetAround, walkMax: number, speedK
  */
 export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: Movable[]): Promise<DayPlan> {
   const { trip, date, city, day, items, settings } = ctx
+  movable = movable.map((m) => (m.mealAt != null ? m : { ...m, mealAt: sunAt(m, ctx) }))
   const pref = getAroundFor(day, settings, items, date)
   const walkMax = settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN
   const speed = settings.walkSpeedKmh
@@ -611,13 +630,14 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
     }
   }
 
-  // One running order. Meals go in at their time of day (lunch around noon, dinner in the evening): a meal with a place
-  // keeps the stretch it was given but moves to that time; a meal with no place just slots in. Other place-less things go last.
-  const timedMeals = new Set(stretches.flatMap((st) => st.seq.filter((x) => x.meal && x.mealAt != null).map((x) => x.key)))
+  // One running order. Meals go in at their time of day (lunch around noon, dinner in the evening), and sunset or sunrise
+  // things at theirs: one with a place keeps the stretch it was given but moves to that time; one with no place just slots
+  // in. Other place-less things go last.
+  const timedMeals = new Set(stretches.flatMap((st) => st.seq.filter((x) => x.mealAt != null).map((x) => x.key)))
   const order: Movable[] = stretches.flatMap((st) => st.seq.filter((x) => !timedMeals.has(x.key)))
   const noPlace = movable.filter((m) => m.lat == null || m.lon == null)
-  const placelessMeals = noPlace.filter((m) => m.meal).map((m, k) => ({ ...m, mealAt: m.mealAt ?? (k === 0 ? 12 * 60 : k === 1 ? 19 * 60 : undefined) }))
-  const rest = noPlace.filter((m) => !m.meal)
+  const placelessMeals = noPlace.filter((m) => m.meal || m.mealAt != null).map((m, k) => ({ ...m, mealAt: m.mealAt ?? (m.meal ? (k === 0 ? 12 * 60 : k === 1 ? 19 * 60 : undefined) : undefined) }))
+  const rest = noPlace.filter((m) => !m.meal && m.mealAt == null)
   const guessStart = (n: number) => {
     // When the n-th stop of `order` would start, roughly.
     let t = from.t
@@ -734,7 +754,8 @@ export async function proposeDay(tripId: string, date: string, settings: Setting
   const moved = new Map(transfers.map((t) => [t.item.id, t.startTime]))
   const dayItems = items.filter((i) => i.date === date && i.status !== 'skipped').map((i) => (moved.has(i.id) ? { ...i, startTime: moved.get(i.id)!, endTime: undefined } : i))
   // onlyUntimed: give times to what has none, leaving everything already timed where it is (the itinerary's own times).
-  const movableItems = dayItems.filter((i) => isMovable(i) && (!opts.onlyUntimed || !i.startTime))
+  // A note without a time ("Checklist: arrival papers") stays a note for the day: it isn't given a time.
+  const movableItems = dayItems.filter((i) => isMovable(i) && !(i.kind === 'note' && !i.startTime) && (!opts.onlyUntimed || !i.startTime))
   if (!movableItems.length && !transfers.length) return undefined
   const ids = new Set(movableItems.map((i) => i.id))
   const cityDays = city ? cityDates(days, city) : []
@@ -763,7 +784,7 @@ export async function proposeDay(tripId: string, date: string, settings: Setting
 }
 
 /** Activities, meals, walks and notes on the day that can be planned but have no time yet. */
-export const untimedItems = (items: Item[], date: string) => items.filter((i) => i.date === date && isMovable(i) && !i.startTime)
+export const untimedItems = (items: Item[], date: string) => items.filter((i) => i.date === date && isMovable(i) && !i.startTime && i.kind !== 'note')
 
 /** "Fit them into the day": times for what has none on that day, around everything that already has a time. */
 export async function fillUntimed(tripId: string, date: string, settings: Settings): Promise<number> {
@@ -1097,6 +1118,33 @@ async function reconcileNow(tripId: string): Promise<string[]> {
   })
   if (fixedPlaces.length) await db.items.bulkUpdate(fixedPlaces)
 
+  // Two slips from chatbot itineraries, repaired once: a note that was given a time by the planner goes back to being a
+  // note for the day; and a drive (or bus, train, taxi) written as lasting the whole outing ("Drive to Laguna Chaxa,
+  // 08:00–12:00" around the 09:00 visit there) ends when the visit at its destination starts.
+  const timeFixes: { key: string; changes: Partial<Item> }[] = []
+  for (const it of items) {
+    if (it.kind === 'note' && it.autoTime && it.startTime) timeFixes.push({ key: it.id, changes: { startTime: undefined, endTime: undefined, autoTime: undefined, legIn: undefined } })
+    if (!['drive', 'bus', 'train', 'taxi'].includes(it.kind) || it.status === 'booked' || it.locked || !it.startTime || !it.endTime || it.to?.lat == null || it.to.lon == null) continue
+    const [s, e] = [hhmmToMin(it.startTime), hhmmToMin(it.endTime)]
+    const there = items
+      .filter((o) => o.date === it.date && o.id !== it.id && o.startTime && !JOURNEYS.has(o.kind) && o.kind !== 'taxi' && o.kind !== 'stay' && o.status !== 'skipped')
+      .filter((o) => o.location?.lat != null && o.location.lon != null && haversineM(o.location as LatLon, it.to as LatLon) < 10_000)
+      .map((o) => hhmmToMin(o.startTime!))
+      .filter((t) => t >= s + 15 && t < e)
+    if (there.length) timeFixes.push({ key: it.id, changes: { endTime: minToHHMM(Math.min(...there)) } })
+  }
+  // A sunset (or sunrise) outing the planner timed before it knew when the sun sets is fitted again, at sunset.
+  const sunDates = new Set<string>()
+  for (const it of items) {
+    if (!it.autoTime || !it.startTime || !isMovable(it)) continue
+    const want = sunAt(ownMovable(it, favs), { trip, date: it.date, day: days.find((d) => d.date === it.date), days })
+    if (want != null && Math.abs(hhmmToMin(it.startTime) - want) > 90) {
+      timeFixes.push({ key: it.id, changes: { startTime: undefined, endTime: undefined, legIn: undefined } })
+      sunDates.add(it.date)
+    }
+  }
+  if (timeFixes.length) await db.items.bulkUpdate(timeFixes)
+
   // Planner items you have acted on are yours from now on.
   const touched = items.filter((i) => i.planner && i.favId && !ACTIVE.has(i.status)).map((i) => i.id)
 
@@ -1156,7 +1204,7 @@ async function reconcileNow(tripId: string): Promise<string[]> {
     if (!has) markDirty(f.city, f.date)
   }
 
-  const wrote = favChanges.size > 0 || remove.size > 0 || touched.length > 0
+  const wrote = favChanges.size > 0 || remove.size > 0 || touched.length > 0 || timeFixes.length > 0
   if (favChanges.size || remove.size) {
     await db.transaction('rw', [db.favorites, db.items], async () => {
       if (favChanges.size) await db.favorites.bulkUpdate([...favChanges].map(([key, changes]) => ({ key, changes })))
@@ -1164,6 +1212,10 @@ async function reconcileNow(tripId: string): Promise<string[]> {
     })
   }
   if (touched.length) await adoptPlannerItems(touched)
+  if (sunDates.size) {
+    const settings = await getSettings()
+    for (const date of sunDates) await fillUntimed(tripId, date, settings)
+  }
   if (dirty.size) {
     const settings = await getSettings()
     for (const { city, dates } of dirty.values()) await rebuildCityPlan(trip, city, [...dates].filter((d) => cityDays(city).has(d)), settings)

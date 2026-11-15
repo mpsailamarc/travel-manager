@@ -81,12 +81,22 @@ export const isTransportKind = (k: string) => TRANSPORT.has(k)
 
 const dayZone = (d?: Day) => d?.tz ?? tzAt(d?.lat, d?.lon)
 
-/** The zone of a trip day: its own city, else the closest day with a location, else the country's capital. */
+/**
+ * The zone of a trip day: its own city, else the closest day with a location, else the country's capital. A day out near
+ * a border (El Tatio, by Bolivia) whose spot falls in the neighbour's zone keeps the zone of the days around it.
+ */
 export function zoneOfDate(date: ISODate, ctx: ZoneCtx): string | undefined {
   const sorted = [...ctx.days].sort((a, b) => a.date.localeCompare(b.date))
-  const own = dayZone(sorted.find((d) => d.date === date))
-  if (own) return own
+  const day = sorted.find((d) => d.date === date)
+  const own = dayZone(day)
   const before = [...sorted].reverse().find((d) => d.date < date && dayZone(d))
+  if (own && !day?.tz && day?.lat != null && day.lon != null) {
+    const after = sorted.find((d) => d.date > date && dayZone(d))
+    const around = before && after && dayZone(before) === dayZone(after) ? dayZone(before) : undefined
+    const close = [before, after].some((d) => d?.lat != null && d.lon != null && haversineM({ lat: d.lat, lon: d.lon }, { lat: day.lat!, lon: day.lon! }) < 150_000)
+    if (around && around !== own && close) return around
+  }
+  if (own) return own
   if (before) return dayZone(before)
   const after = sorted.find((d) => d.date > date && dayZone(d))
   if (after) return dayZone(after)
@@ -109,7 +119,7 @@ export function itemZones(it: Pick<Item, 'kind' | 'date' | 'from' | 'to' | 'from
   const longHaul = it.kind === 'flight' || it.kind === 'ferry'
   const prev = [...ctx.days].filter((d) => d.date < it.date && dayZone(d)).sort((a, b) => b.date.localeCompare(a.date))[0]
   const start = ctx.trip.startPlace
-  const inherited = longHaul ? (prev ? dayZone(prev) : it.date <= ctx.trip.startDate ? tzAt(start?.lat, start?.lon) : undefined) : undefined
+  const inherited = longHaul ? (prev ? zoneOfDate(prev.date, ctx) : it.date <= ctx.trip.startDate ? tzAt(start?.lat, start?.lon) : undefined) : undefined
   const autoFrom = tzOfPlace(it.from) ?? inherited ?? autoTo
   return { from: it.fromTz ?? autoFrom, to: it.toTz ?? autoTo, auto: { from: autoFrom, to: autoTo } }
 }

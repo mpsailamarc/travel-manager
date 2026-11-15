@@ -263,3 +263,33 @@ describe('the all-out pace', () => {
     expect(packed - intense).toBe(150)
   })
 })
+
+describe('chatbot itineraries, tidied (from a Chile trip)', () => {
+  it('plans a sunset outing for the evening, not the morning', async () => {
+    const trip = await makeTrip()
+    await addItem(trip, { kind: 'stay', title: 'Hotel', status: 'booked', date: '2027-03-10', nights: 3, location: at(LONDON.hotel) })
+    await addItem(trip, { date: D, title: 'Sunset photography on Primrose Hill', location: { name: 'Primrose Hill', lat: 51.5394, lon: -0.1608 } })
+    await fillUntimed(trip.id, D, SETTINGS)
+    const sunset = (await dayItems(trip, D)).find((i) => /Sunset/.test(i.title))!
+    // London, 11 March: sunset about 18:05, so a 90-minute outing starts around 17:00.
+    expect(mins(sunset.startTime)).toBeGreaterThanOrEqual(16 * 60 + 30)
+    expect(mins(sunset.startTime)).toBeLessThanOrEqual(17 * 60 + 30)
+  })
+
+  it('a note keeps no time, and a drive written around the whole outing ends when the visit there starts', async () => {
+    const { reconcileTrip } = await import('./favorites')
+    const trip = await makeTrip()
+    const note = await addItem(trip, { kind: 'note', date: D, title: 'Checklist: papers', startTime: '23:00', endTime: '23:30', autoTime: true })
+    const drive = await addItem(trip, { kind: 'drive', date: D, title: 'Drive to the Tower', startTime: '08:00', endTime: '12:00', from: { name: 'Hotel' }, to: at(LONDON.tower) })
+    await addItem(trip, { date: D, title: 'Tower of London', startTime: '09:00', endTime: '11:00', location: at(LONDON.tower) })
+    await reconcileTrip(trip.id)
+    expect((await db.items.get(note.id))!.startTime).toBeUndefined()
+    expect((await db.items.get(drive.id))!.endTime).toBe('09:00')
+    expect(await untimedCount(trip)).toBe(0)
+  })
+})
+
+async function untimedCount(trip: { id: string }) {
+  const { untimedItems } = await import('./favorites')
+  return untimedItems(await db.items.where('tripId').equals(trip.id).toArray(), D).length
+}

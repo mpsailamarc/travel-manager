@@ -162,7 +162,7 @@ describe('fuel when there is a car', () => {
       { id: 'd', kind: 'drive', title: 'Drive back to Athens', date: '2027-07-18', status: 'planned' },
     ] as never[]
     const f = fuelEstimate(car, days)!
-    expect(f.route).toEqual(['Athens', 'Nafplio', 'Athens']) // picked up where you slept the night before
+    expect(f.route).toEqual(['Athens → Nafplio → Athens']) // picked up where you slept the night before
     // 2 × ~92 km straight × 1.3 + 3 days × 30 km of local driving
     expect(f.km).toBeGreaterThan(300)
     expect(f.km).toBeLessThan(350)
@@ -181,8 +181,21 @@ describe('fuel when there is a car', () => {
     for (const items of [[flight, ...car], car]) {
       // With the flight in the plan, or without it (too far to be a drive either way): Santiago → Valparaíso only.
       const f = fuelEstimate(items as never[], days)!
-      expect(f.route).toEqual(['Santiago', 'Valparaíso'])
+      expect(f.route).toEqual(['Santiago → Valparaíso'])
       expect(f.km).toBeLessThan(250)
     }
+  })
+
+  it('counts the drives on a day you flew in, by their time when their places are unknown', async () => {
+    const { fuelEstimate } = await import('./budget')
+    const day = (date: string, city: string, lat: number, lon: number) => ({ id: date, tripId: 't', date, city, lat, lon })
+    const days = [day('2027-01-01', 'Santiago', -33.4489, -70.6693), day('2027-01-02', 'San Pedro de Atacama', -22.9083, -68.1994)]
+    const items = [
+      { id: 'f', kind: 'flight', title: 'Santiago → Calama', date: '2027-01-02', status: 'booked', to: { name: 'Calama (CJC)' } },
+      { id: 'd', kind: 'drive', title: 'Drive to San Pedro', date: '2027-01-02', status: 'planned', startTime: '09:00', endTime: '10:30', from: { name: 'Calama (CJC)' }, to: { name: 'San Pedro de Atacama' } },
+    ]
+    const f = fuelEstimate(items as never[], days)!
+    expect(f.route).toEqual(['Calama (CJC) → San Pedro de Atacama'])
+    expect(f.km).toBe(Math.round(1.5 * 70 + 30)) // 1 h 30 at about 70 km/h, plus a day of local driving
   })
 })
