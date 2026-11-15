@@ -101,9 +101,13 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   changes too) and your own lines for the rest (meals, local transport…). A figure typed for a category is its total: what the plan's
   prices don't use of it shows as "Rest of the budget you set". The estimate doesn't count what the plan already prices.
 - **Budget by type**: a bar per category (longest first): the pale track is the budget, the solid part what's spent, red past the budget.
-- **The budget follows the trip**: change the number of travellers or the dates in Trip details and the budget follows: the estimate's
-  lines (per person per day, flights, nights and rooms, moves) and its "How this was estimated" note, figures from an itinerary idea, and
-  the estimated (not booked) prices of plan items (fares per traveller, tickets and meals per person, hotels per room). Booked prices stay.
+- **Who is travelling lives in the Budget tab** (👥 at the top): add or remove adults and children there and every cost that depends on
+  it follows: per-person lines, rooms, fares and other estimated plan prices (booked prices stay). Trip details only shows it.
+- **The budget follows the trip details**: other dates, budget level or destination in Trip details and the estimate's lines, its
+  note, figures from an itinerary idea and estimated plan prices follow (levels scale prices, flights by less).
+- **The itinerary knows what it was made for**: change the dates, destination, pace, budget level, interests or start/end after
+  choosing an itinerary and the Plan says what changed, with "✨ New itinerary ideas" (fresh ideas for the trip as it is now; with
+  ChatGPT set up the first one is asked for straight away) or "Keep this plan".
 - **No "Estimate for me" button**: a trip with no budget starts from the estimate on its own; "↻ Start the estimate again" is under
   "How this was estimated". Categories open folded, totals first.
 - **Home as the default start**: Settings → Home city or usual airport. New trips, and trips with no start set, start and end there.

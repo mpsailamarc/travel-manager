@@ -98,6 +98,13 @@ export function StartEndFields({ value, onChange }: { value: Pick<Trip, 'startPl
   )
 }
 
+/** "2 adults + 1 child (8)" */
+export function travellersText(ts: Traveller[]) {
+  const adults = ts.filter((x) => x.type === 'adult').length
+  const kids = ts.filter((x) => x.type === 'child')
+  return `${adults} adult${adults === 1 ? '' : 's'}${kids.length ? ` + ${kids.length} ${kids.length === 1 ? 'child' : 'children'}${kids.some((k) => k.age != null) ? ` (${kids.map((k) => k.age ?? '?').join(', ')})` : ''}` : ''}`
+}
+
 export function TravellersEditor({ value, onChange }: { value: Traveller[]; onChange: (v: Traveller[]) => void }) {
   const update = (id: string, patch: Partial<Traveller>) => onChange(value.map((t) => (t.id === id ? { ...t, ...patch } : t)))
   return (
@@ -198,7 +205,9 @@ export function TripFields({ value: t, onChange }: { value: Trip; onChange: (t: 
       </label>
       <StartEndFields value={t} onChange={(v) => onChange({ ...t, ...v })} />
       <label>Travellers</label>
-      <TravellersEditor value={t.travellers} onChange={(v) => set('travellers', v)} />
+      <p className="small" style={{ margin: 0 }}>
+        👥 {travellersText(t.travellers)} · <span className="muted">change who is travelling in the Budget tab, where the costs follow.</span>
+      </p>
       <label>Pace</label>
       <ChoiceGrid options={STYLES} value={t.style} onChange={(v) => set('style', v)} />
       <label>Budget level</label>

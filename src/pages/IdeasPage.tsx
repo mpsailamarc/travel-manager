@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { applyBookings, applyPlan, applyTemplate, bookingPrompt, CHATBOTS, detailPrompt, mergeDetail, nextOptionPrompt, outlinePrompt, parseBookings, parseDetail, parsePlan, type AiOption } from '../lib/ai'
 import { refreshChecklist } from '../lib/checklist'
 import { BUDGET_LABELS } from '../lib/budget'
@@ -51,11 +51,29 @@ function Steps() {
   )
 }
 
-export function PromptBox({ prompt, history, onAnswer }: { prompt: string; history?: { prompt: string; reply: string }[]; onAnswer?: (text: string) => void }) {
+export function PromptBox({
+  prompt,
+  history,
+  onAnswer,
+  autoAsk,
+}: {
+  prompt: string
+  history?: { prompt: string; reply: string }[]
+  onAnswer?: (text: string) => void
+  autoAsk?: boolean // ask ChatGPT at once (when it's set up), e.g. for new ideas after the trip changed
+}) {
   const cfg = useAiConfig()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const api = aiReady(cfg) && !!onAnswer
+  const asked = useRef(false)
+  useEffect(() => {
+    if (autoAsk && api && !asked.current) {
+      asked.current = true
+      void ask()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoAsk, api])
 
   async function ask() {
     setBusy(true)
@@ -209,6 +227,20 @@ function ItineraryIdeas() {
     localStorage.removeItem(storeKey)
   }
 
+  // Coming from "New itinerary ideas" (the trip changed): the old answers were for the old trip, so they go; with ChatGPT
+  // set up, the first option is asked for straight away.
+  const [params, setParams] = useSearchParams()
+  const [freshAsk, setFreshAsk] = useState(false)
+  useEffect(() => {
+    if (params.get('fresh') !== '1') return
+    setReplies([])
+    setChosen(undefined)
+    localStorage.removeItem(storeKey)
+    setParams({}, { replace: true })
+    setFreshAsk(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
+
   async function use(o: AiOption) {
     if (items.length && replace && !confirm(`Replace the ${items.length} items currently in your plan with "${o.title}"?`)) return
     await applyPlan(trip, o, settings.homeCurrency, replace)
@@ -270,7 +302,12 @@ function ItineraryIdeas() {
                 <b>Option {r.n} ·</b> {api ? 'ask for another option' : <>copy this follow-up into the <b>same chat</b> and paste the answer below</>} — or skip it and pick from the options you have.
               </div>
             )}
-            <PromptBox prompt={r.prompt} history={rounds.slice(0, i).map((x) => ({ prompt: x.prompt, reply: x.text }))} onAnswer={(t) => setReply(i, t)} />
+            <PromptBox
+              prompt={r.prompt}
+              history={rounds.slice(0, i).map((x) => ({ prompt: x.prompt, reply: x.text }))}
+              onAnswer={(t) => setReply(i, t)}
+              autoAsk={i === 0 && freshAsk && !r.text}
+            />
             <AnswerBox label={i === 0 ? "Paste the chatbot's answer" : `Answer for option ${r.n}`} value={r.text} onChange={(t) => setReply(i, t)} minHeight={90} placeholder={'```json\n{ "option": { … } }\n```'} />
             {r.error && <div className="notice error">{r.error}</div>}
           </div>

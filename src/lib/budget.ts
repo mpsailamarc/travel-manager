@@ -5,6 +5,7 @@ import type { BudgetCategory, BudgetLevel, BudgetLine, Item, Trip } from '../typ
 import { BUDGET_CATEGORIES } from '../types'
 import { daysBetween } from './dates'
 import { fxRate } from './apis'
+import { db } from '../db'
 import { country } from './countries'
 import { money, plural } from './format'
 import { uid } from './ids'
@@ -135,6 +136,8 @@ function party(trip: Trip) {
     rooms,
     roomFactor: rooms + kids * 0.2,
     group: `${plural(adults, 'adult')}${kids ? ` + ${plural(kids, 'child', 'children')}` : ''}`,
+    lvl: LEVEL[trip.budgetLevel] ?? 1,
+    idx: trip.countryCodes.length ? trip.countryCodes.reduce((s, c) => s + (COST_INDEX[c] ?? 0.9), 0) / trip.countryCodes.length : 1,
   }
 }
 
@@ -146,8 +149,11 @@ function party(trip: Trip) {
 export function adjustLinesToTrip(lines: BudgetLine[], before: Trip, after: Trip): BudgetLine[] {
   const a = party(before)
   const b = party(after)
-  if (a.days === b.days && a.adults === b.adults && a.kids === b.kids) return lines
+  if (a.days === b.days && a.adults === b.adults && a.kids === b.kids && a.lvl === b.lvl && a.idx === b.idx) return lines
   const round1 = (n: number) => Math.round(n * 10) / 10
+  // Another budget level or destination: prices follow its level (flights by its square root, as estimated) and local costs.
+  const cost = (l: BudgetLine) => (l.category === 'flights' ? Math.sqrt(b.lvl / a.lvl) : (b.lvl / a.lvl) * (b.idx / a.idx))
+  lines = lines.map((l) => (l.qty && l.price && cost(l) !== 1 ? { ...l, price: Math.round(l.price * cost(l) * 100) / 100 } : l))
   const avgA = (w: number) => (a.adults + a.kids * w) / a.travellers
   const avgB = (w: number) => (b.adults + b.kids * w) / b.travellers
   return lines.map((l) => {
@@ -223,15 +229,31 @@ export function scaleCostsForGroup(items: Item[], before: Trip, after: Trip): { 
 export function adjustPlanBudgetToTrip(budget: Trip['budget'], planBudget: Trip['planBudget'], lines: BudgetLine[] | undefined, before: Trip, after: Trip): Trip['budget'] {
   const a = party(before)
   const b = party(after)
-  if (a.days === b.days && a.adults === b.adults && a.kids === b.kids) return budget
+  if (a.days === b.days && a.adults === b.adults && a.kids === b.kids && a.lvl === b.lvl && a.idx === b.idx) return budget
   const out = { ...budget }
   for (const c of planBudget ?? []) {
     if (!out[c] || lines?.some((l) => l.category === c)) continue
     const f =
       c === 'flights' ? b.travellers / a.travellers : c === 'stays' ? (b.roomFactor * b.nights) / (a.roomFactor * a.nights) : (b.people * b.days) / (a.people * a.days)
-    out[c] = Math.round(out[c]! * f)
+    const level = c === 'flights' ? Math.sqrt(b.lvl / a.lvl) : (b.lvl / a.lvl) * (b.idx / a.idx)
+    out[c] = Math.round(out[c]! * f * level)
   }
   return out
+}
+
+/**
+ * After the trip changed (who is travelling, the dates, the budget level, the destination), bring its budget in line: the
+ * estimate's lines and note, figures from an itinerary idea, and the estimated prices of plan items. Returns what changed.
+ */
+export async function syncBudgetToTrip(before: Trip, after: Trip): Promise<{ lines: boolean; prices: number }> {
+  const budgetLines = after.budgetLines ? adjustLinesToTrip(after.budgetLines, before, after) : undefined
+  const linesChanged = !!budgetLines && budgetLines !== after.budgetLines
+  const budget = adjustPlanBudgetToTrip(linesChanged ? budgetFromLines(budgetLines!, after.budget, after.budgetLines) : after.budget, after.planBudget, budgetLines, before, after)
+  const budgetBasis = linesChanged ? adjustBasisToTrip(after.budgetBasis, after) : after.budgetBasis
+  const prices = scaleCostsForGroup(await db.items.where('tripId').equals(after.id).toArray(), before, after)
+  if (linesChanged || budget !== after.budget) await db.trips.update(after.id, { budgetLines, budget, budgetBasis })
+  if (prices.length) await db.items.bulkUpdate(prices.map((p) => ({ key: p.id, changes: { cost: p.cost } })))
+  return { lines: linesChanged || budget !== after.budget, prices: prices.length }
 }
 
 /** "per night", "per person per day", "each": what a unit price is for, so "A$263" is never a mystery. */

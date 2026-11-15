@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, touchTrip } from '../db'
-import type { BudgetCategory, BudgetLine, Expense, ItemKind } from '../types'
+import type { BudgetCategory, BudgetLine, Expense, ItemKind, Trip } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
-import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines, inferAssumption, lineAmount, lineFormula, modernLine, unitFor } from '../lib/budget'
+import { BUDGET_LABELS, budgetFromLines, estimateBudgetLines, inferAssumption, lineAmount, lineFormula, modernLine, syncBudgetToTrip, unitFor } from '../lib/budget'
 import { fxRate } from '../lib/apis'
 import { country } from '../lib/countries'
 import { daysBetween, formatDate, today } from '../lib/dates'
@@ -15,6 +15,7 @@ import { uid } from '../lib/ids'
 import { QuickExpense } from '../components/QuickExpense'
 import { ExpenseEditor } from '../components/ExpenseEditor'
 import { useTripCtx } from './TripLayout'
+import { TravellersEditor, travellersText } from './TripFields'
 
 const KIND_TO_CATEGORY: Record<ItemKind, BudgetCategory> = {
   flight: 'flights',
@@ -187,6 +188,8 @@ export default function BudgetPage() {
           warn={totalBudget > 0 && totalSpent > totalBudget}
         />
       </div>
+
+      <WhoIsTravelling trip={trip} />
 
       <BudgetBars
         rows={BUDGET_CATEGORIES.map((c) => ({ c, budget: catTotal(c), spent: spent[c] })).filter((r) => r.budget > 0 || r.spent > 0)}
@@ -631,6 +634,34 @@ function BudgetBars({ rows, home }: { rows: { c: BudgetCategory; budget: number;
           )
         })}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Who is travelling is set here, next to what it costs: change it and the per-person lines, rooms, fares and other
+ * estimated prices follow straight away (booked prices stay as they are).
+ */
+function WhoIsTravelling({ trip }: { trip: Trip }) {
+  const [open, setOpen] = useState(false)
+  async function change(travellers: Trip['travellers']) {
+    const after = { ...trip, travellers }
+    await db.trips.update(trip.id, { travellers })
+    const r = await syncBudgetToTrip(trip, after)
+    await touchTrip(trip.id)
+    if (r.lines || r.prices) toast(`Budget updated for ${travellersText(travellers)}${r.prices ? ` · ${r.prices} estimated price${r.prices > 1 ? 's' : ''} in the plan too` : ''}`)
+  }
+  return (
+    <div className="card tight stack" style={{ gap: 8 }}>
+      <div className="row between wrap">
+        <span>
+          👥 <b>{travellersText(trip.travellers)}</b>
+        </span>
+        <button className="btn-sm" onClick={() => setOpen((o) => !o)}>
+          {open ? 'Done' : 'Change who is travelling'}
+        </button>
+      </div>
+      {open && <TravellersEditor value={trip.travellers} onChange={change} />}
     </div>
   )
 }

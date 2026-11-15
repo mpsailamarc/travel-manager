@@ -2,6 +2,7 @@
 // then paste the JSON answer back. Responses are validated before anything is saved.
 
 import { z } from 'zod'
+import { planInputs } from './planbasis'
 import { db, touchTrip } from '../db'
 import type { BudgetCategory, Day, Item, ItemKind, Settings, Trip } from '../types'
 import { BUDGET_CATEGORIES, CHECKLIST_CATEGORIES } from '../types'
@@ -449,6 +450,9 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
         .map((c) => ({ id: uid(), tripId: trip.id, title: c.title, category: c.category, ruleId: c.ruleId, done: false, order: order++ })),
     )
   })
+  // Remember what this itinerary was made for, so a later change of dates, pace… can offer new ideas.
+  const now = await db.trips.get(trip.id)
+  if (now) await db.trips.update(trip.id, { planBasis: planInputs(now) })
   await touchTrip(trip.id)
 }
 

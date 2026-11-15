@@ -14,6 +14,7 @@ import LazyMap, { type MapMarker } from '../components/LazyMap'
 import { useAsync, useMapSize, useMediaQuery } from '../lib/hooks'
 import { findDuplicateGroups, markNotDuplicates, mergeGroups, notDuplicates, type DuplicateGroup } from '../lib/duplicates'
 import { KIND_META } from '../components/kinds'
+import { PlanStaleNotice } from '../components/PlanStale'
 import { useTripCtx } from './TripLayout'
 
 export default function PlanPage() {
@@ -263,6 +264,7 @@ export default function PlanPage() {
           </div>
         </div>
 
+        <PlanStaleNotice trip={trip} />
         <DuplicatesNotice tripId={trip.id} items={items} />
 
         {!trip.startPlace?.name && <StartCard tripId={trip.id} />}
