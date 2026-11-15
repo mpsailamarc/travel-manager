@@ -8,6 +8,7 @@ import { addDays, hhmmToMin } from './dates'
 import { country } from './countries'
 import { cityIn, trustedPlace } from './cities'
 import type { Place } from '../types'
+import { haversineM } from './geo'
 
 export function tzAt(lat?: number, lon?: number): string | undefined {
   if (lat == null || lon == null) return undefined
@@ -103,9 +104,13 @@ export function itemZones(it: Pick<Item, 'kind' | 'date' | 'from' | 'to' | 'from
   const here = zoneOfDate(it.date, ctx)
   if (!isTransportKind(it.kind)) return { from: here, to: here, auto: { from: here, to: here } }
   const autoTo = tzOfPlace(it.to) ?? here
+  // Only a flight (or a long boat) may start in the zone you were in before: on the ground you're already where the
+  // day is (a drive the morning after flying in from Sydney is on Santiago time, not Sydney's).
+  const longHaul = it.kind === 'flight' || it.kind === 'ferry'
   const prev = [...ctx.days].filter((d) => d.date < it.date && dayZone(d)).sort((a, b) => b.date.localeCompare(a.date))[0]
   const start = ctx.trip.startPlace
-  const autoFrom = tzOfPlace(it.from) ?? (prev ? dayZone(prev) : it.date <= ctx.trip.startDate ? tzAt(start?.lat, start?.lon) : undefined) ?? autoTo
+  const inherited = longHaul ? (prev ? dayZone(prev) : it.date <= ctx.trip.startDate ? tzAt(start?.lat, start?.lon) : undefined) : undefined
+  const autoFrom = tzOfPlace(it.from) ?? inherited ?? autoTo
   return { from: it.fromTz ?? autoFrom, to: it.toTz ?? autoTo, auto: { from: autoFrom, to: autoTo } }
 }
 
@@ -125,19 +130,36 @@ export function transportSpan(it: Item, ctx: ZoneCtx): TransportSpan | undefined
   const z = itemZones(it, ctx)
   if (!z.from || !z.to) return undefined
   const depUtc = zonedToUtc(it.date, it.startTime, z.from)
-  // The first moment after departure when the arrival clock shows that time: it may be the next day, or even the previous date across the date line.
+  // The first moment after departure when the arrival clock shows that time: it may be the next day, or even the previous
+  // date across the date line — but never quicker than a plane can fly the distance (Sydney → Santiago isn't 4 hours).
+  const shortest = it.kind === 'flight' ? minFlightMs(it, ctx) : 0
   let arrUtc = Infinity
   let arrDate = it.date
   for (const k of [-1, 0, 1, 2]) {
     const date = addDays(it.date, k)
     const t = zonedToUtc(date, it.endTime, z.to)
-    if (t > depUtc && t < arrUtc) {
+    if (t > depUtc + shortest && t < arrUtc) {
       arrUtc = t
       arrDate = date
     }
   }
   if (!isFinite(arrUtc)) return undefined
   return { depUtc, arrUtc, durationMin: Math.round((arrUtc - depUtc) / 60000), fromTz: z.from, toTz: z.to, arrDate, zonesDiffer: z.from !== z.to }
+}
+
+/** The quickest a flight can be: its distance at 950 km/h (zero when an end has no known place). */
+function minFlightMs(it: Item, ctx: ZoneCtx): number {
+  const placeOf = (p?: Pick<Place, 'name' | 'lat' | 'lon'>) => {
+    if (!p) return undefined
+    const q = trustedPlace(p)
+    const c = q.lat == null ? cityIn(q.name) : undefined
+    const lat = q.lat ?? c?.lat
+    const lon = q.lon ?? c?.lon
+    return lat != null && lon != null ? { lat, lon } : undefined
+  }
+  const a = placeOf(it.from) ?? (it.date <= ctx.trip.startDate ? placeOf(ctx.trip.startPlace) : undefined)
+  const b = placeOf(it.to)
+  return a && b ? (haversineM(a, b) / 950_000) * 3_600_000 : 0
 }
 
 /** Travel time of a transport item (zone-aware), else the plain difference between its two clock times. */

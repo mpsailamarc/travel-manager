@@ -45,3 +45,25 @@ describe('time zones', () => {
     expect(d2.entries[0]).toMatchObject({ start: 0, end: 7 * 60, spill: true })
   })
 })
+
+describe('flying Sydney → Santiago and driving the next morning', () => {
+  const chile = { id: 'C', startDate: '2027-01-01', endDate: '2027-01-10', countryCodes: ['CL'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as Trip
+  const cdays = [
+    { id: 'C:1', tripId: 'C', date: '2027-01-01', city: 'Sydney', lat: -33.87, lon: 151.21 },
+    { id: 'C:2', tripId: 'C', date: '2027-01-02', city: 'Santiago', lat: -33.45, lon: -70.67 },
+  ]
+  const c = { trip: chile, days: cdays }
+  const sydSantiago = flight({ tripId: 'C', date: '2027-01-01', startTime: '09:00', endTime: '23:00', from: { name: 'Sydney', lat: -33.94, lon: 151.18 }, to: { name: 'Santiago (SCL)', lat: -33.39, lon: -70.79 } })
+
+  it('never makes the flight quicker than a plane can fly: the 23:00 landing is the same date, 28 hours later', () => {
+    const span = transportSpan(sydSantiago, c)!
+    expect(span.durationMin).toBe(28 * 60) // not the 4 hours the date line would allow
+    expect(span.arrDate).toBe('2027-01-01')
+  })
+
+  it('a drive the next day is on Santiago time, not Sydney time', () => {
+    const drive = { id: 'd', tripId: 'C', date: '2027-01-02', kind: 'drive', title: 'Drive to the airport', status: 'planned', order: 1, startTime: '10:00', endTime: '10:30', from: { name: 'Hotel' }, to: { name: 'Somewhere' } } as Item
+    expect(itemZones(drive, c)).toMatchObject({ from: 'America/Santiago', to: 'America/Santiago' })
+    expect(buildDayView([drive], '2027-01-02', c).entries[0]).toMatchObject({ start: 600, end: 630 })
+  })
+})
