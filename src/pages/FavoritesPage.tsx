@@ -5,7 +5,7 @@ import { db } from '../db'
 import type { Day, Favorite, GetAround, Place } from '../types'
 import { fetchPois, interestOf, interestTier, type Interest, type Poi } from '../lib/apis'
 import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
-import { applyCityPlan, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
+import { applyCityPlan, linkWishlistToPlan, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, isIndoor, planDays, sameCity } from '../lib/favorites'
 import { addDays, dateRange, daysBetween, formatDate, formatDuration, today } from '../lib/dates'
 import { distance, plural } from '../lib/format'
 import { haversineM, type LatLon } from '../lib/geo'
@@ -114,9 +114,12 @@ export default function FavoritesPage() {
     if (!city || !plannable.length) return
     setBusy(true)
     try {
+      // First, places the plan already has are tied to those items (and their days), so they are timed there, not added again.
+      await linkWishlistToPlan(trip.id, city)
+      const fresh = (await db.favorites.where('tripId').equals(trip.id).toArray()).filter((f) => sameCity(f.city, city))
       const capacity = new Map(plannable.map((d) => [d, dayCapacity(trip, items, d)]))
-      const past = cityFavs.filter((f) => f.date && f.date < today())
-      const { assign } = planDays(cityFavs.filter((f) => !past.includes(f)), plannable, capacity)
+      const past = fresh.filter((f) => f.date && f.date < today())
+      const { assign } = planDays(fresh.filter((f) => !past.includes(f)), plannable, capacity)
       await db.favorites.bulkUpdate([...assign].map(([key, date]) => ({ key, changes: { date } })))
       await applyCityPlan(trip, city, plannable, settings)
       const backups = [...assign.values()].filter((d) => !d).length
@@ -311,11 +314,11 @@ export default function FavoritesPage() {
               {dates.length > 0 ? (
                 <>
                   <p className="small muted">
-                    {plural(dates.length, 'day')} here ({dates.map((d) => `day ${dayNo(d)}`).join(', ')}). “Plan my days” groups your wishlist by area, fits your pace and builds a walk per day;
+                    {plural(dates.length, 'day')} here ({dates.map((d) => `day ${dayNo(d)}`).join(', ')}). “Plan my days” groups your wishlist by area, fits your pace and puts it in each day with times, together with what the plan already has that has no time yet;
                     days you pick yourself are kept.
                   </p>
                   <div className="row wrap">
-                    <button className="btn-primary" disabled={!cityFavs.length || busy || !plannable.length} onClick={planMyDays}>
+                    <button className="btn-primary" disabled={busy || !plannable.length} onClick={planMyDays}>
                       {busy ? 'Planning…' : '✨ Plan my days'}
                     </button>
                     <Link className="btn btn-ghost" to="../plan">

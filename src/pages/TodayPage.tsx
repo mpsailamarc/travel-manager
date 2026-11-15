@@ -87,8 +87,8 @@ export default function TodayPage() {
     if (!other) return
     // Swap positions; if both are timed, swap times too so "do this first" just works.
     await db.items.bulkUpdate([
-      { key: it.id, changes: { order: other.order, startTime: other.startTime && it.startTime ? other.startTime : it.startTime } },
-      { key: other.id, changes: { order: it.order, startTime: other.startTime && it.startTime ? it.startTime : other.startTime } },
+      { key: it.id, changes: { order: other.order, startTime: other.startTime && it.startTime ? other.startTime : it.startTime, autoTime: undefined } },
+      { key: other.id, changes: { order: it.order, startTime: other.startTime && it.startTime ? it.startTime : other.startTime, autoTime: undefined } },
     ])
     await adoptPlannerItems([it.id, other.id])
   }
@@ -96,7 +96,7 @@ export default function TodayPage() {
   async function postpone(it: Item) {
     const tomorrow = addDays(it.date, 1)
     if (tomorrow > trip.endDate) return toast('That’s the last day of the trip')
-    await db.items.update(it.id, { date: tomorrow, startTime: undefined })
+    await db.items.update(it.id, { date: tomorrow, startTime: undefined, autoTime: undefined })
     await adoptPlannerItems([it.id])
     toast(`Moved to ${formatDate(tomorrow)}`)
   }
@@ -105,7 +105,8 @@ export default function TodayPage() {
   /** Dragged on the calendar: save the new times. If it now overlaps what follows, offer to push those back. */
   async function moveOnCalendar(it: Item, times: { startTime: string; endTime?: string }) {
     const before = { startTime: it.startTime, endTime: it.endTime }
-    await db.items.update(it.id, { startTime: times.startTime, endTime: times.endTime ?? it.endTime })
+    // Placed by hand: the time is yours now, "Plan my days" leaves it there.
+    await db.items.update(it.id, { startTime: times.startTime, endTime: times.endTime ?? it.endTime, autoTime: undefined })
     await adoptPlannerItems([it.id])
     await touchTrip(trip.id)
     const ripple = planRipple(await db.items.where({ tripId: trip.id, date: it.date }).toArray(), { id: it.id, startTime: times.startTime, endTime: times.endTime }, before)
@@ -113,7 +114,7 @@ export default function TodayPage() {
       toast(`${it.title} now overlaps ${ripple.moves.length} item${ripple.moves.length > 1 ? 's' : ''}`, {
         label: 'Push them back',
         run: async () => {
-          await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.start, endTime: m.end } })))
+          await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.start, endTime: m.end, autoTime: undefined } })))
           await adoptPlannerItems(ripple.moves.map((m) => m.item.id))
           await touchTrip(trip.id)
         },

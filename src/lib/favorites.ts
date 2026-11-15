@@ -217,68 +217,112 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
 
     const cityDays = days.filter((d) => sameCity(d.city, city)).map((d) => d.date).sort()
     const arriving = arrivalTest(city, day, date === cityDays[0])
-    const startTime = day?.walkStartTime ?? firstFreeSlot(dayItems, arriving)
+
+    // The day's own items join in when they have no time yet (the itinerary's "Tower of London") or a time this planner gave them
+    // before; anything you timed yourself, booked, or that is a journey or a stay stays where it is and the rest fits around it.
+    const ownFlex = dayItems.filter((i) => FLEXIBLE.has(i.kind) && ACTIVE.has(i.status) && !i.bookingRef && (!i.startTime || i.autoTime))
+    const ownIds = new Set(ownFlex.map((i) => i.id))
+    const fixedItems = dayItems.filter((i) => !ownIds.has(i.id))
+    const startTime = day?.walkStartTime ?? firstFreeSlot(fixedItems, arriving)
     let order = dayItems.reduce((m, i) => Math.max(m, i.order), -1) + 1
     const geo = mine.filter((f) => f.lat != null && f.lon != null && !isDayTrip(f))
-    const places = geo.map((f) => ({ id: f.id, name: f.name, lat: f.lat!, lon: f.lon!, category: f.category, visitMin: f.visitMin }))
-    if (geo.length) {
+
+    type Stop = { id: string; name: string; lat?: number; lon?: number; visitMin: number; category?: string; fav?: Favorite; own?: Item }
+    const ownLength = (i: Item) => {
+      const linked = favs.find((f) => f.itemId === i.id)
+      if (linked) return linked.visitMin
+      if (i.walk) return Math.round(i.walk.walkS / 60 + i.walk.stops.reduce((a, x) => a + x.visitMin, 0))
+      return i.kind === 'meal' ? 60 : i.kind === 'note' ? 30 : 90
+    }
+    const located: (Stop & LatLon)[] = [
+      ...geo.map((f) => ({ id: f.id, name: f.name, lat: f.lat!, lon: f.lon!, visitMin: f.visitMin, category: f.category, fav: f })),
+      ...ownFlex.flatMap((i) => {
+        const at = i.location?.lat != null && i.location.lon != null ? { lat: i.location.lat, lon: i.location.lon } : i.walk?.stops[0]
+        return at ? [{ id: i.id, name: i.title, lat: at.lat, lon: at.lon, visitMin: ownLength(i), own: i }] : []
+      }),
+    ]
+    const placeless: Stop[] = ownFlex.filter((i) => !located.some((l) => l.own === i)).map((i) => ({ id: i.id, name: i.title, visitMin: ownLength(i), own: i }))
+    const ownUpdates: { key: string; changes: Partial<Item> }[] = []
+
+    if (located.length || placeless.length) {
       const stay = items.find((i) => i.kind === 'stay' && i.date <= date && date < addDays(i.date, i.nights ?? 1) && i.location?.lat != null)
-      const start: Place =
+      const first = located[0]
+      const start: Place | undefined =
         day?.walkStart?.lat != null
           ? day.walkStart
           : stay?.location?.lat != null
             ? { ...stay.location, name: stay.title }
             : day?.lat != null
               ? { name: `${city} centre`, lat: day.lat, lon: day.lon }
-              : { name: geo[0].name, lat: geo[0].lat, lon: geo[0].lon }
-      const s = { lat: start.lat!, lon: start.lon! }
-      const roundTrip = !!day?.walkRoundTrip
-      const stops = optimiseOrder(s, places, roundTrip)
+              : first
+                ? { name: first.name, lat: first.lat, lon: first.lon }
+                : undefined
+      const s = start?.lat != null && start.lon != null ? { lat: start.lat, lon: start.lon } : undefined
+      const roundTrip = !!day?.walkRoundTrip && !!s
       const pref = day?.getAround ?? settings.getAround ?? 'transit'
       const walkMax = settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN
 
       // Time runs through the day: leave the start, travel, visit, travel… and step around anything fixed (booked tickets, lunch).
-      const fixed = fixedWindows(dayItems)
+      const fixed = fixedWindows(fixedItems)
       let t = hhmmToMin(startTime)
-      let prev: LatLon = s
-      let prevName = start.name
+      let prev: LatLon | undefined = s
+      let prevName = start?.name ?? ''
       // Starting after something already planned that morning (and no start place chosen): leave from there, not from the hotel.
       const before = day?.walkStart ? undefined : [...fixed].filter((w) => w.at && w.e <= t).sort((x, y) => y.e - x.e)[0]
       if (before?.at) {
         prev = before.at
         prevName = before.title
       }
-      const slots = await layoutStops(stops, { t, at: prev, name: prevName }, fixed, pref, walkMax, settings.walkSpeedKmh, departureCutoff(dayItems, t, arriving))
+
+      // Places in the best walking order. A meal with no place goes in at lunchtime (where the day reaches noon), a second one
+      // in the evening, anything else without a place at the end; gaps before fixed things are used for whatever fits.
+      const ordered: Stop[] = prev ? optimiseOrder(prev, located, roundTrip) : located
+      const from = { t, at: prev, name: prevName }
+      const cutoff = departureCutoff(fixedItems, t, arriving)
+      const firstPass = ordered.length ? await layoutStops(ordered, from, fixed, pref, walkMax, settings.walkSpeedKmh, cutoff, true) : []
+      const noon = ordered.findIndex((_, n) => (firstPass[n]?.from ?? 0) >= 12 * 60)
+      const lunchAt = noon < 0 ? ordered.length : noon
+      const meals = placeless.filter((p) => p.own?.kind === 'meal').map((m, k) => ({ ...m, notBefore: k === 0 ? 12 * 60 : k === 1 ? 19 * 60 : undefined }))
+      const rest = placeless.filter((p) => p.own?.kind !== 'meal')
+      const stops: (Stop & { notBefore?: number })[] = [...ordered.slice(0, lunchAt), ...meals.slice(0, 1), ...ordered.slice(lunchAt), ...meals.slice(1), ...rest]
+      const slots = await layoutStops(stops, from, fixed, pref, walkMax, settings.walkSpeedKmh, cutoff, true)
       stops.forEach((f, n) => {
         const slot = slots[n]
-        if (!slot) {
-          built.push({ id: uid(), tripId: trip.id, date, kind: f.category === 'food' ? 'meal' : 'activity', title: f.name, location: { name: f.name, lat: f.lat, lon: f.lon }, status: 'idea', order: order++, planner: tag, favId: f.id, notes: 'No time left before you leave: move it to another day in the City planner.' })
+        if (f.own) {
+          // Your item: it gets a time (marked as set by the planner), or loses one the planner gave it if the day is now too full.
+          if (slot) ownUpdates.push({ key: f.own.id, changes: { startTime: minToHHMM(Math.min(slot.from, 1439)), endTime: minToHHMM(Math.min(slot.to, 1439)), legIn: slot.leg, autoTime: true } })
+          else if (f.own.autoTime) ownUpdates.push({ key: f.own.id, changes: { startTime: undefined, endTime: undefined, legIn: undefined, autoTime: undefined } })
           return
         }
-        const { from, to, leg } = slot
+        const fav = f.fav!
+        if (!slot) {
+          built.push({ id: uid(), tripId: trip.id, date, kind: fav.category === 'food' ? 'meal' : 'activity', title: fav.name, location: { name: fav.name, lat: fav.lat, lon: fav.lon }, status: 'idea', order: order++, planner: tag, favId: fav.id, notes: 'No time left before you leave: move it to another day in the City planner.' })
+          return
+        }
         built.push({
           id: uid(),
           tripId: trip.id,
           date,
-          kind: f.category === 'food' ? 'meal' : 'activity',
-          title: f.name,
-          startTime: minToHHMM(Math.min(from, 1439)),
-          endTime: minToHHMM(Math.min(to, 1439)),
-          location: { name: f.name, lat: f.lat, lon: f.lon },
+          kind: fav.category === 'food' ? 'meal' : 'activity',
+          title: fav.name,
+          startTime: minToHHMM(Math.min(slot.from, 1439)),
+          endTime: minToHHMM(Math.min(slot.to, 1439)),
+          location: { name: fav.name, lat: fav.lat, lon: fav.lon },
           status: 'planned',
           order: order++,
           planner: tag,
-          favId: f.id,
-          legIn: leg,
+          favId: fav.id,
+          legIn: slot.leg,
         })
       })
-      const lastN = slots.map((x, n) => (x ? n : -1)).filter((n) => n >= 0).pop()
+      // The day ends at the place visited last (by time, since gaps may have been filled out of order).
+      const lastN = slots.reduce<number | undefined>((best, x, n) => (x && stops[n].lat != null && (best == null || x.to > slots[best]!.to) ? n : best), undefined)
       if (lastN != null) {
-        t = slots[lastN]!.to
-        prev = stops[lastN]
+        t = slots.reduce((m, x) => (x ? Math.max(m, x.to) : m), t)
+        prev = { lat: stops[lastN].lat!, lon: stops[lastN].lon! }
         prevName = stops[lastN].name
       }
-      if (roundTrip) {
+      if (roundTrip && s && start && prev) {
         const leg = { ...(await planLeg(prev, s, pref, walkMax, settings.walkSpeedKmh)), fromName: prevName }
         built.push({
           id: uid(),
@@ -295,6 +339,7 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
         })
       }
     }
+    if (ownUpdates.length) await db.items.bulkUpdate(ownUpdates)
     for (const f of mine.filter((f) => !geo.includes(f))) {
       built.push({
         id: uid(),
@@ -318,6 +363,27 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
     await db.items.bulkAdd(built)
   })
   await touchTrip(trip.id)
+}
+
+/**
+ * Wishlist places your plan already has on one of the city's days (the itinerary's "Tower of London") are linked to that
+ * item and day, so "Plan my days" times the item instead of adding the place a second time on another day.
+ */
+export async function linkWishlistToPlan(tripId: string, city: string): Promise<number> {
+  const favs = (await db.favorites.where('tripId').equals(tripId).toArray()).filter((f) => sameCity(f.city, city) && !f.itemId)
+  const days = await db.days.where('tripId').equals(tripId).toArray()
+  const dates = new Set(cityDates(days, city))
+  const items = (await db.items.where('tripId').equals(tripId).toArray()).filter((i) => !i.planner && dates.has(i.date))
+  const taken = new Set((await db.favorites.where('tripId').equals(tripId).toArray()).map((f) => f.itemId).filter(Boolean))
+  let n = 0
+  for (const f of favs) {
+    const match = items.find((i) => !taken.has(i.id) && matchesPlace(i, f))
+    if (!match) continue
+    taken.add(match.id)
+    await db.favorites.update(f.id, { itemId: match.id, date: match.date, pinned: true })
+    n++
+  }
+  return n
 }
 
 /* ------------------------------ Timing a day ------------------------------ */
@@ -355,7 +421,9 @@ function fixedWindows(dayItems: Item[]): Window[] {
   return dayItems
     .filter((i) => i.startTime && i.status !== 'skipped' && i.kind !== 'stay')
     .map((i) => {
-      const at = i.location?.lat != null && i.location.lon != null ? { lat: i.location.lat, lon: i.location.lon } : i.walk?.stops[0]
+      // Where you are once it's over: the place itself, a tour's first stop, or where a journey lands.
+      const p = i.location?.lat != null ? i.location : JOURNEYS.has(i.kind) && i.to?.lat != null ? i.to : undefined
+      const at = p?.lat != null && p.lon != null ? { lat: p.lat, lon: p.lon } : i.walk?.stops[0]
       // Something with a time but no length (a taxi, a meal) still takes a moment: half an hour.
       return { s: hhmmToMin(i.startTime!), e: i.endTime ? hhmmToMin(i.endTime) : hhmmToMin(i.startTime!) + (itemMinutes(i) || 30), at, title: i.title }
     })
@@ -374,30 +442,64 @@ async function layoutStops(
   walkMax: number,
   speedKmh: number,
   cutoff = 24 * 60,
+  fillGaps = false, // when the next stop doesn't fit before something fixed, use the gap for a later stop that does
 ): Promise<({ from: number; to: number; leg?: Leg } | undefined)[]> {
-  const out: ({ from: number; to: number; leg?: Leg } | undefined)[] = []
+  const out: ({ from: number; to: number; leg?: Leg } | undefined)[] = stops.map(() => undefined)
   let t = from.t
   let prev = from.at
   let prevName = from.name
-  for (const f of stops) {
+  let prevSince = from.t // since when you have been at `prev`
+
+  const place = async (f: (typeof stops)[number]) => {
     // Something without a place (lunch, "free time") just follows on: no travel to work out.
     const here = f.lat != null && f.lon != null ? { lat: f.lat, lon: f.lon } : undefined
-    let leg: Leg | undefined = here && prev ? { ...(await planLeg(prev, here, pref, walkMax, speedKmh)), fromName: prevName } : undefined
+    // Went through something fixed since the last place (the museum you booked): you set off from there.
+    const passed = fixed.filter((w) => w.at && w.s >= prevSince && w.e <= t).sort((x, y) => y.e - x.e)[0]
+    const origin = passed?.at ?? prev
+    const originName = passed ? passed.title : prevName
+    let leg: Leg | undefined = here && origin ? { ...(await planLeg(origin, here, pref, walkMax, speedKmh)), fromName: originName } : undefined
     let start = Math.max(t + (leg?.minutes ?? 0), f.notBefore ?? 0)
+    let clashed = false
     for (const w of fixed) {
       if (!(start < w.e && start + f.visitMin > w.s)) continue
+      clashed = true
       if (w.at && here) leg = { ...(await planLeg(w.at, here, pref, walkMax, speedKmh)), fromName: w.title }
       start = w.e + (w.at && here ? leg!.minutes : 0)
     }
-    if (start + f.visitMin > cutoff) {
-      out.push(undefined) // doesn't fit before you leave: stays on the day as an idea without a time
-      continue
+    return { here, leg, start, clashed }
+  }
+
+  const queue = stops.map((_, i) => i)
+  while (queue.length) {
+    let pick = 0
+    let c = await place(stops[queue[0]])
+    if (fillGaps && c.clashed) {
+      for (let k = 1; k < queue.length; k++) {
+        const alt = await place(stops[queue[k]])
+        if (!alt.clashed && alt.start + stops[queue[k]].visitMin <= cutoff) {
+          pick = k
+          c = alt
+          break
+        }
+      }
     }
-    out.push({ from: start, to: start + f.visitMin, leg })
-    t = start + f.visitMin
-    if (here) {
-      prev = here
+    const idx = queue.splice(pick, 1)[0]
+    const f = stops[idx]
+    if (c.start + f.visitMin > cutoff) continue // doesn't fit before you leave: stays on the day as an idea without a time
+    out[idx] = { from: c.start, to: c.start + f.visitMin, leg: c.leg }
+    t = c.start + f.visitMin
+    if (c.here) {
+      prev = c.here
       prevName = f.name
+      prevSince = t
+    } else if (c.leg === undefined) {
+      // A meal without a place after something fixed: you're still where that was.
+      const passed = fixed.filter((w) => w.at && w.s >= prevSince && w.e <= c.start).sort((x, y) => y.e - x.e)[0]
+      if (passed) {
+        prev = passed.at
+        prevName = passed.title
+        prevSince = passed.e
+      }
     }
   }
   return out

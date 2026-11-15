@@ -73,6 +73,10 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **The day's path, everywhere**: every item with a place (planned by the City planner or added or edited by hand) is numbered in time order, with
   the way to get between them. Day by day has a "🗺️ Day on the map" card (the numbers in the list match the map; tap one to jump to it), and the
   City planner's day chips draw the same path, with links between the two.
+- **Plan my days schedules the whole day**: besides the wishlist, it gives times to what the day already holds without one (an itinerary's
+  "Tower of London", "Lunch at Borough Market"), and ties wishlist places to those items instead of adding them again on another day. Lunch
+  goes in around noon. Anything you timed yourself, booked, or a journey stays put and the rest fits around it, using free gaps before it.
+  Planning again gives the same result and can re-time what it timed before; a time you set by hand (form or calendar) is then yours.
 - **Always in step**: whatever changes (a day moved to another city in the Plan, the trip made shorter, a day replanned by the chatbot, an item moved,
   merged or deleted, an edit synced from another device), the wishlist and Day by day are brought back in line a moment later: places on a day
   that's no longer in their city go back to the backup ideas (with a note saying so), the calendar loses what the planner had put there, places linked

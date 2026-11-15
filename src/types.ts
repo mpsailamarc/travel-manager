@@ -146,6 +146,7 @@ export interface Item {
   planner?: string // set on items built from favourites ("fav:<city>") so they can be rebuilt
   favId?: string // the wishlist place this item came from
   legIn?: Leg // how to get here from the previous place of the day (set by the City planner)
+  autoTime?: boolean // its time was set by "Plan my days" (it had none): planning again may move it; editing it by hand makes the time yours
 }
 
 export const CHECKLIST_CATEGORIES = ['documents', 'health', 'bookings', 'money', 'tech', 'packing', 'kids', 'other'] as const
