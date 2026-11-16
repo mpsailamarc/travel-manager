@@ -213,3 +213,26 @@ describe('the budget of a camper van trip', () => {
     expect(labels.some((l) => /^Fuel/.test(l))).toBe(true)
   })
 })
+
+describe('duplicating a trip', () => {
+  it('copies the plan under a new name with new ids; the original stays as it is; expenses stay behind', async () => {
+    const { duplicateTrip } = await import('./share')
+    const { makeTrip, addItem, addFav, LONDON } = await import('../test/fixtures')
+    const { db } = await import('../db')
+    const trip = await makeTrip({ name: 'London' })
+    const it = await addItem(trip, { date: trip.startDate, title: 'Tower of London', startTime: '10:00' })
+    await addFav(trip, { ...LONDON.stPauls, date: trip.startDate, itemId: it.id })
+    await db.expenses.add({ id: 'e1', tripId: trip.id, date: trip.startDate, amount: 20, currency: 'EUR', category: 'food', title: 'Lunch' } as never)
+    const id = await duplicateTrip(trip.id, 'London — longer')
+    const copy = (await db.trips.get(id))!
+    expect(copy.name).toBe('London — longer')
+    const items = await db.items.where('tripId').equals(id).toArray()
+    expect(items.map((i) => i.title)).toEqual(['Tower of London'])
+    expect(items[0].id).not.toBe(it.id)
+    const favs = await db.favorites.where('tripId').equals(id).toArray()
+    expect(favs[0].itemId).toBe(items[0].id) // the copy's wishlist place points at the copy's item
+    expect(await db.expenses.where('tripId').equals(id).count()).toBe(0)
+    expect((await db.trips.get(trip.id))!.name).toBe('London')
+    expect(await db.items.where('tripId').equals(trip.id).count()).toBe(1)
+  })
+})

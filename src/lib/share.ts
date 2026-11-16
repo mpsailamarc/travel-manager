@@ -3,6 +3,7 @@
 import { db } from '../db'
 import type { ChecklistItem, Day, Expense, Favorite, Item, Trip, TripDocument } from '../types'
 import { uid } from './ids'
+import { saveLocal } from './storage'
 
 interface ExportedDoc extends Omit<TripDocument, 'blob'> {
   dataUrl: string
@@ -102,6 +103,21 @@ export async function importTrip(text: string): Promise<string> {
     await db.expenses.bulkAdd((f.expenses ?? []).map((e) => ({ ...e, tripId: id, id: uid() })))
     await db.documents.bulkAdd(docs)
   })
+  return id
+}
+
+/**
+ * A copy of the trip to try things on ("what if we spent longer in Rome?"): the plan, days, stays, budget, checklist and
+ * backup ideas, under a new name. Expenses and documents (tickets, passports) are real records of the trip itself, so
+ * they stay with the original. ChatGPT's city ideas kept on this device come along too.
+ */
+export async function duplicateTrip(tripId: string, name: string): Promise<string> {
+  const f = JSON.parse(await (await exportTrip(tripId, { documents: false, expenses: false })).text()) as TripFile
+  f.trip = { ...f.trip, name, createdAt: Date.now() }
+  // The checklist starts afresh on what to do, not on what was already ticked for the original.
+  f.checklist = f.checklist.map((c) => ({ ...c, done: false }))
+  const id = await importTrip(JSON.stringify(f))
+  for (const k of Object.keys(localStorage)) if (k.startsWith(`tm-cityideas:${tripId}:`)) saveLocal(k.replace(tripId, id), localStorage.getItem(k) ?? '')
   return id
 }
 
