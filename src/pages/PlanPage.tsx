@@ -228,33 +228,41 @@ export default function PlanPage() {
             fitKey={`${markers.length}-${segments.length}-${roads.data?.filter(Boolean).length ?? 0}-${trip.startPlace?.lat}-${trip.endPlace?.lat}-${fromHome}`}
             className={mapSize === 'large' ? 'tall' : 'short'}
           />
-          {journeyList.length > 0 && (
-            <div className="stack" style={{ gap: 2 }}>
-              {journeyList.map((j) => (
-                <Link key={j.key} to={`../today?date=${j.date}`} className="small journey-link" title="Open that day">
-                  {j.icon} {j.from} → {j.to}
-                  <span className="muted">
-                    {' · '}
-                    {formatDate(j.date, { weekday: 'short', day: 'numeric', month: 'short' })}
-                    {j.detail && ` · ${j.detail}`}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
-          <p className="tiny muted">
-            <span style={{ color: LEG_STYLE.car }}>━</span> by car · <span style={{ color: LEG_STYLE.public }}>━</span> train / bus ·{' '}
-            <span style={{ color: LEG_STYLE.flight }}>┅</span> flight · <span style={{ color: LEG_STYLE.ferry }}>┅</span> boat
-          </p>
-          <p className="tiny muted">
-            {trip.startPlace?.lat != null && (
-              <>
-                🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} ·{' '}
-              </>
+          {/* The journeys and the map's key start folded: the map says most of it, the list is there when you need it. */}
+          <details>
+            <summary className="small muted" style={{ cursor: 'pointer' }}>
+              🧭 {journeyList.length ? `${journeyList.length} ${journeyList.length === 1 ? 'journey' : 'journeys'}, and the map's key` : "The map's key"}
+            </summary>
+            <div className="stack" style={{ gap: 6, marginTop: 6 }}>
+            {journeyList.length > 0 && (
+              <div className="stack" style={{ gap: 2 }}>
+                {journeyList.map((j) => (
+                  <Link key={j.key} to={`../today?date=${j.date}`} className="small journey-link" title="Open that day">
+                    {j.icon} {j.from} → {j.to}
+                    <span className="muted">
+                      {' · '}
+                      {formatDate(j.date, { weekday: 'short', day: 'numeric', month: 'short' })}
+                      {j.detail && ` · ${j.detail}`}
+                    </span>
+                  </Link>
+                ))}
+              </div>
             )}
-            Numbers = the first day you are in each place (tap one, or a grey dot, to open that day) · lines follow the roads, except flights and boats (dashed) · grey dots = activities
-            {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
-          </p>
+            <p className="tiny muted">
+              <span style={{ color: LEG_STYLE.car }}>━</span> by car · <span style={{ color: LEG_STYLE.public }}>━</span> train / bus ·{' '}
+              <span style={{ color: LEG_STYLE.flight }}>┅</span> flight · <span style={{ color: LEG_STYLE.ferry }}>┅</span> boat
+            </p>
+            <p className="tiny muted">
+              {trip.startPlace?.lat != null && (
+                <>
+                  🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} ·{' '}
+                </>
+              )}
+              Numbers = the first day you are in each place (tap one, or a grey dot, to open that day) · lines follow the roads, except flights and boats (dashed) · grey dots = activities
+              {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
+            </p>
+            </div>
+          </details>
         </>
       )}
     </div>

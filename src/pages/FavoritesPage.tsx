@@ -277,7 +277,7 @@ export default function FavoritesPage() {
   const isScheduled = (f: Favorite) => !!f.date && dates.includes(f.date)
   const backups = cityFavs.filter((f) => !isScheduled(f))
 
-  // Sights come from the part of the map you chose: the city centre at first, then wherever you pan and zoom to and tap "Search this area".
+  // Sights come from the part of the map you look at: the city centre at first, then wherever you pan and zoom to.
   const [searched, setSearched] = useState<{
     lat: number
     lon: number
@@ -294,11 +294,12 @@ export default function FavoritesPage() {
     () => (area ? fetchPois({ lat: area.lat, lon: area.lon }, Math.round(Math.min(25000, Math.max(500, area.radiusM)))) : Promise.resolve([] as Poi[])),
     [area?.lat, area?.lon, area?.radiusM],
   )
-  function searchHere() {
-    if (!view) return
-    setSearched({ lat: view.lat, lon: view.lon, radiusM: view.radiusM })
-    setFindOpen(true)
-  }
+  // Once you stop moving the map (a second later, so a pan isn't a dozen searches), the sights follow what's on screen.
+  useEffect(() => {
+    if (!moved || !view) return
+    const t = setTimeout(() => setSearched({ lat: view.lat, lon: view.lon, radiusM: view.radiusM }), 1000)
+    return () => clearTimeout(t)
+  }, [moved, view?.lat, view?.lon, view?.radiusM]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // How interesting each sight is (Wikipedia language editions); the list can then put the best first.
   const rated = useAsync(
@@ -721,13 +722,7 @@ export default function FavoritesPage() {
                 )}
                 {mapSize !== 'hidden' && !focus && (
                   <div className="row wrap" style={{ gap: 6 }}>
-                    {moved ? (
-                      <button className="btn-primary btn-sm" onClick={searchHere}>
-                        🔎 Search this area
-                      </button>
-                    ) : (
-                      <span className="tiny muted">{searched ? 'Sights shown are from the area you searched.' : 'Move or zoom the map, then tap “Search this area” to find sights there.'}</span>
-                    )}
+                    <span className="tiny muted">{searched ? 'Things to do follow the map: they are from the area on screen.' : 'Move or zoom the map and things to do follow what’s on screen.'}</span>
                     {searched && (
                       <button className="btn-sm" onClick={() => setSearched(undefined)}>
                         ↩ Back to the city centre

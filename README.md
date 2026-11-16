@@ -94,8 +94,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **ChatGPT ideas ready when you get there**: with an API key, picking an itinerary asks ChatGPT, in the background, for ideas in every city on
   the route, telling it what's already planned there so the ideas add to it; a city added later is asked for the first time you open it, and
   "↻ New ideas" asks again. With copy and paste, "✨ Add ChatGPT ideas" holds the prompt and the answer box.
-- **Sights follow the map**: the sights list covers the part of the map you chose. Pan or zoom the map, tap **Search this area**, and the list
-  (and its distances) refreshes for what's on screen; "Back to the city centre" resets it. Wide views list well-known places only (a free-service limit).
+- **Things to do follow the map**: the list covers the part of the map on screen. Pan or zoom the map and, a second after you stop, the
+  list (and its distances) refreshes for what's there; "Back to the city centre" resets it. Wide views list well-known places only (a free-service limit).
 - **A day on the map**: in the City planner, the map has a chip per day (or "🗺️ Show this day on the map" inside a day). It shows that day's places
   numbered in walking order, joined by the walking route, with the stop list, distance and time underneath.
 - **The City planner knows what's planned**: a sight or idea that's already on a day shows "📅 Day 3" instead of ＋.
