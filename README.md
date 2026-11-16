@@ -6,7 +6,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 ## What it does
 
 **Before the trip**
-- **New trip questionnaire**: where, when, who (kids' ages), pace, budget level, interests, **cities or the outdoors** (cities,
+- **New trip questionnaire**: the trip's name first, then where to in one box (cities, regions or whole countries; each place's country is
+  looked up and the trip's countries fill in by themselves), starting from your home in Settings unless you change it; then when, who (kids' ages), pace, budget level, interests, **cities or the outdoors** (cities,
   a mix, or a road trip with hikes) and **flights between places** (you decide, fly when faster, only long hops, no flights).
   Left to "you decide", a group of 2 or more is steered towards driving or trains: every flight is paid per person, a rental car once.
 - **Ideas (AI, free)**: the app writes a prompt. Paste it into any free chatbot (Claude, Gemini, ChatGPT) and paste the answer back.

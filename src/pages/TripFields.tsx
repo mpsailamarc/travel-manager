@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BudgetLevel, InnerFlights, Traveller, Trip, TripFocus, TripStyle } from '../types'
-import { COUNTRIES, countryLabel, flag } from '../lib/countries'
+import { COUNTRIES, countryLabel, countryName, flag } from '../lib/countries'
+import { searchPlaces } from '../lib/apis'
 import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
 
@@ -95,6 +96,117 @@ export function CountryPicker({ value, onChange }: { value: string[]; onChange: 
   )
 }
 
+// Countries people type by a short name.
+const COUNTRY_ALIASES: Record<string, string> = { uk: 'GB', 'united kingdom': 'GB', england: 'GB', scotland: 'GB', wales: 'GB', britain: 'GB', 'great britain': 'GB', usa: 'US', us: 'US', america: 'US', 'united states': 'US', holland: 'NL', uae: 'AE' }
+const countryOf = (text: string) => {
+  const t = text.trim().toLowerCase()
+  return COUNTRY_ALIASES[t] ?? COUNTRIES.find((c) => c.name.toLowerCase() === t)?.code
+}
+
+/**
+ * Where to, in one box: cities, regions or whole countries, in the order you'll visit them. Each place's country is looked
+ * up (OpenStreetMap, once, cached) and the trip's countries follow by themselves; a country typed on its own stays too.
+ */
+export function DestinationInput({ cities, countryCodes, onChange }: { cities: string[]; countryCodes: string[]; onChange: (v: { cities: string[]; countryCodes: string[] }) => void }) {
+  const [text, setText] = useState('')
+  const [places, setPlaces] = useState(cities)
+  const [whole, setWhole] = useState(countryCodes) // countries chosen as such ("Italy")
+  const [found, setFound] = useState<Record<string, string | null>>({}) // place (lower case) → its country, null when unknown
+  const looking = useRef(new Set<string>())
+  const report = useRef(onChange)
+  report.current = onChange
+
+  // Each new place gets its country looked up once.
+  useEffect(() => {
+    for (const p of places) {
+      const k = p.toLowerCase()
+      if (k in found || looking.current.has(k)) continue
+      looking.current.add(k)
+      searchPlaces(p)
+        .then((r) => setFound((f) => ({ ...f, [k]: r[0]?.countryCode ?? null })))
+        .catch(() => setFound((f) => ({ ...f, [k]: null })))
+    }
+  }, [places, found])
+
+  // The trip's countries: the places' countries in order, then any country chosen on its own.
+  const countries = [...new Set([...places.map((p) => found[p.toLowerCase()]).filter((c): c is string => !!c), ...whole])]
+  useEffect(() => {
+    report.current({ cities: places, countryCodes: countries })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [places.join('|'), countries.join('|')])
+
+  function add(raw: string) {
+    const parts = raw.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean)
+    let ps = places
+    let ws = whole
+    for (const part of parts) {
+      const code = countryOf(part)
+      if (code) ws = ws.includes(code) ? ws : [...ws, code]
+      else if (!ps.some((p) => p.toLowerCase() === part.toLowerCase())) ps = [...ps, part]
+    }
+    setPlaces(ps)
+    setWhole(ws)
+    setText('')
+  }
+
+  const q = text.trim().toLowerCase()
+  const countryHits = q.length >= 2 ? COUNTRIES.filter((c) => c.name.toLowerCase().startsWith(q) && !whole.includes(c.code)).slice(0, 5) : []
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {(places.length > 0 || whole.length > 0) && (
+        <div className="chips">
+          {places.map((p) => {
+            const c = found[p.toLowerCase()]
+            return (
+              <button key={p} type="button" className="chip on" title="Remove" onClick={() => setPlaces(places.filter((x) => x !== p))}>
+                {c ? flag(c) : c === null ? '📍' : '…'} {p} ✕
+              </button>
+            )
+          })}
+          {whole.map((c) => (
+            <button key={c} type="button" className="chip on" title="Remove" onClick={() => setWhole(whole.filter((x) => x !== c))}>
+              {countryLabel(c)} (anywhere) ✕
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="row">
+        <input
+          className="grow"
+          value={text}
+          placeholder={places.length || whole.length ? 'Add another place…' : 'e.g. Rome, Florence, Amalfi Coast — or a country'}
+          onChange={(e) => (e.target.value.includes(',') ? add(e.target.value) : setText(e.target.value))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              if (text.trim()) add(text)
+            }
+          }}
+          onBlur={() => text.trim() && add(text)}
+        />
+        <button type="button" className="btn-sm" disabled={!text.trim()} onClick={() => add(text)}>
+          ＋ Add
+        </button>
+      </div>
+      {countryHits.length > 0 && (
+        <div className="chips">
+          {countryHits.map((c) => (
+            <button key={c.code} type="button" className="chip" onMouseDown={(e) => e.preventDefault()} onClick={() => add(c.name)}>
+              {flag(c.code)} {c.name} (the whole country)
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="tiny muted" style={{ margin: 0 }}>
+        {countries.length
+          ? `Countries: ${countries.map(countryName).join(', ')} — filled in from your places.`
+          : 'Type cities or regions in the order you’d visit them, or just a country. Their countries are filled in for you.'}
+        {places.some((p) => found[p.toLowerCase()] === null) && ' 📍 = country not found (offline, or an unusual name): add the country too.'}
+      </p>
+    </div>
+  )
+}
+
 /** Keeps the raw text while typing so commas and spaces aren't swallowed. */
 export function CitiesInput({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
   const [text, setText] = useState(value.join(', '))
@@ -111,11 +223,12 @@ export function CitiesInput({ value, onChange, placeholder }: { value: string[];
 }
 
 /** Where the trip starts and ends (often the same place): drawn on the map and told to the AI. */
-export function StartEndFields({ value, onChange }: { value: Pick<Trip, 'startPlace' | 'endPlace'>; onChange: (v: Pick<Trip, 'startPlace' | 'endPlace'>) => void }) {
+export function StartEndFields({ value, onChange, hint }: { value: Pick<Trip, 'startPlace' | 'endPlace'>; onChange: (v: Pick<Trip, 'startPlace' | 'endPlace'>) => void; hint?: string }) {
   const sameEnd = !value.endPlace
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <PlaceSearch label="Starting from (optional)" value={value.startPlace} onChange={(p) => onChange({ ...value, startPlace: p })} placeholder="e.g. San Francisco" />
+      <PlaceSearch label="Starting from" value={value.startPlace} onChange={(p) => onChange({ ...value, startPlace: p })} placeholder="e.g. San Francisco" />
+      {hint && <p className="tiny muted" style={{ margin: 0 }}>{hint}</p>}
       {value.startPlace && (
         <>
           <label className="inline small">

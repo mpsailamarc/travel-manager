@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { db } from '../db'
 import type { Trip } from '../types'
@@ -8,7 +8,7 @@ import { uid } from '../lib/ids'
 import { locatePlace } from '../lib/apis'
 import { plural } from '../lib/format'
 import { useSettings } from '../lib/hooks'
-import { BUDGET_LEVELS, ChipToggle, ChoiceGrid, CitiesInput, CountryPicker, FOCUS, INNER_FLIGHTS, INTERESTS, RouteFields, StartEndFields, STYLES, TravellersEditor } from './TripFields'
+import { BUDGET_LEVELS, ChipToggle, ChoiceGrid, DestinationInput, FOCUS, INNER_FLIGHTS, INTERESTS, RouteFields, StartEndFields, STYLES, TravellersEditor } from './TripFields'
 
 const STEPS = ['Where', 'When', 'Who', 'What', 'Review']
 
@@ -35,6 +35,14 @@ export default function NewTripPage() {
     updatedAt: Date.now(),
   }))
   const set = <K extends keyof Trip>(k: K, v: Trip[K]) => setT((s) => ({ ...s, [k]: v }))
+
+  // Where you start: home from Settings (city or usual airport), filled in once Settings have loaded — change it for this trip.
+  const startTouched = useRef(false)
+  useEffect(() => {
+    if (!startTouched.current && settings.homeAirport && !t.startPlace?.name) setT((s) => ({ ...s, startPlace: { name: settings.homeAirport! } }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.homeAirport])
+  const fromHome = !!settings.homeAirport && t.startPlace?.name === settings.homeAirport
 
   const autoName = () => {
     const place = t.countryCodes.length ? t.countryCodes.map((c) => country(c)?.name ?? c).join(' & ') : t.cities[0] ?? 'New trip'
@@ -94,13 +102,20 @@ export default function NewTripPage() {
           {step === 0 && (
             <>
               <h2>Where are you thinking of going?</h2>
-              <p className="muted small">Pick one or more countries, and any places you already have in mind. Not sure? Leave it open and describe what you want.</p>
-              <CountryPicker value={t.countryCodes} onChange={(v) => set('countryCodes', v)} />
               <label>
-                Cities or regions (optional, comma separated)
-                <CitiesInput value={t.cities} onChange={(v) => set('cities', v)} placeholder="e.g. Lisbon, Sintra, Porto" />
+                Trip name
+                <input value={t.name} placeholder={autoName()} onChange={(e) => set('name', e.target.value)} />
               </label>
-              <StartEndFields value={t} onChange={(v) => setT((s) => ({ ...s, ...v }))} />
+              <label>Where to</label>
+              <DestinationInput cities={t.cities} countryCodes={t.countryCodes} onChange={(v) => setT((s) => ({ ...s, ...v }))} />
+              <StartEndFields
+                value={t}
+                onChange={(v) => {
+                  startTouched.current = true
+                  setT((s) => ({ ...s, ...v }))
+                }}
+                hint={fromHome ? 'Your home, from Settings. Change it if this trip starts somewhere else.' : settings.homeAirport ? undefined : 'Tip: set your home city in Settings and new trips start from there.'}
+              />
               <label>
                 Or describe it
                 <textarea
@@ -161,11 +176,8 @@ export default function NewTripPage() {
           {step === 4 && (
             <>
               <h2>Ready to plan</h2>
-              <label>
-                Trip name
-                <input value={t.name} placeholder={autoName()} onChange={(e) => set('name', e.target.value)} />
-              </label>
               <div className="info-grid">
+                <Tile k="Name" v={t.name.trim() || autoName()} />
                 <Tile k="Where" v={[...t.countryCodes.map(countryLabel), ...t.cities].join(', ') || 'Open'} />
                 <Tile k="When" v={`${formatDate(t.startDate)} · ${days} days`} />
                 <Tile k="Who" v={`${plural(t.travellers.filter((x) => x.type === 'adult').length, 'adult')}, ${plural(t.travellers.filter((x) => x.type === 'child').length, 'child', 'children')}`} />

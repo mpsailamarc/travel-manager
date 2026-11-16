@@ -82,9 +82,19 @@ export function flag(code: string): string {
     .replace(/./g, (ch) => String.fromCodePoint(127397 + ch.charCodeAt(0)))
 }
 
-export function countryLabel(code: string) {
+/** A country's name: the built-in list, else the browser's own names (any ISO code), else the code itself. */
+export function countryName(code: string): string {
   const c = country(code)
-  return c ? `${flag(code)} ${c.name}` : code
+  if (c) return c.name
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code.toUpperCase()) ?? code
+  } catch {
+    return code
+  }
+}
+
+export function countryLabel(code: string) {
+  return /^[A-Za-z]{2}$/.test(code) ? `${flag(code)} ${countryName(code)}` : code
 }
 
 export const CURRENCIES = Array.from(new Set(['EUR', 'GBP', 'USD', 'CHF', ...COUNTRIES.map((c) => c.currency)])).sort()
