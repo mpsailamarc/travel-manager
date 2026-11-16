@@ -7,6 +7,7 @@ import { uid } from '../lib/ids'
 import { useAsync } from '../lib/hooks'
 import { Empty, Modal, toast } from '../components/ui'
 import { useTripCtx } from './TripLayout'
+import { Link } from 'react-router-dom'
 
 export default function DocsPage() {
   const { trip } = useTripCtx()
@@ -30,6 +31,10 @@ export default function DocsPage() {
           <div>
             <h2>Travel documents</h2>
             <p className="small muted">Passport scans, tickets, insurance, booking PDFs. Stored only on this device and available offline.</p>
+            <p className="small" style={{ margin: 0 }}>
+              <Link to="../ideas?tab=bookings">📧 Import a booking email</Link>
+              <span className="muted"> — paste a confirmation and the flight, hotel or ticket goes into the plan.</span>
+            </p>
           </div>
           <button className="btn-primary" onClick={() => fileRef.current?.click()}>
             + Add files

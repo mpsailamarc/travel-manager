@@ -18,7 +18,9 @@ import { saveLocal } from '../lib/storage'
 type Tab = 'ideas' | 'bookings' | 'template'
 
 export default function IdeasPage() {
-  const [tab, setTab] = useState<Tab>('ideas')
+  // A link can open a part directly: "Import a booking email" from Where you sleep or Docs.
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState<Tab>(() => (['ideas', 'bookings', 'template'].includes(params.get('tab') ?? '') ? (params.get('tab') as Tab) : 'ideas'))
   return (
     <div className="stack-lg">
       <div className="chips">

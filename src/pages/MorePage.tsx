@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
 
 const LINKS = [
-  { to: '../ideas', emoji: '✨', label: 'Itinerary ideas (AI)', desc: 'Questionnaire → 3 itinerary options, budget & tips' },
+  { to: '../ideas', emoji: '✨', label: 'Ideas (AI)', desc: 'New itinerary ideas from ChatGPT, or a quick template' },
+  { to: '../ideas?tab=bookings', emoji: '📧', label: 'Import booking emails', desc: 'Paste confirmations: flights, hotels, tickets go into the plan' },
   { to: '../favorites', emoji: '🗺️', label: 'City planner', desc: 'Every activity per city and day, sights and ChatGPT ideas, and your backup ideas' },
   { to: '../essentials', emoji: '🧭', label: 'Essentials', desc: 'Emergency numbers, plugs, currency converter, tipping' },
   { to: '../docs', emoji: '📄', label: 'Documents', desc: 'Passports, tickets, insurance — offline' },

@@ -84,6 +84,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   motorhome…) also counts from its pick-up to its return. Those nights get "Campsite near … (to choose)" instead of hotels; the budget has
   the van's rental and campsites instead of a car and hotels; the checklist links to campsites on the map and reminds you later; ChatGPT is
   asked for campsites and drives of at most about 4 hours a day.
+- **Ideas (AI) out of the way once planned**: after an itinerary is chosen, Ideas (AI) moves into the last tab, ⋯ More (it comes back as a
+  tab while you're on it). "📧 Import a booking email" is also linked from Where you sleep and Docs.
 - **Duplicate a trip** (Trip details → 📄 Duplicate): a copy under a new name to try things on — other dates, cities, pace or hotels —
   while the original stays as it is. The plan, days, stays, budget, checklist (unticked) and backup ideas are copied; expenses and documents
   stay with the original.

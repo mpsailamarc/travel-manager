@@ -38,9 +38,19 @@ const TABS = [
   { to: 'docs', label: 'Docs', emoji: '📄', mobile: 8 },
   { to: 'share', label: 'Share', emoji: '📤', mobile: 9 },
 ]
+const MORE_TAB = { to: 'more', label: 'More', emoji: '⋯', mobile: 10 }
+
+/**
+ * The trip's sections. Once there's an itinerary, Ideas (AI) — mostly used to get it — moves into More (it stays a tab
+ * while you're on it), so the tabs are what you use while planning and travelling.
+ */
+function tabsFor(hasPlan: boolean, pathname: string) {
+  if (!hasPlan || /\/ideas$/.test(pathname)) return TABS
+  return [...TABS.filter((t) => t.to !== 'ideas'), MORE_TAB]
+}
 
 /** The phone's bottom bar: all sections, scrolling sideways. The next tab peeks in and an arrow fades in while there is more. */
-function BottomNav() {
+function BottomNav({ tabs }: { tabs: typeof TABS }) {
   const ref = useRef<HTMLDivElement>(null)
   const [more, setMore] = useState({ left: false, right: true })
   const { pathname } = useLocation()
@@ -69,7 +79,7 @@ function BottomNav() {
   return (
     <nav className="bottom-nav" aria-label="Sections">
       <div className="bottom-nav-scroll" ref={ref}>
-        {[...TABS]
+        {[...tabs]
           .sort((a, b) => a.mobile - b.mobile)
           .map((t) => (
             <NavLink key={t.to} to={t.to} className={({ isActive }) => (isActive ? 'active' : '')}>
@@ -102,6 +112,7 @@ export default function TripLayout() {
   const settings = useMemo(() => forPace(base, trip?.style), [base, trip?.style])
   const [editing, setEditing] = useState(false)
   const navigate = useNavigate()
+  const { pathname } = useLocation()
 
   // Whatever changed (a day's city, the trip's dates, an item moved or deleted, a replan, a sync from another device),
   // the wishlist and the plan are brought back in line a moment later. Nothing happens when they already agree.
@@ -146,6 +157,7 @@ export default function TripLayout() {
   }
 
   const ph = tripPhase(trip)
+  const tabs = tabsFor(items.length > 0, pathname)
   const nights = daysBetween(trip.startDate, trip.endDate)
 
   return (
@@ -169,7 +181,7 @@ export default function TripLayout() {
           </button>
         </div>
         <nav className="tabs top">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <NavLink key={t.to} to={t.to} className={({ isActive }) => (isActive ? 'active' : '')}>
               {t.label}
             </NavLink>
@@ -179,7 +191,7 @@ export default function TripLayout() {
       <div className="page">
         <Outlet context={{ trip, items, days, settings } satisfies TripCtx} />
       </div>
-      <BottomNav />
+      <BottomNav tabs={tabs} />
       {editing && <TripDetailsModal trip={trip} onClose={() => setEditing(false)} />}
     </>
   )

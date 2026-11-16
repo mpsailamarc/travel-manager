@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { db, touchTrip } from '../db'
 import type { Day, Item, ItemStatus, Place, Trip } from '../types'
 import { addDays, formatDate } from '../lib/dates'
@@ -101,6 +102,8 @@ export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: 
       })}
       <p className="tiny muted" style={{ margin: 0 }}>
         Each day starts where you slept and ends where you sleep that night (at the city centre until you enter the address). The checklist and budget follow.
+        {' '}
+        <Link to="../ideas?tab=bookings">📧 Import a booking email</Link> to fill a stay from its confirmation.
       </p>
       {editing && <StayEditor stay={editing} city={cityOf(editing)} currency={currency} onClose={() => setEditing(undefined)} />}
     </div>

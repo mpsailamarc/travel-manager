@@ -76,13 +76,19 @@ export default function PlanPage() {
   const { markers } = useMemo(() => {
     const markers: MapMarker[] = []
     const line: [number, number][] = []
+    // The places in the order you reach them, 1, 2, 3… (each opens its first day), whatever day the trip's first place is on.
+    let stop = 0
+    let lastCity: string | undefined
     dates.forEach((date, i) => {
       const d = dayByDate.get(date)
       if (d?.lat != null && d.lon != null && !homeDay(d)) {
         const last = line[line.length - 1]
-        if (!last || last[0] !== d.lon || last[1] !== d.lat) {
+        // The same city a few hundred metres apart from one day to the next (a chatbot's coordinates) is still one place.
+        const sameCity = !!last && !!d.city && d.city === lastCity && haversineM({ lat: last[1], lon: last[0] }, { lat: d.lat, lon: d.lon }) < 20_000
+        lastCity = d.city
+        if (!sameCity && (!last || last[0] !== d.lon || last[1] !== d.lat)) {
           line.push([d.lon, d.lat])
-          markers.push({ id: date, lat: d.lat, lon: d.lon, label: String(i + 1), variant: 'on', title: `${d.city ?? ''} · day ${i + 1}: open it`, onClick: () => navigate(`../today?date=${date}`) })
+          markers.push({ id: date, lat: d.lat, lon: d.lon, label: String(++stop), variant: 'on', title: `${d.city ?? ''} · from day ${i + 1}: open it`, onClick: () => navigate(`../today?date=${date}`) })
         }
       }
     })
@@ -258,7 +264,7 @@ export default function PlanPage() {
                   🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} ·{' '}
                 </>
               )}
-              Numbers = the first day you are in each place (tap one, or a grey dot, to open that day) · lines follow the roads, except flights and boats (dashed) · grey dots = activities
+              Numbers = the places in the order you reach them (tap one to open its first day, or a grey dot to open its day) · lines follow the roads, except flights and boats (dashed) · grey dots = activities
               {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
             </p>
             </div>
