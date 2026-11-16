@@ -36,21 +36,22 @@ async function locate(trip: Trip, stops: ReturnType<typeof optionStops>) {
 }
 
 /** The route of one itinerary option on a small map: its places numbered in order, joined by a dashed line. */
-export function OptionMap({ option, trip }: { option: AiOption; trip: Trip }) {
+export function OptionMap({ option, trip, tall }: { option: AiOption; trip: Trip; tall?: boolean }) {
   const stops = useMemo(() => optionStops(option), [option])
   const key = stops.map((s) => `${s.name}:${s.lat ?? ''}:${s.lon ?? ''}`).join('|')
   const found = useAsync(() => locate(trip, stops), [key, trip.id])
   const points = found.data ?? []
   const markers: MapMarker[] = points.map((p, i) => ({ id: `${i}`, lat: p.lat, lon: p.lon, label: String(i + 1), variant: 'on', title: `${i + 1}. ${p.name}${p.nights ? ` · ${p.nights} day${p.nights > 1 ? 's' : ''}` : ''}` }))
   if (!stops.length) return null
-  if (!points.length) return <div className="map short" style={{ display: 'grid', placeItems: 'center' }}><span className="tiny muted">{found.loading ? 'Finding the places…' : 'No places to show'}</span></div>
+  if (!points.length) return <div className={`map ${tall ? 'tall' : 'short'}`} style={{ display: 'grid', placeItems: 'center' }}><span className="tiny muted">{found.loading ? 'Finding the places…' : 'No places to show'}</span></div>
   return (
     <div className="stack" style={{ gap: 4 }}>
       <LazyMap
         markers={markers}
         segments={points.slice(1).map((p, i) => ({ coords: [[points[i].lon, points[i].lat], [p.lon, p.lat]] as [number, number][], dashed: true, color: '#64748b' }))}
+        key={String(!!tall)}
         fitKey={key + points.length}
-        className="short"
+        className={tall ? 'tall' : 'short'}
       />
       {found.loading && <span className="tiny muted">Finding the other places…</span>}
     </div>

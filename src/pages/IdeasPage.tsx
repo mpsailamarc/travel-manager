@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { applyBookings, applyPlan, applyTemplate, bookingPrompt, CHATBOTS, detailPrompt, mergeDetail, outlinePrompt, outlineRounds, parseBookings, parseDetail, routeFromDays, routeShape, type AiOption } from '../lib/ai'
+import { applyBookings, applyPlan, applyTemplate, bookingPrompt, CHATBOTS, detailPrompt, mergeDetail, outlinePrompt, outlineRounds, parseBookings, parseDetail, parseRevision, revisePrompt, routeShape, type AiOption } from '../lib/ai'
 import { OptionMap } from '../components/OptionMap'
 import { refreshChecklist } from '../lib/checklist'
 import { BUDGET_LABELS } from '../lib/budget'
@@ -167,7 +167,7 @@ export function useAiWords() {
 }
 
 /** Keeps the pasted answers on this device; if even that doesn't fit, they still work until you leave the page. */
-function keep(key: string, replies: string[]) {
+function keep(key: string, replies: unknown[]) {
   if (!saveLocal(key, JSON.stringify(replies))) toast("This device's storage is full: the answer works now but won't be kept if you leave the page")
 }
 
@@ -183,15 +183,39 @@ function ItineraryIdeas() {
     return legacy ? [legacy] : []
   })
   const [replace, setReplace] = useState(true)
-  const [chosen, setChosen] = useState<{ option: AiOption; changes: string }>()
+  // Revisions: another go at an option with changes (nights per place, a place added…), as many times as it takes. Each is one more
+  // option to look at (with its map); the detailed plan comes after, once you're happy.
+  const revKey = `tm-revisions:${trip.id}`
+  const [revisions, setRevisions] = useState<{ from: number; changes: string; reply: string }[]>(() => JSON.parse(localStorage.getItem(revKey) ?? '[]'))
+  const [pending, setPending] = useState<{ from: number; changes: string }>()
+  const [pick, setPick] = useState(0)
+  const saveRevisions = (next: typeof revisions) => {
+    setRevisions(next)
+    keep(revKey, next)
+  }
+  const [chosen, setChosen] = useState<AiOption>()
   const tripDays = daysBetween(trip.startDate, trip.endDate) + 1
   const { rounds, options, compare, done } = useMemo(() => outlineRounds(replies, outlinePrompt(trip, settings), tripDays), [replies, trip, settings, tripDays])
+  // The options you were given, then each revision (its reply read; one that can't be read is left out).
+  const all = useMemo(() => {
+    const out: { option: AiOption; incomplete?: boolean; revised?: { from: number; changes: string } }[] = options.map((o) => ({ ...o }))
+    for (const r of revisions) {
+      try {
+        out.push({ option: parseRevision(r.reply), revised: { from: r.from, changes: r.changes } })
+      } catch {
+        /* skipped */
+      }
+    }
+    return out
+  }, [options, revisions])
 
   function setReply(i: number, text: string) {
     // Editing an earlier reply invalidates the follow-ups that were built from it.
     const next = [...replies.slice(0, i), text]
     setReplies(next)
     setChosen(undefined)
+    saveRevisions([])
+    setPending(undefined)
     keep(storeKey, next)
   }
 
@@ -199,6 +223,8 @@ function ItineraryIdeas() {
     if (!confirm('Clear the pasted answers and start again?')) return
     setReplies([])
     localStorage.removeItem(storeKey)
+    saveRevisions([])
+    setPending(undefined)
   }
 
   // Coming from "New itinerary ideas" (the trip changed): the old answers were for the old trip, so they go; with ChatGPT
@@ -210,6 +236,8 @@ function ItineraryIdeas() {
     setReplies([])
     setChosen(undefined)
     localStorage.removeItem(storeKey)
+    saveRevisions([])
+    setPending(undefined)
     setParams({}, { replace: true })
     setFreshAsk(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -242,7 +270,7 @@ function ItineraryIdeas() {
     </div>
   )
 
-  if (chosen) return <DetailStep option={chosen.option} changes={chosen.changes} onBack={() => setChosen(undefined)} onUse={use} replaceChoice={replaceChoice} />
+  if (chosen) return <DetailStep option={chosen} onBack={() => setChosen(undefined)} onUse={use} replaceChoice={replaceChoice} />
 
   return (
     <div className="stack-lg">
@@ -307,11 +335,13 @@ function ItineraryIdeas() {
           </div>
           <Comparison options={options.map((o) => o.option)} compare={compare} currency={settings.homeCurrency} />
           <div className="grid-3">
-            {options.map(({ option, incomplete }, i) => (
+            {all.map(({ option, incomplete, revised }, i) => (
               <OptionCard
                 key={i}
+                n={i + 1}
                 option={option}
                 incomplete={incomplete}
+                revised={revised}
                 start={trip.startDate}
                 end={trip.endDate}
                 currency={settings.homeCurrency}
@@ -319,10 +349,28 @@ function ItineraryIdeas() {
               />
             ))}
           </div>
+          {pending && (
+            <Revision
+              key={`${pending.from}:${pending.changes}`}
+              base={all[pending.from].option}
+              n={pending.from + 1}
+              changes={pending.changes}
+              onCancel={() => setPending(undefined)}
+              onDone={(reply) => {
+                saveRevisions([...revisions, { from: pending.from, changes: pending.changes, reply }])
+                setPick(all.length) // the new one is next to look at
+                setPending(undefined)
+              }}
+            />
+          )}
           <PlanPicker
-            options={options.map((o) => o.option)}
+            options={all.map((o) => o.option)}
+            pick={Math.min(pick, all.length - 1)}
+            onPick={setPick}
+            disabled={!!pending}
             onUse={use}
-            onDetail={(option, changes) => setChosen({ option, changes })}
+            onDetail={(option) => setChosen(option)}
+            onRevise={(from, changes) => setPending({ from, changes })}
           />
         </>
       )}
@@ -375,15 +423,19 @@ function Comparison({ options, compare, currency }: { options: AiOption[]; compa
 }
 
 function OptionCard({
+  n,
   option: o,
   incomplete,
+  revised,
   start,
   end,
   currency,
   trip,
 }: {
+  n: number
   option: AiOption
   incomplete?: boolean
+  revised?: { from: number; changes: string }
   start: string
   end: string
   currency: string
@@ -391,10 +443,19 @@ function OptionCard({
 }) {
   const tripDays = daysBetween(start, end) + 1
   const total = Object.values(o.budget).reduce((s, v) => s + (v || 0), 0)
+  const [mapSize, setMapSize] = useState<'small' | 'large' | 'hidden'>('small')
   return (
     <div className="card stack option-card">
       <div>
-        <h3>{o.title}</h3>
+        <h3>
+          <span className="muted">Plan {n} · </span>
+          {o.title}
+        </h3>
+        {revised && (
+          <div className="tiny muted">
+            ✏️ Revised from plan {revised.from + 1}: {revised.changes}
+          </div>
+        )}
         {o.bestFor && <div className="small">🎯 {o.bestFor}</div>}
         {o.route.length > 0 && <div className="small muted">{o.route.join(' → ')}</div>}
         {incomplete && (
@@ -403,7 +464,14 @@ function OptionCard({
           </span>
         )}
       </div>
-      <OptionMap option={o} trip={trip} />
+      <div className="chips">
+        {(['small', 'large', 'hidden'] as const).map((v) => (
+          <button key={v} className={`chip ${mapSize === v ? 'on' : ''}`} onClick={() => setMapSize(v)}>
+            {v === 'small' ? 'Small map' : v === 'large' ? 'Large map' : 'Hide map'}
+          </button>
+        ))}
+      </div>
+      {mapSize !== 'hidden' && <OptionMap option={o} trip={trip} tall={mapSize === 'large'} />}
       <p className="small">{o.summary}</p>
       <ul className="option-days" style={{ paddingLeft: 18, margin: 0 }}>
         {o.days.map((d) => (
@@ -441,11 +509,63 @@ function OptionCard({
   )
 }
 
-/** At the end of the options: pick 1, 2 or 3 from a list, and say what to change (nights per place, an extra place…). */
-function PlanPicker({ options, onUse, onDetail }: { options: AiOption[]; onUse: (o: AiOption) => void; onDetail: (o: AiOption, changes: string) => void }) {
-  const [pick, setPick] = useState(0)
+/** The request for a revised outline: ChatGPT asked (or the prompt copied), its answer read, then back to the picker. */
+function Revision({ base, n, changes, onCancel, onDone }: { base: AiOption; n: number; changes: string; onCancel: () => void; onDone: (reply: string) => void }) {
+  const { trip, settings } = useTripCtx()
+  const api = useAiWords()
+  const [text, setText] = useState('')
+  const [error, setError] = useState<string>()
+  const prompt = useMemo(() => revisePrompt(trip, settings, base, changes), [trip, settings, base, changes])
+  function answer(t: string) {
+    setText(t)
+    if (!t.trim()) return setError(undefined)
+    try {
+      parseRevision(t)
+      setError(undefined)
+      onDone(t)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+  return (
+    <div className="card stack">
+      <div className="row between wrap">
+        <h3>✏️ Revising plan {n}</h3>
+        <button className="btn-sm btn-ghost" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+      <div className="notice info">
+        <b>Your changes:</b> {changes}
+      </div>
+      <p className="small">{api ? 'Ask ChatGPT for the revised outline. It appears above as a new plan, with its map.' : 'Copy this prompt into the same chat, then paste the revised outline below. It appears above as a new plan, with its map.'}</p>
+      <PromptBox prompt={prompt} onAnswer={answer} />
+      <AnswerBox label="Paste the revised outline" value={text} onChange={answer} minHeight={90} placeholder={'```json\n{ "options": [ … ] }\n```'} />
+      {error && <div className="notice error">{error}</div>}
+    </div>
+  )
+}
+
+/** At the end of the options: pick a plan from the list, and either go on with it or ask for changes, as many times as you like. */
+function PlanPicker({
+  options,
+  pick,
+  onPick,
+  disabled,
+  onUse,
+  onDetail,
+  onRevise,
+}: {
+  options: AiOption[]
+  pick: number
+  onPick: (i: number) => void
+  disabled: boolean
+  onUse: (o: AiOption) => void
+  onDetail: (o: AiOption) => void
+  onRevise: (from: number, changes: string) => void
+}) {
   const [changes, setChanges] = useState('')
-  const o = options[Math.min(pick, options.length - 1)]
+  const o = options[pick]
   const detailed = o.days.some((d) => d.items.length)
   const wanted = changes.trim()
   return (
@@ -454,7 +574,7 @@ function PlanPicker({ options, onUse, onDetail }: { options: AiOption[]; onUse: 
       <div className="form-grid">
         <label>
           Plan
-          <select value={pick} onChange={(e) => setPick(Number(e.target.value))}>
+          <select value={pick} onChange={(e) => onPick(Number(e.target.value))}>
             {options.map((x, i) => (
               <option key={i} value={i}>
                 Use plan {i + 1}: {x.title}
@@ -473,23 +593,32 @@ function PlanPicker({ options, onUse, onDetail }: { options: AiOption[]; onUse: 
         </label>
       </div>
       <p className="tiny muted" style={{ margin: 0 }}>
-        {wanted ? "Your changes are added to the request for the detailed plan, so the days follow them (the trip's dates stay the same)." : 'Nothing to change? Carry on as it is.'}
+        {wanted ? 'With changes, you get another outline to look at (it is added above as a new plan). Change again as often as you like; the detailed plan comes once you are happy.' : 'Happy with it? Carry on. Or say what to change first.'}
       </p>
       <div className="row wrap">
-        {detailed && !wanted ? (
-          <button className="btn-primary" onClick={() => onUse(o)}>
+        {wanted ? (
+          <button
+            className="btn-primary"
+            disabled={disabled}
+            onClick={() => {
+              onRevise(pick, wanted)
+              setChanges('')
+            }}
+          >
+            ✏️ Revise plan {pick + 1} with my changes →
+          </button>
+        ) : detailed ? (
+          <button className="btn-primary" disabled={disabled} onClick={() => onUse(o)}>
             Use plan {pick + 1}
           </button>
         ) : (
           <>
-            <button className="btn-primary" onClick={() => onDetail(o, wanted)}>
-              {wanted ? `Use plan ${pick + 1} with my changes →` : `Use plan ${pick + 1}: get the detailed plan →`}
+            <button className="btn-primary" disabled={disabled} onClick={() => onDetail(o)}>
+              Use plan {pick + 1}: get the detailed plan →
             </button>
-            {!wanted && (
-              <button className="btn-sm btn-ghost" onClick={() => onUse(o)}>
-                Use the outline as it is
-              </button>
-            )}
+            <button className="btn-sm btn-ghost" disabled={disabled} onClick={() => onUse(o)}>
+              Use the outline as it is
+            </button>
           </>
         )}
       </div>
@@ -503,11 +632,11 @@ function PlanPicker({ options, onUse, onDetail }: { options: AiOption[]; onUse: 
  */
 const DAYS_PER_ASK = 3
 
-function DetailStep({ option, changes, onBack, onUse, replaceChoice }: { option: AiOption; changes: string; onBack: () => void; onUse: (o: AiOption) => void; replaceChoice: ReactNode }) {
+function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption; onBack: () => void; onUse: (o: AiOption) => void; replaceChoice: ReactNode }) {
   const api = useAiWords()
   const { trip, settings } = useTripCtx()
-  // Other changes, other questions: the answers kept are for these changes only.
-  const storeKey = `tm-detail:${trip.id}:${option.title}${changes ? `:${[...changes].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)}` : ''}`
+  // A revised option can share its title with the one it came from: the answers kept are for this outline only.
+  const storeKey = `tm-detail:${trip.id}:${option.title}:${[...JSON.stringify(option.days.map((d) => [d.day, d.city, d.title]))].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)}`
   const [replies, setReplies] = useState<string[]>(() => JSON.parse(localStorage.getItem(storeKey) ?? '[]'))
   // Every day of the trip, even ones a cut-off outline never reached.
   const tripDays = daysBetween(trip.startDate, trip.endDate) + 1
@@ -523,9 +652,7 @@ function DetailStep({ option, changes, onBack, onUse, replaceChoice }: { option:
   }
 
   const { rounds, ok, missing } = detailRounds(replies)
-  const merged0 = mergeDetail(option, ok)
-  // With changes, the route is what the planned days now say (a place added, another dropped).
-  const merged = changes && ok.length ? { ...merged0, route: routeFromDays(merged0) } : merged0
+  const merged = mergeDetail(option, ok)
   const detailedCount = expected.length - missing.length
 
   // Walk through the replies in order, tracking which days are still missing before each one. With ChatGPT set up, each
@@ -536,7 +663,7 @@ function DetailStep({ option, changes, onBack, onUse, replaceChoice }: { option:
     let missing = expected
     for (let i = 0; i <= replies.length; i++) {
       if (i > 0 && (!rounds[i - 1].result || !missing.length)) break
-      const prompt = detailPrompt(trip, settings, option, api ? missing.slice(0, DAYS_PER_ASK) : missing, i > 0, changes)
+      const prompt = detailPrompt(trip, settings, option, api ? missing.slice(0, DAYS_PER_ASK) : missing, i > 0)
       const text = replies[i] ?? ''
       const round: (typeof rounds)[number] = { prompt, text, missingBefore: missing }
       if (text.trim()) {
@@ -599,12 +726,7 @@ function DetailStep({ option, changes, onBack, onUse, replaceChoice }: { option:
       </div>
       <div className="card stack">
         <h2>Detailed plan: {option.title}</h2>
-        <p className="small muted">{merged.route.join(' → ')} · {expected.length} days</p>
-        {changes && (
-          <div className="notice info">
-            <b>Your changes:</b> {changes}
-          </div>
-        )}
+        <p className="small muted">{option.route.join(' → ')} · {expected.length} days</p>
         {api && (
           <div className="stack" style={{ gap: 8 }}>
             <div className="row wrap">
@@ -661,7 +783,7 @@ function DetailStep({ option, changes, onBack, onUse, replaceChoice }: { option:
           </div>
           {missing.length > 0 && (
             <p className="small muted">
-              Days without detail ({missing.join(', ')}) will use the outline's highlights as ideas{changes ? ', as they were before your changes — ask for them first to have the changes everywhere' : ''} — you can still fill them in later.
+              Days without detail ({missing.join(', ')}) will use the outline's highlights as ideas — you can still fill them in later.
             </p>
           )}
           <ul className="option-days" style={{ paddingLeft: 18, margin: 0, maxHeight: 360 }}>

@@ -271,7 +271,7 @@ export function routeShape(o: AiOption) {
 }
 
 /** Step 2: the full plan for the chosen option — or, when continuing, only the days still missing. */
-export function detailPrompt(trip: Trip, settings: Settings, option: AiOption, days: number[], continuing: boolean, changes?: string) {
+export function detailPrompt(trip: Trip, settings: Settings, option: AiOption, days: number[], continuing: boolean) {
   const outline = days
     .map((n) => {
       const d = option.days.find((x) => x.day === n)
@@ -294,11 +294,8 @@ Route: ${option.route.join(' → ')}`
 ${tripBrief(trip, settings)}
 
 Route: ${option.route.join(' → ')}`
-  const wanted = changes?.trim()
-    ? `\nChanges I want to this option (they come before the outline: where they differ, follow them, keeping the same trip dates and the same number of days, and move the other days to fit — nights per place, places added or removed, a different order):\n${changes.trim()}\n`
-    : ''
   return `${intro}
-${wanted}
+
 Outline:
 ${outline}
 
@@ -750,8 +747,37 @@ export function optionStops(o: AiOption): { name: string; lat?: number; lon?: nu
   return out
 }
 
-/** The route of an option from the days actually planned (after changes): cities in order, once per stretch. */
-export function routeFromDays(o: AiOption): string[] {
-  const names = optionStops(o).map((s) => s.name)
-  return names.length ? names : o.route
+
+/**
+ * Another go at an option: the outline as it stands plus what to change (nights per place, a place added or dropped…),
+ * asked for as one revised outline in the same shape, to look at (with its map) before the detailed plan.
+ */
+export function revisePrompt(trip: Trip, settings: Settings, option: AiOption, changes: string) {
+  const outline = option.days
+    .map((d) => `Day ${d.day} (${addDays(trip.startDate, d.day - 1)}) — ${d.city ?? ''}: ${d.title ?? ''}${d.highlights.length ? ` [${d.highlights.join('; ')}]` : ''}`)
+    .join('\n')
+  return `You are an experienced travel planner. Here is an itinerary option for this trip, and changes I'd like to it.
+
+${tripBrief(trip, settings)}
+
+The option "${option.title}" — ${option.summary}
+Route: ${option.route.join(' → ')}
+${outline}
+
+Changes I want:
+${changes.trim()}
+
+Make ONE revised option that follows my changes, moving the other days to fit. Keep the same trip dates and the same number of days (${daysBetween(trip.startDate, trip.endDate) + 1}), and everything else about the option I didn't mention. Same short outline format: per day only the city, its coordinates, a title and 1–2 highlights of 2–4 words; compact JSON, one line per day.
+
+Reply with ONLY a JSON code block, no other text:
+{ "options": [ ONE option in exactly this shape:
+${OPTIONS_SHAPE.slice(OPTIONS_SHAPE.indexOf('{', 20), OPTIONS_SHAPE.lastIndexOf('  ]'))}
+] }`
+}
+
+/** The revised option in a reply (the first one it holds). */
+export function parseRevision(text: string): AiOption {
+  const o = parsePlan(text).options[0]
+  if (!o) throw new Error('No revised option found in that answer.')
+  return o
 }

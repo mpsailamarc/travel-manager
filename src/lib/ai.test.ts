@@ -230,15 +230,16 @@ describe('options on a map, and changes to an option', () => {
       { name: 'Florence', lat: 43.77, lon: 11.25, nights: 1 },
     ])
   })
-  it('adds the requested changes to the detailed plan request, ahead of the outline', async () => {
-    const { detailPrompt } = await import('./ai')
-    const { makeTrip } = await import('../test/fixtures')
-    const { SETTINGS } = await import('../test/fixtures')
+  it('asks for ONE revised option that follows the changes, in the outline shape', async () => {
+    const { revisePrompt, parseRevision } = await import('./ai')
+    const { makeTrip, SETTINGS } = await import('../test/fixtures')
     const trip = await makeTrip()
-    const p = detailPrompt(trip, SETTINGS, o as never, [1, 2, 3], false, '4 nights in Rome, add Venice')
+    const p = revisePrompt(trip, SETTINGS, o as never, '4 nights in Rome, add Venice')
     expect(p).toContain('4 nights in Rome, add Venice')
-    expect(p.indexOf('4 nights in Rome')).toBeLessThan(p.indexOf('Outline:'))
-    expect(detailPrompt(trip, SETTINGS, o as never, [1], false)).not.toContain('Changes I want')
+    expect(p).toContain('Day 3 (2027-03-12) — Florence')
+    expect(p).toContain('"route"')
+    expect(parseRevision('```json\n{"options":[{"title":"Rome longer","route":["Rome"],"days":[{"day":1,"city":"Rome","highlights":["x"]}]}]}\n```').title).toBe('Rome longer')
+    expect(() => parseRevision('```json\n{"options":[]}\n```')).toThrow()
   })
 })
 
