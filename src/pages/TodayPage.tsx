@@ -354,11 +354,6 @@ export default function TodayPage() {
                 summary={`· ${routeStops.length} ${routeStops.length === 1 ? 'place' : 'places'}, numbered as in the list`}
               >
                 <DayRouteMap route={route} loading={routeLoading} onOpen={setEditing} initialSize={settings.mapSize} />
-                <div className="row wrap">
-                  <Link className="btn btn-sm" to={`../favorites${day?.city ? `?city=${encodeURIComponent(day.city)}&day=${date}` : ''}`}>
-                    🗺️ Plan this city
-                  </Link>
-                </div>
               </Section>
             </div>
           )}
