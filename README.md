@@ -135,8 +135,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
 - **Plan map from home or the trip only**: "From Sydney" draws the whole journey from your start; "The trip only" leaves home out and
   zooms on the destination.
 - **Plan tab at a glance**: under the map, every journey of the trip in order (flights, boats, trains, buses, drives with road distance and
-  time), and the days as one line each ("Athens · Arrival & Plaka evening", items and journeys) that open Day by day. "Every item" brings
-  back the full detail (for printing or editing there).
+  time), and the days as one line each ("Athens · Arrival & Plaka evening", items and journeys) that open Day by day. Each day has its own ▸ / ▾ to
+  show or hide its items, and "Collapse all" / "Expand all" do every day at once (remembered on the device).
 - **Maps show real paths**: everything follows the streets and roads (walks, taxis, public transport, trains, buses, drives), except flights
   and boats, which stay straight dashed lines. Colours say how you travel: walking green, public transport blue (dashed: its exact line isn't
   known), taxi orange; on the trip map car orange, train/bus blue, flights grey, boats cyan.

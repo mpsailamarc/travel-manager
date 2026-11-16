@@ -29,12 +29,22 @@ export default function PlanPage() {
   const navigate = useNavigate()
   const [editing, setEditing] = useState<(Partial<Item> & { date: string }) | null>(null)
   const [dayEdit, setDayEdit] = useState<Day | null>(null)
-  // Headings only (open a day for its detail) or every item, remembered on this device.
-  const [detailed, setDetailedState] = useState(() => localStorage.getItem('tm-plan-detail') === '1')
-  const setDetailed = (v: boolean) => {
-    setDetailedState(v)
-    saveLocal('tm-plan-detail', v ? '1' : '0')
+  // Which days show their items: all or none by default, and the days you opened or closed since (remembered on this device).
+  const [fold, setFoldState] = useState<{ open: boolean; except: string[] }>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('tm-plan-fold') ?? 'null')
+      if (saved && typeof saved.open === 'boolean' && Array.isArray(saved.except)) return saved
+    } catch {
+      /* fall through */
+    }
+    return { open: localStorage.getItem('tm-plan-detail') === '1', except: [] } // the old "Headings / Every item" choice
+  })
+  const setFold = (v: { open: boolean; except: string[] }) => {
+    setFoldState(v)
+    saveLocal('tm-plan-fold', JSON.stringify(v))
   }
+  const isOpen = (date: string) => fold.open !== fold.except.includes(date)
+  const toggleDay = (date: string) => setFold({ ...fold, except: fold.except.includes(date) ? fold.except.filter((x) => x !== date) : [...fold.except, date] })
   const [mapSize, setMapSize] = useMapSize('tm-plan-map', settings.mapSize)
   const wide = useMediaQuery('(min-width: 721px)')
   const dates = dateRange(trip.startDate, trip.endDate)
@@ -360,23 +370,26 @@ export default function PlanPage() {
               </button>
             )}
             <div className="chips">
-              <button className={`chip ${!detailed ? 'on' : ''}`} onClick={() => setDetailed(false)}>
-                Headings
+              <button className={`chip ${!fold.open && !fold.except.length ? 'on' : ''}`} onClick={() => setFold({ open: false, except: [] })}>
+                ▸ Collapse all
               </button>
-              <button className={`chip ${detailed ? 'on' : ''}`} onClick={() => setDetailed(true)}>
-                Every item
+              <button className={`chip ${fold.open && !fold.except.length ? 'on' : ''}`} onClick={() => setFold({ open: true, except: [] })}>
+                ▾ Expand all
               </button>
             </div>
           </div>
         )}
 
-        {!detailed &&
-          dates.map((date, i) => {
-            const d = dayByDate.get(date)
+        {dates.map((date, i) => {
+          const d = dayByDate.get(date)
+          if (!isOpen(date)) {
             const dayItems = items.filter((it) => it.date === date && it.status !== 'skipped')
             const journeys = dayItems.filter((it) => ['flight', 'train', 'bus', 'ferry', 'car', 'drive'].includes(it.kind))
             return (
               <div key={date} id={`day-${date}`} className={`card tight day-line ${date === now ? 'is-today' : ''}`}>
+                <button className="btn-sm btn-ghost no-print" style={{ fontSize: '1.1rem', lineHeight: 1, padding: '4px 8px' }} aria-label={`Expand day ${i + 1}`} aria-expanded={false} title="Show this day's items" onClick={() => toggleDay(date)}>
+                  ▸
+                </button>
                 <div className="day-num">
                   <small>Day</small>
                   <b>{i + 1}</b>
@@ -400,14 +413,14 @@ export default function PlanPage() {
                 </div>
               </div>
             )
-          })}
-
-        {detailed && dates.map((date, i) => {
-          const d = dayByDate.get(date)
+          }
           const dayItems = items.filter((it) => it.date === date)
           return (
             <section key={date} id={`day-${date}`} className={`card day-card ${date === now ? 'is-today' : ''}`}>
               <div className="day-head">
+                <button className="btn-sm btn-ghost no-print" style={{ fontSize: '1.1rem', lineHeight: 1, padding: '4px 8px' }} aria-label={`Collapse day ${i + 1}`} aria-expanded title="Hide this day's items" onClick={() => toggleDay(date)}>
+                  ▾
+                </button>
                 <div className="day-num">
                   <small>Day</small>
                   <b>{i + 1}</b>
