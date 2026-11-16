@@ -8,7 +8,7 @@ import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
 import { askCityIdeas, cityIdeasStatus, cityIdeasText, setCityIdeasText, useCityIdeasVersion } from '../lib/cityideas'
 import { KIND_META } from '../components/kinds'
 import { ItemEditor } from '../components/ItemEditor'
-import { applyCityPlan, linkWishlistToPlan, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, fillUntimed, isIndoor, planDays, sameCity } from '../lib/favorites'
+import { applyCityPlan, linkWishlistToPlan, sendToBackup, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, fillUntimed, isIndoor, planDays, sameCity } from '../lib/favorites'
 import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin, today } from '../lib/dates'
 import { distance, plural } from '../lib/format'
 import { haversineM, type LatLon } from '../lib/geo'
@@ -43,26 +43,6 @@ function entryMinutes(e: Entry): number {
   }
   if (e.fav) return favMinutes(e.fav)
   return it?.kind === 'meal' ? 60 : 90
-}
-
-/** A plan item turned into a backup idea: its place, length and notes kept, ready to go back on a day. */
-function favFromItem(it: Item, city: string): Favorite {
-  const own = it.startTime && it.endTime ? hhmmToMin(it.endTime) - hhmmToMin(it.startTime) : 0
-  const category = it.category && CATEGORY_META[it.category] ? it.category : it.kind === 'meal' ? 'food' : 'attraction'
-  return {
-    id: uid(),
-    tripId: it.tripId,
-    city,
-    name: it.title,
-    lat: it.location?.lat,
-    lon: it.location?.lon,
-    category,
-    visitMin: own > 0 ? own : categoryMeta(category).visitMin,
-    source: 'manual',
-    notes: it.notes,
-    openingHours: it.hours,
-    addedAt: Date.now(),
-  }
 }
 
 export default function FavoritesPage() {
@@ -199,10 +179,7 @@ export default function FavoritesPage() {
         pinned: false,
         itemId: undefined,
       })
-    } else if (it && city) {
-      await db.favorites.add(favFromItem(it, city))
-      await db.items.delete(it.id)
-    }
+    } else if (it) await sendToBackup(it)
     await rebuild([it?.date ?? e.fav?.date])
     toast(`🧺 ${entryName(e)} is now a backup idea`)
   }

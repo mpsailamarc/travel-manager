@@ -113,8 +113,17 @@ export default function TripLayout() {
     trip && items && days && favSig !== undefined
       ? [trip.startDate, trip.endDate, days.map((d) => `${d.date}:${d.city}`).join(), items.map((i) => `${i.id}:${i.date}:${i.status}:${i.planner ?? ''}:${i.favId ?? ''}:${i.kind}`).join(), favSig].join('#')
       : ''
+  // A safety stop: tidying up again and again within seconds means two rules disagree. Rather than let the screen redraw
+  // forever, it pauses for a minute.
+  const runs = useRef<number[]>([])
   useEffect(() => {
     if (!sig || !tripId) return
+    const now = Date.now()
+    runs.current = [...runs.current.filter((t) => now - t < 20_000), now]
+    if (runs.current.length > 8) {
+      console.warn('Trip tidy-up paused: it kept changing the plan')
+      return
+    }
     const t = setTimeout(async () => {
       const released = await reconcileTrip(tripId)
       if (released.length)

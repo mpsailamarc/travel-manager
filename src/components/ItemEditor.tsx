@@ -12,7 +12,7 @@ import { PlaceSearch } from './PlaceSearch'
 import { PlaceInfo } from './PlaceInfo'
 import { localWiki } from '../lib/apis'
 import { planRipple } from '../lib/ripple'
-import { applyProposal, proposeDay, retimeAfter } from '../lib/favorites'
+import { applyProposal, proposeDay, retimeAfter, sendToBackup } from '../lib/favorites'
 import { journeyNote } from '../lib/dayview'
 import { forPace, legText, taxiLink, transitLink } from '../lib/legs'
 import { distance } from '../lib/format'
@@ -159,6 +159,16 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
     } else if (retimed) toast(`Saved · ${retimed.moved} later ${retimed.moved === 1 ? 'item' : 'items'} moved ${retimed.shiftMin < 0 ? 'earlier' : 'later'}`, { label: 'Undo', run: retimed.undo })
     else toast(push && ripple.moves.length ? `Saved · pushed ${ripple.moves.length} later item${ripple.moves.length > 1 ? 's' : ''} back` : isNew ? 'Added' : 'Saved')
     onClose()
+  }
+
+  // Off the day, but not out of the trip: it waits among the City planner's backup ideas (and on Today when plans change).
+  const backupable = !isNew && ['activity', 'meal', 'walk'].includes(kind)
+  async function toBackup() {
+    const saved = item as Item
+    if ((saved.status === 'booked' || saved.locked) && !confirm(`"${saved.title}" is ${saved.status === 'booked' ? 'booked' : 'pinned 📌'}. Move it to the backup ideas anyway?`)) return
+    const city = await sendToBackup(saved)
+    toast(city ? `🧺 ${saved.title} is now a backup idea for ${city}` : 'This day has no city yet: set one on the Plan tab first')
+    if (city) onClose()
   }
 
   async function remove() {
@@ -324,9 +334,16 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
 
         <div className="row between">
           {!isNew ? (
-            <button type="button" className="btn-danger btn-ghost" onClick={remove}>
-              Delete
-            </button>
+            <div className="row">
+              <button type="button" className="btn-danger btn-ghost" onClick={remove}>
+                Delete
+              </button>
+              {backupable && (
+                <button type="button" className="btn-ghost" onClick={toBackup}>
+                  🧺 Back to backup
+                </button>
+              )}
+            </div>
           ) : (
             <span />
           )}
@@ -397,7 +414,12 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
           </div>
         </details>
         {!editOpen && (
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <div className="row" style={{ justifyContent: backupable ? 'space-between' : 'flex-end' }}>
+            {backupable && (
+              <button type="button" className="btn-ghost" onClick={toBackup}>
+                🧺 Back to backup
+              </button>
+            )}
             <button type="button" onClick={onClose}>
               Close
             </button>

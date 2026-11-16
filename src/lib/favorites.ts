@@ -30,6 +30,81 @@ export const isIndoor = (f: Favorite) => f.indoor ?? !!categoryMeta(f.category).
 const isDayTrip = (f: Favorite) => f.category === 'daytrip' || f.visitMin >= 300
 
 export const sameCity = (a?: string, b?: string) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase()
+
+/**
+ * The city in a day's city name, without what chatbots add to it: "London, United Kingdom", "Rome (Trastevere)",
+ * "Sydney (overnight flight)", "Santiago → Sydney (return)", "Valparaíso / Santiago", "Rome central" are London, Rome,
+ * Sydney, Santiago, Valparaíso and Rome.
+ */
+export function cityBase(name: string): string {
+  const n = name
+    .split(/\s*[([]/)[0]
+    .split(/\s+(?:→|->|–|—|-|\|)\s+|\s*\/\s*|\s*,\s*/)[0]
+    .replace(/\s+(?:city\s+)?(?:central|centre|center|downtown|old town|city|area|district|region)$/i, '')
+    .trim()
+  return n || name.trim()
+}
+
+/**
+ * One name per city across the trip's days: each day's city without its extras, and a name that starts with another
+ * city's name nearby ("Rome Trastevere" next to "Rome", within 30 km) joins that city. Returns old name → new name for
+ * the days whose name changes.
+ */
+export function canonicalCities(days: Day[]): Map<string, string> {
+  const groups: { name: string; lat?: number; lon?: number }[] = []
+  const of = new Map<string, { name: string }>()
+  const near = (d: Day, g: { lat?: number; lon?: number }) => d.lat == null || d.lon == null || g.lat == null || g.lon == null || haversineM({ lat: d.lat, lon: d.lon }, { lat: g.lat, lon: g.lon }) < 30_000
+  const starts = (a: string, b: string) => a.toLowerCase().startsWith(`${b.toLowerCase()} `)
+  for (const d of [...days].sort((a, b) => a.date.localeCompare(b.date))) {
+    if (!d.city) continue
+    const base = cityBase(d.city)
+    let g = groups.find((x) => sameCity(x.name, base)) ?? groups.find((x) => (starts(base, x.name) || starts(x.name, base)) && near(d, x))
+    if (!g) groups.push((g = { name: base, lat: d.lat, lon: d.lon }))
+    else if (base.length < g.name.length) g.name = base
+    of.set(d.city, g)
+  }
+  const out = new Map<string, string>()
+  for (const [old, g] of of) if (old !== g.name) out.set(old, g.name)
+  return out
+}
+
+/** A plan item turned into a backup idea: its place, length and notes kept, ready to go back on a day. */
+export function favFromItem(it: Item, city: string): Favorite {
+  const own = it.startTime && it.endTime ? hhmmToMin(it.endTime) - hhmmToMin(it.startTime) : 0
+  const category = it.category && CATEGORY_META[it.category] ? it.category : it.kind === 'meal' ? 'food' : 'attraction'
+  return {
+    id: uid(),
+    tripId: it.tripId,
+    city,
+    name: it.title,
+    lat: it.location?.lat,
+    lon: it.location?.lon,
+    category,
+    visitMin: own > 0 ? own : categoryMeta(category).visitMin,
+    source: 'manual',
+    notes: it.notes,
+    openingHours: it.hours,
+    addedAt: Date.now(),
+  }
+}
+
+/**
+ * Takes something off its day and keeps it as a backup idea of the day's city: a wishlist place loses its day (and the
+ * plan item made for it goes), anything else becomes a backup idea. Returns the city, or nothing when the day has none.
+ */
+export async function sendToBackup(it: Item): Promise<string | undefined> {
+  const [days, favs, trip] = await Promise.all([db.days.where('tripId').equals(it.tripId).toArray(), db.favorites.where('tripId').equals(it.tripId).toArray(), db.trips.get(it.tripId)])
+  const city = days.find((d) => d.date === it.date)?.city ?? trip?.cities[0]
+  if (!city) return undefined
+  const fav = favs.find((f) => f.id === it.favId || f.itemId === it.id)
+  await db.transaction('rw', [db.items, db.favorites], async () => {
+    if (fav) await db.favorites.update(fav.id, { date: undefined, pinned: false, itemId: undefined })
+    else await db.favorites.add(favFromItem(it, city))
+    await db.items.delete(it.id)
+  })
+  await touchTrip(it.tripId)
+  return city
+}
 export const plannerTag = (city: string) => `fav:${city.trim().toLowerCase()}`
 
 /** A visit time in minutes. Chatbots sometimes answer in hours ("1.5"): nothing worth a visit takes under 10 minutes. */
@@ -313,10 +388,24 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
     }
   }
 
+  // The items built again keep the ids of the ones they replace (the same place on the same day): only real changes are
+  // written, so rebuilding a day that hasn't changed changes nothing — and nothing else is set off by it.
+  const old = items.filter((i) => i.planner === tag && dates.includes(i.date))
+  const same = (a: Item, b: Item) => a.date === b.date && a.kind === b.kind && (a.favId ? a.favId === b.favId : !b.favId && a.title === b.title)
+  const free = [...old]
+  for (const b of built) {
+    const k = free.findIndex((o) => same(o, b))
+    if (k >= 0) b.id = free.splice(k, 1)[0].id
+  }
+  const sig = (i: Item) => JSON.stringify([i.date, i.kind, i.title, i.startTime, i.endTime, i.status, i.order, i.favId, i.notes, i.legIn?.minutes, i.location?.lat, i.location?.lon])
+  const changed = built.filter((b) => {
+    const o = old.find((x) => x.id === b.id)
+    return !o || sig(o) !== sig(b)
+  })
+  if (!changed.length && !free.length) return
   await db.transaction('rw', db.items, async () => {
-    const old = items.filter((i) => i.planner === tag && dates.includes(i.date))
-    await db.items.bulkDelete(old.map((i) => i.id))
-    await db.items.bulkAdd(built)
+    if (free.length) await db.items.bulkDelete(free.map((i) => i.id))
+    if (changed.length) await db.items.bulkPut(changed)
   })
   await touchTrip(trip.id)
 }
@@ -1147,7 +1236,7 @@ export function reconcileTrip(tripId: string): Promise<string[]> {
   return run
 }
 
-async function reconcileNow(tripId: string): Promise<string[]> {
+async function reconcileNow(tripId: string, depth = 0): Promise<string[]> {
   const trip = await db.trips.get(tripId)
   if (!trip) return []
   const [favs, items, days] = await Promise.all([
@@ -1169,6 +1258,24 @@ async function reconcileNow(tripId: string): Promise<string[]> {
     Object.assign(f, c)
   }
   const released: string[] = []
+
+  // One name per city: "London, United Kingdom" and "London" are the same city, so the City planner shows it once with all
+  // its days. The days, the wishlist places and the City planner's own items take the new name.
+  const renamed = canonicalCities(days)
+  if (renamed.size && depth < 2) {
+    await db.transaction('rw', [db.days, db.favorites, db.items], async () => {
+      for (const d of days) if (d.city && renamed.has(d.city)) await db.days.update(d.id, { city: renamed.get(d.city) })
+      for (const f of favs) {
+        const to = [...renamed].find(([old]) => sameCity(old, f.city))?.[1]
+        if (to) await db.favorites.update(f.id, { city: to })
+      }
+      for (const i of items) {
+        const to = [...renamed].find(([old]) => i.planner === plannerTag(old))?.[1]
+        if (to) await db.items.update(i.id, { planner: plannerTag(to) })
+      }
+    })
+    return reconcileNow(tripId, depth + 1) // everything below works with the new names
+  }
 
   // Journeys whose stored coordinates contradict their names (a chatbot's slip): the name's city wins, once and for all.
   const fixedPlaces = items.flatMap((i) => {

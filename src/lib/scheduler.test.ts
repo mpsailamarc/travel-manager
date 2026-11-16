@@ -336,3 +336,64 @@ describe('nothing planned into a journey', () => {
     expect((await db.items.get(show.id))!.startTime).toBe('18:00')
   })
 })
+
+describe('one name per city', () => {
+  it('drops what chatbots add to a city name, and joins a neighbourhood to its city', async () => {
+    const { cityBase, canonicalCities } = await import('./favorites')
+    expect(['London, United Kingdom', 'Rome (Trastevere)', 'Sydney (overnight flight)', 'Santiago → Sydney (return)', 'Valparaíso / Santiago', 'Rome central', 'Stratford-upon-Avon'].map(cityBase)).toEqual([
+      'London',
+      'Rome',
+      'Sydney',
+      'Santiago',
+      'Valparaíso',
+      'Rome',
+      'Stratford-upon-Avon',
+    ])
+    const day = (date: string, city: string, lat: number, lon: number) => ({ id: date, tripId: 't', date, city, lat, lon })
+    const m = canonicalCities([day('2027-09-25', 'Rome', 41.9, 12.5), day('2027-09-26', 'Rome Trastevere', 41.889, 12.47), day('2027-09-27', 'Rome central', 41.9, 12.5), day('2027-09-28', 'Amsterdam, Netherlands', 52.37, 4.9)])
+    expect(Object.fromEntries(m)).toEqual({ 'Rome Trastevere': 'Rome', 'Rome central': 'Rome', 'Amsterdam, Netherlands': 'Amsterdam' })
+  })
+
+  it('renames the days and their wishlist places once, so the City planner shows the city once with all its days', async () => {
+    const { reconcileTrip } = await import('./favorites')
+    const trip = await makeTrip()
+    await db.days.bulkPut([
+      { id: `${trip.id}:a`, tripId: trip.id, date: '2027-03-10', city: 'London', lat: 51.5074, lon: -0.1278 },
+      { id: `${trip.id}:b`, tripId: trip.id, date: '2027-03-11', city: 'London, United Kingdom', lat: 51.5074, lon: -0.1278 },
+    ])
+    const f = await addFav(trip, { ...LONDON.tower, city: 'London, United Kingdom' })
+    await reconcileTrip(trip.id)
+    const days = await db.days.where('tripId').equals(trip.id).toArray()
+    expect(new Set(days.map((d) => d.city))).toEqual(new Set(['London']))
+    expect((await db.favorites.get(f.id))!.city).toBe('London')
+  })
+})
+
+describe('planning a day again without changes', () => {
+  it('keeps the same items, so nothing else is set off', async () => {
+    const { applyCityPlan } = await import('./favorites')
+    const trip = await makeTrip()
+    await addItem(trip, { kind: 'stay', title: 'Hotel', status: 'booked', date: '2027-03-10', nights: 3, location: at(LONDON.hotel) })
+    await addFav(trip, { ...LONDON.tower, date: D })
+    await addFav(trip, { ...LONDON.stPauls, date: D })
+    await applyCityPlan(trip, 'London', [D], SETTINGS)
+    const first = (await dayItems(trip, D)).filter((i) => i.planner).map((i) => i.id).sort()
+    await applyCityPlan(trip, 'London', [D], SETTINGS)
+    const second = (await dayItems(trip, D)).filter((i) => i.planner).map((i) => i.id).sort()
+    expect(first.length).toBeGreaterThan(0)
+    expect(second).toEqual(first)
+  })
+})
+
+describe('back to the backup ideas', () => {
+  it("an itinerary item becomes a backup idea of its day's city; a wishlist place just loses its day", async () => {
+    const { sendToBackup } = await import('./favorites')
+    const trip = await makeTrip()
+    const it = await addItem(trip, { date: D, title: 'Tower of London', startTime: '10:00', endTime: '12:00', location: at(LONDON.tower) })
+    expect(await sendToBackup(it)).toBe('London')
+    expect(await db.items.get(it.id)).toBeUndefined()
+    const fav = (await db.favorites.where('tripId').equals(trip.id).toArray()).find((f) => f.name === 'Tower of London')!
+    expect(fav).toMatchObject({ city: 'London', visitMin: 120 })
+    expect(fav.date).toBeUndefined()
+  })
+})
