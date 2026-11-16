@@ -61,41 +61,6 @@ export function RouteFields({ value: t, onChange }: { value: Trip; onChange: (v:
 
 export const EMOJIS = ['🧳', '🏖️', '🏔️', '🏙️', '🏛️', '🌴', '🗺️', '🚂', '⛩️', '🏝️', '🎒', '🐘', '❄️', '🍝', '🍣', '🌋']
 
-export function CountryPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  const [q, setQ] = useState('')
-  const matches = q ? COUNTRIES.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()) && !value.includes(c.code)).slice(0, 8) : []
-  return (
-    <div className="stack" style={{ gap: 8 }}>
-      <div className="chips">
-        {value.map((c) => (
-          <button key={c} type="button" className="chip on" onClick={() => onChange(value.filter((x) => x !== c))}>
-            {countryLabel(c)} ✕
-          </button>
-        ))}
-      </div>
-      <input placeholder="Type a country…" value={q} onChange={(e) => setQ(e.target.value)} />
-      {matches.length > 0 && (
-        <div className="chips">
-          {matches.map((c) => (
-            <button
-              key={c.code}
-              type="button"
-              className="chip"
-              onClick={() => {
-                onChange([...value, c.code])
-                setQ('')
-              }}
-            >
-              {flag(c.code)} {c.name}
-            </button>
-          ))}
-        </div>
-      )}
-      {q && !matches.length && <span className="tiny muted">Not in the built-in list — add it as a place name below instead.</span>}
-    </div>
-  )
-}
-
 // Countries people type by a short name.
 const COUNTRY_ALIASES: Record<string, string> = { uk: 'GB', 'united kingdom': 'GB', england: 'GB', scotland: 'GB', wales: 'GB', britain: 'GB', 'great britain': 'GB', usa: 'US', us: 'US', america: 'US', 'united states': 'US', holland: 'NL', uae: 'AE' }
 const countryOf = (text: string) => {
@@ -109,23 +74,35 @@ const countryOf = (text: string) => {
  */
 export function DestinationInput({ cities, countryCodes, onChange }: { cities: string[]; countryCodes: string[]; onChange: (v: { cities: string[]; countryCodes: string[] }) => void }) {
   const [text, setText] = useState('')
-  const [places, setPlaces] = useState(cities)
+  // A trip's places can list a city once per day ("Gothenburg, Gothenburg, …"): each shows once, in order.
+  const [places, setPlaces] = useState(() => cities.filter((c, i) => cities.findIndex((x) => x.toLowerCase() === c.toLowerCase()) === i))
   const [whole, setWhole] = useState(countryCodes) // countries chosen as such ("Italy")
   const [found, setFound] = useState<Record<string, string | null>>({}) // place (lower case) → its country, null when unknown
-  const looking = useRef(new Set<string>())
+  const looking = useRef(false)
   const report = useRef(onChange)
   report.current = onChange
+  // A trip saved before this box kept its countries apart from its places: once a place's country is known, that country
+  // follows the place (remove the place and it goes), as it does for places added here.
+  const saved = useRef(new Set(countryCodes))
 
-  // Each new place gets its country looked up once.
+  // Each place gets its country looked up once, one at a time (the free service asks for no more than one request a second).
   useEffect(() => {
-    for (const p of places) {
-      const k = p.toLowerCase()
-      if (k in found || looking.current.has(k)) continue
-      looking.current.add(k)
-      searchPlaces(p)
-        .then((r) => setFound((f) => ({ ...f, [k]: r[0]?.countryCode ?? null })))
-        .catch(() => setFound((f) => ({ ...f, [k]: null })))
-    }
+    if (looking.current) return
+    const next = places.find((p) => !(p.toLowerCase() in found))
+    if (!next) return
+    looking.current = true
+    const k = next.toLowerCase()
+    searchPlaces(next)
+      .then((r) => r[0]?.countryCode ?? null)
+      .catch(() => null)
+      .then((code) => {
+        looking.current = false
+        if (code && saved.current.has(code)) {
+          saved.current.delete(code)
+          setWhole((w) => w.filter((c) => c !== code))
+        }
+        setFound((f) => ({ ...f, [k]: code }))
+      })
   }, [places, found])
 
   // The trip's countries: the places' countries in order, then any country chosen on its own.
@@ -204,21 +181,6 @@ export function DestinationInput({ cities, countryCodes, onChange }: { cities: s
         {places.some((p) => found[p.toLowerCase()] === null) && ' 📍 = country not found (offline, or an unusual name): add the country too.'}
       </p>
     </div>
-  )
-}
-
-/** Keeps the raw text while typing so commas and spaces aren't swallowed. */
-export function CitiesInput({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
-  const [text, setText] = useState(value.join(', '))
-  return (
-    <input
-      value={text}
-      placeholder={placeholder}
-      onChange={(e) => {
-        setText(e.target.value)
-        onChange(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))
-      }}
-    />
   )
 }
 
@@ -346,12 +308,8 @@ export function TripFields({ value: t, onChange }: { value: Trip; onChange: (t: 
           </button>
         ))}
       </div>
-      <label>Countries</label>
-      <CountryPicker value={t.countryCodes} onChange={(v) => set('countryCodes', v)} />
-      <label>
-        Places / cities (comma separated, in order)
-        <CitiesInput value={t.cities} onChange={(v) => set('cities', v)} />
-      </label>
+      <label>Where to</label>
+      <DestinationInput cities={t.cities} countryCodes={t.countryCodes} onChange={(v) => onChange({ ...t, ...v })} />
       <StartEndFields value={t} onChange={(v) => onChange({ ...t, ...v })} />
       <label>Travellers</label>
       <p className="small" style={{ margin: 0 }}>
