@@ -71,7 +71,14 @@ export const locale = () => (current === 'fr' ? 'fr-FR' : undefined)
  */
 export function t(text: string, vars?: Record<string, string | number>): string {
   const s = (current === 'fr' && FR[text]) || text
-  return vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : s
+  const filled = vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : s
+  return aiName === 'ChatGPT' ? filled : filled.replace(/ChatGPT|OpenAI/g, aiName)
+}
+
+// The assistant the app asks ("ChatGPT", or "Gemini" when that is chosen in Settings): the texts that name it follow.
+let aiName = 'ChatGPT'
+export const setAiName = (name: string) => {
+  aiName = name
 }
 
 /** One text for one, another for more ("1 night" / "{n} nights"): French counts 0 and 1 as singular. */

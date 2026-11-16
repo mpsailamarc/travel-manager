@@ -42,3 +42,38 @@ describe('asking ChatGPT', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('asking Gemini (the free tier)', () => {
+  beforeEach(() => localStorage.setItem('tm-ai-config', JSON.stringify({ mode: 'api', provider: 'gemini', key: 'sk-not-used', geminiKey: 'AIza-test', geminiModel: 'gemini-flash-latest', tokens: 0 })))
+
+  it('sends the request to Google with the Gemini key and model, without OpenAI-only options', async () => {
+    const fetch = vi.fn(async () => streamed(['ok']))
+    vi.stubGlobal('fetch', fetch)
+    expect(await askAI([{ role: 'user', content: 'plan' }])).toBe('ok')
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions')
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer AIza-test')
+    const body = JSON.parse(init.body as string)
+    expect(body.model).toBe('gemini-flash-latest')
+    expect(body.stream_options).toBeUndefined()
+    expect(body.reasoning_effort).toBeUndefined()
+  })
+
+  it('is ready only with the Gemini key, and the texts name Gemini', async () => {
+    const { aiReady, getAiConfig, setAiConfig } = await import('./openai')
+    const { t } = await import('../i18n')
+    expect(aiReady(getAiConfig())).toBe(true)
+    expect(t('✨ Ask ChatGPT')).toBe('✨ Ask Gemini')
+    setAiConfig({ geminiKey: '' })
+    expect(aiReady(getAiConfig())).toBe(false)
+    setAiConfig({ provider: 'openai' })
+    expect(t('✨ Ask ChatGPT')).toBe('✨ Ask ChatGPT')
+  })
+
+  it('lists the chat models of Google, the quick ones first', async () => {
+    const { listModels } = await import('./openai')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 'models/gemini-2.5-pro' }, { id: 'models/text-embedding-004' }, { id: 'models/gemini-flash-latest' }, { id: 'models/gemini-2.5-flash-lite' }, { id: 'models/gemini-2.5-flash-image' }] }))))
+    expect(await listModels('AIza-test', 'gemini')).toEqual(['gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'])
+  })
+})
+
