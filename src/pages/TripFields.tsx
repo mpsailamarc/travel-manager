@@ -224,7 +224,8 @@ export function travellersText(ts: Traveller[]) {
   return `${tn(adults, '{n} adult', '{n} adults')}${kids.length ? ` + ${tn(kids.length, '{n} child', '{n} children')}${kids.some((k) => k.age != null) ? ` (${kids.map((k) => k.age ?? '?').join(', ')})` : ''}` : ''}`
 }
 
-export function TravellersEditor({ value, onChange }: { value: Traveller[]; onChange: (v: Traveller[]) => void }) {
+/** `firstAdult`: what the first adult added is called when the list has no adult yet ("Partner" in Settings, where you aren't in the list). */
+export function TravellersEditor({ value, onChange, firstAdult }: { value: Traveller[]; onChange: (v: Traveller[]) => void; firstAdult?: string }) {
   const update = (id: string, patch: Partial<Traveller>) => onChange(value.map((t) => (t.id === id ? { ...t, ...patch } : t)))
   return (
     <div className="stack" style={{ gap: 8 }}>
@@ -249,7 +250,7 @@ export function TravellersEditor({ value, onChange }: { value: Traveller[]; onCh
         </div>
       ))}
       <div className="row">
-        <button type="button" className="btn-sm" onClick={() => onChange([...value, { id: uid(), type: 'adult', name: tr('Adult {n}', { n: value.filter((v) => v.type === 'adult').length + 1 }) }])}>
+        <button type="button" className="btn-sm" onClick={() => onChange([...value, { id: uid(), type: 'adult', name: firstAdult && !value.some((v) => v.type === 'adult') ? firstAdult : tr('Adult {n}', { n: value.filter((v) => v.type === 'adult').length + 1 + (firstAdult ? 1 : 0) }) }])}>
           {tr('+ Adult')}
         </button>
         <button type="button" className="btn-sm" onClick={() => onChange([...value, { id: uid(), type: 'child', name: tr('Child {n}', { n: value.filter((v) => v.type === 'child').length + 1 }), age: 8 }])}>

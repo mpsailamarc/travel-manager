@@ -36,6 +36,16 @@ export default function NewTripPage() {
   }))
   const set = <K extends keyof Trip>(k: K, v: Trip[K]) => setT((s) => ({ ...s, [k]: v }))
 
+  // Who comes: you (named in Settings) and your family from Settings, until you change the list for this trip.
+  const travellersTouched = useRef(false)
+  const familyKey = JSON.stringify([settings.name, settings.family ?? []])
+  useEffect(() => {
+    if (travellersTouched.current) return
+    const me: Trip['travellers'][number] = { id: uid(), name: settings.name?.trim() || tr('Me'), type: 'adult' }
+    setT((s) => ({ ...s, travellers: [me, ...(settings.family ?? []).map((f) => ({ ...f, id: uid() }))] }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyKey])
+
   // Where you start: home from Settings (city or usual airport), filled in once Settings have loaded — change it for this trip.
   const startTouched = useRef(false)
   useEffect(() => {
@@ -161,7 +171,13 @@ export default function NewTripPage() {
             <>
               <h2>{tr("Who's coming?")}</h2>
               <p className="muted small">{tr("Children's ages help suggest a realistic pace and the right activities.")}</p>
-              <TravellersEditor value={t.travellers} onChange={(v) => set('travellers', v)} />
+              <TravellersEditor
+                value={t.travellers}
+                onChange={(v) => {
+                  travellersTouched.current = true
+                  set('travellers', v)
+                }}
+              />
             </>
           )}
 
