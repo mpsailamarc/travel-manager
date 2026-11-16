@@ -6,8 +6,9 @@
 import type { Day, GetAround, Item, Leg, Place, Settings } from '../types'
 import { useAsync } from './hooks'
 import { haversineM } from './geo'
-import { addDays } from './dates'
+import { addDays, hhmmToMin } from './dates'
 import { cityIn, trustedPlace } from './cities'
+import { transportSpan, type ZoneCtx } from './tz'
 import { DEFAULT_WALK_MAX_MIN, getAroundFor, MODE_COLOR, MODE_DASHED, planLeg } from './legs'
 
 export interface RouteStop {
@@ -54,8 +55,18 @@ export function routeItems(items: Item[], date: string): Item[] {
 }
 
 /** Where the day begins: the hotel you slept in (on a moving day that's last night's), else tonight's. */
-export function dayStartPlace(items: Item[], date: string): { lat: number; lon: number; name: string } | undefined {
+export function dayStartPlace(items: Item[], date: string, zone?: Omit<ZoneCtx, 'items'>): { lat: number; lon: number; name: string } | undefined {
   const covers = (d: string) => (i: Item) => i.kind === 'stay' && i.date <= d && d < addDays(i.date, i.nights ?? 1) && i.location?.lat != null
+  // After a night on a plane (or a sleeper train), the day starts where it lands, not at tonight's hotel.
+  if (zone && !items.some(covers(addDays(date, -1)))) {
+    const ctx = { ...zone, items }
+    const landed = items
+      .filter((i) => ['flight', 'train', 'ferry', 'bus'].includes(i.kind) && i.status !== 'skipped' && i.date < date && i.date >= addDays(date, -2))
+      .map((i) => ({ i, span: transportSpan(i, ctx), at: ll(i.to) }))
+      .filter((x) => x.span?.arrDate === date && x.at)
+      .sort((a, b) => b.span!.arrUtc - a.span!.arrUtc)[0]
+    if (landed) return { ...landed.at!, name: landed.i.to?.name ?? landed.i.title }
+  }
   const stay = items.find(covers(addDays(date, -1))) ?? items.find(covers(date))
   return stay?.location?.lat != null && stay.location.lon != null ? { lat: stay.location.lat, lon: stay.location.lon, name: stay.title } : undefined
 }
@@ -122,18 +133,22 @@ export async function buildRoute(
       out.push({ item: it, at })
       continue
     }
-    if (it.kind === 'flight') {
-      // To the airport it leaves from (when that's known and not where you already are), then straight to where it lands.
-      const origin = prev ? placeAt(prev)! : begin
-      const dep = ll(it.from)
+    // A flight, or a train, coach or ferry between towns: the way to where it leaves from (when that's known and not where
+    // you already are), then the journey itself as a straight line, taking its own time — not a guess at city transit speed.
+    const origin = prev ? placeAt(prev)! : begin
+    const dep = ll(it.from)
+    const far = (a?: { lat: number; lon: number }) => !!a && haversineM(a, at) > 30_000
+    if (it.kind === 'flight' || (['train', 'bus', 'ferry'].includes(it.kind) && (far(dep) || (!dep && far(origin))))) {
       const access = origin && dep && haversineM(origin, dep) > 500 ? { ...(await planLeg(origin, dep, pref, walkMax, settings.walkSpeedKmh)), fromName: prev?.title ?? begin?.name } : undefined
-      // Without the departure airport, it flies from where you were — unless that's where it lands (arriving, the hotel is tonight's).
+      // Without where it leaves from, it goes from where you were — unless that's where it arrives (arriving, the hotel is tonight's).
       const a = dep ?? (origin && haversineM(origin, at) > 50_000 ? origin : undefined)
       const km = a ? haversineM(a, at) / 1000 : 0
-      const flight: Leg | undefined = a
-        ? { mode: 'flight', minutes: Math.round((km / 800) * 60 + 30), distanceM: km * 1000, geometry: [[a.lon, a.lat], [at.lon, at.lat]], estimated: true, fromName: it.from?.name ?? prev?.title ?? begin?.name }
+      const clock = it.startTime && it.endTime ? (hhmmToMin(it.endTime) - hhmmToMin(it.startTime) + 1440) % 1440 : 0
+      const minutes = it.kind === 'flight' ? Math.round((km / 800) * 60 + 30) : clock || Math.round((km / 70) * 60)
+      const ride: Leg | undefined = a
+        ? { mode: it.kind === 'flight' ? 'flight' : 'transit', minutes, distanceM: km * 1000, geometry: [[a.lon, a.lat], [at.lon, at.lat]], estimated: it.kind === 'flight' || !clock, fromName: it.from?.name ?? prev?.title ?? begin?.name }
         : undefined
-      out.push({ item: it, at, access, leg: flight })
+      out.push({ item: it, at, access, leg: ride })
       prev = it
       continue
     }
@@ -162,10 +177,10 @@ export async function buildRoute(
 }
 
 /** The day's route, rebuilt whenever its places, times or the way of getting around change. */
-export function useDayRoute(items: Item[], date: string, day: Day | undefined, settings: Settings) {
+export function useDayRoute(items: Item[], date: string, day: Day | undefined, settings: Settings, zone?: Omit<ZoneCtx, 'items'>) {
   const stops = routeItems(items, date)
   const pref = getAroundFor(day, settings, items, date)
-  const begin = dayStartPlace(items, date)
+  const begin = dayStartPlace(items, date, zone)
   const finish = dayEndPlace(items, date, day)
   const key = [pref, settings.walkMaxMin, settings.walkSpeedKmh, begin?.lat, begin?.lon, finish?.lat, finish?.lon, ...stops.map((i) => `${i.id}|${i.startTime}|${placeAt(i)?.lat}|${placeAt(i)?.lon}|${i.legIn?.minutes}`)].join(';')
   const r = useAsync(() => (stops.length ? buildRoute(stops, pref, settings, begin, finish) : Promise.resolve({ stops: [], segments: [] } as DayRoute)), [key])

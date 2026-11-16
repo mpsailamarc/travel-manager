@@ -57,6 +57,7 @@ export interface Trip {
   interests: string[]
   focus?: TripFocus // cities and sights, a mix, or a road trip with hikes (unset = a mix)
   innerFlights?: InnerFlights // flights between places inside the trip (unset = 'auto': the planner decides, by group size)
+  sleep?: 'hotels' | 'camper' // where you sleep (unset = hotels, or a camper van when the plan has a camper rental)
   notes?: string
   budget: Partial<Record<BudgetCategory, number>> // in home currency
   budgetLines?: BudgetLine[] // the estimate's breakdown; per-category totals in `budget` follow these

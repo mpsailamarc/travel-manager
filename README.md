@@ -77,6 +77,14 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   ("Hotel in Amsterdam (to choose)", at the city centre) where there's none. Nights on an overnight flight or at home need none. Stays you set
   yourself (edited, booked, or with a reference) are never touched, so a city can have two hotels. Imported hotel bookings fill the stay for
   those nights instead of adding another.
+- **Nights on the move**: a night on a long flight, a sleeper train or an overnight ferry (one landing a day later, or leaving in the small
+  hours) needs no hotel; the next day starts where it lands. On the map, a train, coach or ferry between towns is drawn from its station with
+  its own time.
+- **Camper van trips**: "Where you sleep" (new trip and Trip details): Hotels or 🚐 Camper van. A camper rental in the plan (campervan,
+  motorhome…) also counts from its pick-up to its return. Those nights get "Campsite near … (to choose)" instead of hotels; the budget has
+  the van's rental and campsites instead of a car and hotels; the checklist links to campsites on the map and reminds you later; ChatGPT is
+  asked for campsites and drives of at most about 4 hours a day.
+- **Edit the hotel from Day by day**: "🛏️ Tonight" (and the stay in the day's plan) opens the same editor as "Where you sleep".
 - **Each day starts and ends at the hotel**: from last night's hotel (on a moving day, before you move on) and back to tonight's (on a moving
   day, the new one), once the stay has an address (Edit → Where → Find; until then the city centre). The way back is counted when the day is
   planned and drawn on the day's map (🏨). Turn it off for a day in the City planner: "🧭 The day's route" → "End the day at the hotel".

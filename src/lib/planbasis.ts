@@ -14,6 +14,7 @@ interface Basis {
   interests: string[]
   focus: string
   flights: string
+  sleep: string
   from: string
   to: string
 }
@@ -29,6 +30,7 @@ function basisOf(t: Trip): Basis {
     interests: [...t.interests].sort(),
     focus: t.focus ?? '',
     flights: t.innerFlights ?? '',
+    sleep: t.sleep ?? '',
     from: t.startPlace?.name ?? '',
     to: t.endPlace?.name ?? '',
   }
@@ -46,6 +48,7 @@ const LABELS: Record<keyof Basis, string> = {
   interests: 'interests',
   focus: 'cities or outdoors',
   flights: 'flights between places',
+  sleep: 'where you sleep',
   from: 'start or end',
   to: 'start or end',
 }

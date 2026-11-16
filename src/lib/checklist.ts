@@ -6,7 +6,7 @@ import { db } from '../db'
 import { addDays, dateRange, formatDate } from './dates'
 import { country, needsAdapter, travelAdvice, visaWikipediaUrl } from './countries'
 import { tripadvisorSearch } from './links'
-import { stayStretches } from './stays'
+import { camperNights, isCampsite, stayStretches } from './stays'
 
 export interface ChecklistDraft {
   ruleId: string
@@ -173,14 +173,23 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
   for (const st of items.filter((i) => i.kind === 'stay' && (i.status === 'idea' || i.status === 'planned'))) {
     const nights = st.nights ?? 1
     const city = cityOn(st.date) ?? st.location?.name
+    // Campsites fill up mostly in summer and school holidays: a later reminder, and a map of the campsites around.
+    const camp = isCampsite(st)
     add({
       ruleId: `book:${st.id}`,
       title: `Book: ${st.title}`,
       category: 'bookings',
-      dueDate: before(45),
-      notes: [city, `${formatDate(st.date)} · ${nights} night${nights > 1 ? 's' : ''}`, st.cost?.amount ? `budgeted ${st.cost.amount} ${st.cost.currency}` : ''].filter(Boolean).join(' · '),
-      link: st.url ?? bookingSearch(city ?? st.title, st.date, addDays(st.date, nights), groupAdults, childAges),
-      altLink: tripadvisorSearch(st.title, city),
+      dueDate: before(camp ? 21 : 45),
+      notes: [
+        city,
+        `${formatDate(st.date)} · ${nights} night${nights > 1 ? 's' : ''}`,
+        st.cost?.amount ? `budgeted ${st.cost.amount} ${st.cost.currency}` : '',
+        camp ? 'Popular campsites fill up in summer and school holidays; otherwise you can often just turn up' : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      link: st.url ?? (camp ? campsiteSearch(city ?? st.title) : bookingSearch(city ?? st.title, st.date, addDays(st.date, nights), groupAdults, childAges)),
+      altLink: camp ? undefined : tripadvisorSearch(st.title, city),
     })
   }
 
@@ -195,7 +204,7 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     const city = cityOn(run[0])
     add({
       ruleId: `stay-gap:${run[0]}`,
-      title: `Find accommodation${city ? ` in ${city}` : ''}: ${formatDate(run[0])}${run.length > 1 ? ` → ${run.length} nights` : ' (1 night)'}`,
+      title: `${inVan(run[0]) ? 'Find a campsite' : 'Find accommodation'}${city ? ` in ${city}` : ''}: ${formatDate(run[0])}${run.length > 1 ? ` → ${run.length} nights` : ' (1 night)'}`,
       category: 'bookings',
       dueDate: before(45),
       notes: 'No accommodation in the plan for these nights yet. Add it on the Plan tab once booked.',
@@ -204,6 +213,7 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     })
     run = []
   }
+  const inVan = camperNights(trip, items)
   // Only nights that need a bed: not one spent on an overnight flight or train, nor at home.
   const needed = days.length ? new Set(stayStretches(trip, days, items).flatMap((st) => st.nights)) : undefined
   for (const n of dateRange(trip.startDate, addDays(trip.endDate, -1))) {
@@ -282,6 +292,11 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
 
   const seen = new Set<string>()
   return out.filter((d) => !seen.has(d.ruleId) && !!seen.add(d.ruleId))
+}
+
+/** Campsites around a place, on the map (no account needed). */
+export function campsiteSearch(place: string) {
+  return `https://www.google.com/maps/search/${encodeURIComponent(`campsites near ${place}`)}`
 }
 
 /** A Booking.com search for the city and dates, pre-filled with the group (a plain link: no account, no tracking). */

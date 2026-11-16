@@ -11,6 +11,25 @@ import { haversineM } from './geo'
 import { uid } from './ids'
 import { transportSpan } from './tz'
 
+const CAMPER = /camper|campervan|motorhome|motor home|\bRV\b|camping[- ]car|wohnmobil|camper van/i
+export const isCamperRental = (i: Item) => i.kind === 'car' && CAMPER.test(i.title)
+
+/**
+ * The nights spent in a camper van: the whole trip when you said so (Trip details → Where you sleep), else from a camper
+ * rental's pick-up to its return (or the end of the trip) when the plan has one. Hotels otherwise.
+ */
+export function camperNights(trip: Trip, items: Item[]): (night: string) => boolean {
+  if (trip.sleep === 'camper') return () => true
+  if (trip.sleep === 'hotels') return () => false
+  const dates = items.filter((i) => isCamperRental(i) && i.status !== 'skipped').map((i) => i.date).sort()
+  if (!dates.length) return () => false
+  const [from, to] = [dates[0], dates.length > 1 ? dates[dates.length - 1] : trip.endDate]
+  return (n) => n >= from && n < to
+}
+
+/** A stay that's a campsite (or an aire, a campground…) rather than a hotel. */
+export const isCampsite = (s: Item) => /campsite|camping|campground|caravan park|\baire\b|holiday park|RV park/i.test(s.title)
+
 export const nightsOf = (s: Item) => Array.from({ length: Math.max(1, s.nights ?? 1) }, (_, k) => addDays(s.date, k))
 export const isPlaceholderStay = (s: Item) => /\(to choose\)$/.test(s.title)
 const keeps = (s: Item) => !!s.hotelSet || !!s.bookingRef || s.status === 'booked' || s.status === 'done'
@@ -28,14 +47,16 @@ export interface Stretch {
  */
 export function stayStretches(trip: Trip, days: Day[], items: Item[]): Stretch[] {
   const ctx = { trip, days, items }
+  // A long journey that lands on a later day takes that night; one leaving in the small hours (a 01:30 flight) takes the
+  // night before: you leave for it in the evening.
   const inTransit = new Set(
     items
       .filter((i) => ['flight', 'train', 'ferry', 'bus'].includes(i.kind) && i.status !== 'skipped')
-      .filter((i) => {
+      .flatMap((i) => {
         const span = transportSpan(i, ctx)
-        return !!span && span.arrDate > i.date && span.durationMin >= 4 * 60
-      })
-      .map((i) => i.date),
+        if (!span || span.durationMin < 4 * 60) return []
+        return [...(span.arrDate > i.date ? [i.date] : []), ...(i.startTime && i.startTime < '05:00' ? [addDays(i.date, -1)] : [])]
+      }),
   )
   const home = trip.startPlace?.lat != null && trip.startPlace.lon != null ? { lat: trip.startPlace.lat, lon: trip.startPlace.lon } : undefined
   const out: Stretch[] = []
@@ -59,6 +80,7 @@ export function tidyStaysPlan(trip: Trip, days: Day[], items: Item[]): { put: It
   // Each of the chatbot's stays belongs to the stretch it checks in during, else the first one it runs into (a stay
   // starting on the night of the flight in).
   const homeOf = (s: Item) => stretches.find((st) => st.nights.includes(s.date)) ?? stretches.find((st) => nightsOf(s).some((n) => st.nights.includes(n)))
+  const inVan = camperNights(trip, items)
   for (const st of stretches) {
     const inStretch = new Set(st.nights)
     const keepers = stays.filter((s) => keeps(s) && nightsOf(s).some((n) => inStretch.has(n)))
@@ -71,7 +93,8 @@ export function tidyStaysPlan(trip: Trip, days: Day[], items: Item[]): { put: It
     for (const n of st.nights) {
       if (covered.has(n)) continue
       const r = runs[runs.length - 1]
-      if (r && addDays(r[r.length - 1], 1) === n) r.push(n)
+      // A run is all hotel nights or all van nights (picking the camper up mid-stay starts a new one).
+      if (r && addDays(r[r.length - 1], 1) === n && inVan(r[0]) === inVan(n)) r.push(n)
       else runs.push([n])
     }
     const free = [...own]
@@ -82,7 +105,7 @@ export function tidyStaysPlan(trip: Trip, days: Day[], items: Item[]): { put: It
       const centre = st.lat != null && st.lon != null ? { lat: st.lat, lon: st.lon } : undefined
       const base: Item = pick
         ? { ...pick }
-        : { id: uid(), tripId: trip.id, date: run[0], kind: 'stay', title: `Hotel in ${st.city} (to choose)`, status: 'idea', order: -1 }
+        : { id: uid(), tripId: trip.id, date: run[0], kind: 'stay', title: inVan(run[0]) ? `Campsite near ${st.city} (to choose)` : `Hotel in ${st.city} (to choose)`, status: 'idea', order: -1 }
       if (pick) free.splice(free.indexOf(pick), 1)
       const location = base.location?.lat != null ? base.location : centre ? { name: base.location?.name || `${st.city} centre`, ...centre } : base.location
       const cost = perNight != null && base.cost ? { ...base.cost, amount: Math.round(perNight * run.length) } : base.cost

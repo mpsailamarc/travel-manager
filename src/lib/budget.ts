@@ -3,7 +3,8 @@
 
 import type { BudgetCategory, BudgetLevel, BudgetLine, Day, Item, Trip } from '../types'
 import { BUDGET_CATEGORIES } from '../types'
-import { daysBetween, hhmmToMin } from './dates'
+import { addDays, dateRange, daysBetween, hhmmToMin } from './dates'
+import { camperNights } from './stays'
 import { cityIn } from './cities'
 import { haversineM, type LatLon } from './geo'
 import { fxRate } from './apis'
@@ -32,6 +33,8 @@ const LEVEL: Record<BudgetLevel, number> = { shoestring: 0.5, mid: 1, comfort: 1
 // Western-Europe, mid-range, EUR.
 const PER_PERSON_DAY = { food: 45, transport: 12, activities: 22, other: 8 }
 const ROOM_NIGHT = 120
+const CAMPSITE_NIGHT = 35 // a pitch with power for the van, for everyone in it
+const CAMPER_DAY = 130 // a camper van's rental, a day
 
 /**
  * A rough estimate as lines with their assumptions (quantity × price per unit), e.g. "Accommodation: 3 nights × A$263".
@@ -64,7 +67,12 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   const rented = carItems.some((i) => i.kind === 'car') // driving your own car has fuel but no rental
   // Only a pickup in the plan (no return noted)? Assume you keep the car for the whole trip: you can edit the quantity.
   const carSpan = hasCar ? daysBetween(carDates[0], carDates[carDates.length - 1]) + 1 : 0
-  const carDays = hasCar ? (carSpan > 1 ? carSpan : days) : 0
+  const carDays0 = hasCar ? (carSpan > 1 ? carSpan : days) : 0
+  // In a camper van, the van is both the car and the bed: its rental replaces the car's, campsites replace hotels.
+  const inVan = camperNights(trip, items)
+  const vanNights = dateRange(trip.startDate, addDays(trip.endDate, -1)).filter(inVan).length
+  const camper = vanNights > 0
+  const carDays = carDays0 || (camper ? days : 0)
 
   // Every line says how it's paid: per person (× the number of travellers), per room (× rooms), or once for everyone.
   // Children's lower prices are averaged into the price per person, so "4 people × €40 per person per day" adds up.
@@ -76,17 +84,20 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   const avg = (childShare: number) => (adults + kids * childShare) / travellers // average price per person, adult = 1
   if (!domestic) {
     add('flights', 'Flights, return', 1, 'return flight', flightPP * Math.sqrt(lvl) * avg(0.9), 'person', travellers)
-  } else if (!hasCar) {
+  } else if (!hasCar && !camper) {
     add('transport', `Getting there and back from ${trip.startPlace?.name ?? 'home'} (fuel, parking or transit)`, 1, 'trip', 70 * idx * lvl)
   }
-  if (hasCar) {
-    if (rented) add('transport', 'Car rental', carDays, carDays === 1 ? 'day' : 'days', 55 * idx * Math.sqrt(lvl))
+  if (hasCar || camper) {
+    if (camper) add('transport', 'Camper van rental', carDays, carDays === 1 ? 'day' : 'days', CAMPER_DAY * idx * Math.sqrt(lvl))
+    else if (rented) add('transport', 'Car rental', carDays, carDays === 1 ? 'day' : 'days', 55 * idx * Math.sqrt(lvl))
     // "from home" only when you drive from there; flying in, the car is picked up at the destination.
     add('transport', `Fuel${domestic && trip.startPlace?.name ? ` (from ${trip.startPlace.name})` : ''}`, carDays * 150, 'km', 0.12 * Math.min(idx, 1.2))
   }
   add('transport', 'Local transport', days, 'days', PER_PERSON_DAY.transport * idx * lvl * avg(0.6), 'person', travellers)
   if (hops) add('transport', 'Moving between places', hops, hops === 1 ? 'move' : 'moves', 40 * idx * lvl * avg(0.6), 'person', travellers)
-  add('stays', 'Accommodation', nights, nights === 1 ? 'night' : 'nights', ROOM_NIGHT * idx * lvl * (roomFactor / rooms), 'room', rooms)
+  const hotelNights = nights - vanNights
+  if (hotelNights > 0) add('stays', 'Accommodation', hotelNights, hotelNights === 1 ? 'night' : 'nights', ROOM_NIGHT * idx * lvl * (roomFactor / rooms), 'room', rooms)
+  if (vanNights > 0) add('stays', 'Campsites', vanNights, vanNights === 1 ? 'night' : 'nights', CAMPSITE_NIGHT * idx * Math.sqrt(lvl))
   add('food', 'Food & drink', days, 'days', PER_PERSON_DAY.food * idx * lvl * avg(0.6), 'person', travellers)
   add('activities', 'Activities & tickets', days, 'days', PER_PERSON_DAY.activities * idx * lvl * avg(0.6), 'person', travellers)
   add('other', 'Other & contingency', days, 'days', PER_PERSON_DAY.other * idx * lvl * avg(0.6), 'person', travellers)
@@ -103,7 +114,10 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
     domestic
       ? `No flights: you start in the same country as the destination${trip.startPlace?.name ? ` (${trip.startPlace.name})` : ''}.`
       : `Flights: a return fare of about ${money(flightPP * Math.sqrt(lvl) * rate, homeCurrency)} per adult (${longHaul ? 'long-haul' : 'short-haul'}), children at 90%. Remove the line if you already have your tickets${trip.startPlace?.name ? '' : ', or set where you start in Trip details if you start close to the destination'}.`,
-    ...(hasCar
+    ...(camper
+      ? [`Camper van: rental of about ${money(CAMPER_DAY * idx * Math.sqrt(lvl) * rate, homeCurrency)} a day, and campsites at about ${money(CAMPSITE_NIGHT * idx * Math.sqrt(lvl) * rate, homeCurrency)} a night for ${plural(vanNights, 'night')}, instead of hotels.`]
+      : []),
+    ...(hasCar && !camper
       ? [`Car: ${rented ? `rental of about ${money(55 * idx * Math.sqrt(lvl) * rate, homeCurrency)} a day, plus ` : ''}fuel at about ${money(0.12 * Math.min(idx, 1.2) * rate, homeCurrency, 2)} per km, for ${plural(carDays, 'day')} at roughly 150 km a day.`]
       : []),
     homeCurrency === 'EUR' ? 'Amounts are in euros.' : `Amounts are converted to ${homeCurrency} at today's rate (1 EUR = ${rate.toFixed(2)} ${homeCurrency}).`,

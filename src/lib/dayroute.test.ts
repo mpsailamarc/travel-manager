@@ -86,3 +86,19 @@ describe('after entering the hotel address', () => {
     expect(r.stops[0].leg?.geometry?.[0]).toEqual([hotel.lon, hotel.lat])
   })
 })
+
+describe('the morning after an overnight flight', () => {
+  it("starts where it lands, not at tonight's hotel", () => {
+    const trip = { id: 't', startDate: '2027-09-01', endDate: '2027-09-05', countryCodes: ['SE'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as never
+    const days = [
+      { id: '1', tripId: 't', date: '2027-09-01', city: 'Gothenburg', lat: 57.7089, lon: 11.9746 },
+      { id: '2', tripId: 't', date: '2027-09-02', city: 'Gothenburg', lat: 57.7089, lon: 11.9746 },
+    ]
+    const items = [
+      it_({ id: 'f', date: '2027-09-01', kind: 'flight', title: 'Sydney → Stockholm', startTime: '22:30', endTime: '06:30', from: { name: 'Sydney (SYD)', lat: -33.94, lon: 151.18 }, to: { name: 'Stockholm Arlanda (ARN)', lat: 59.65, lon: 17.92 } }),
+      it_({ id: 'h', date: '2027-09-02', kind: 'stay', title: 'Hotel Pigalle', nights: 2, location: { name: 'Hotel Pigalle', lat: 57.707, lon: 11.9707 } }),
+    ]
+    expect(dayStartPlace(items, '2027-09-02', { trip, days })?.name).toBe('Stockholm Arlanda (ARN)')
+    expect(dayStartPlace(items, '2027-09-03', { trip, days })?.name).toBe('Hotel Pigalle') // the next day: from the hotel
+  })
+})

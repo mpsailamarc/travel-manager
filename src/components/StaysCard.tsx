@@ -4,10 +4,10 @@ import type { Day, Item, ItemStatus, Place, Trip } from '../types'
 import { addDays, formatDate } from '../lib/dates'
 import { plural } from '../lib/format'
 import { uid } from '../lib/ids'
-import { bookingSearch } from '../lib/checklist'
+import { bookingSearch, campsiteSearch } from '../lib/checklist'
 import { findPlace } from '../lib/apis'
 import { haversineM } from '../lib/geo'
-import { isPlaceholderStay, nightsOf } from '../lib/stays'
+import { isCampsite, isPlaceholderStay, nightsOf } from '../lib/stays'
 import { Modal, StatusBadge, toast } from './ui'
 import { PlaceSearch } from './PlaceSearch'
 
@@ -75,32 +75,39 @@ export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: 
           <div key={s.id} className="row" style={{ alignItems: 'center' }}>
             <button type="button" className="grow btn-ghost" style={{ textAlign: 'left', padding: '4px 0', minHeight: 0, border: 0 }} onClick={() => setEditing(s)}>
               <div className="small strong">
+                {isCampsite(s) ? '🏕️ ' : ''}
                 {city} · {short(s.date)} → {short(addDays(s.date, n))} · {plural(n, 'night')}
               </div>
               <div className="tiny muted">
-                {isPlaceholderStay(s) ? '✏️ Hotel to choose — tap to enter it' : s.title}
+                {isPlaceholderStay(s) ? `✏️ ${isCampsite(s) ? 'Campsite' : 'Hotel'} to choose — tap to enter it` : s.title}
                 {!isPlaceholderStay(s) && s.location?.name && s.location.name !== s.title && ` · ${s.location.name}`}
                 {s.location?.lat == null && ' · 📍 no address yet'}
               </div>
             </button>
             <StatusBadge status={s.status} />
             {s.status !== 'booked' && city && (
-              <a className="btn btn-sm btn-ghost" href={s.url ?? bookingSearch(city, s.date, addDays(s.date, n), adults, kids)} target="_blank" rel="noreferrer" title="Find a hotel for these nights">
-                Booking ↗
+              <a
+                className="btn btn-sm btn-ghost"
+                href={s.url ?? (isCampsite(s) ? campsiteSearch(city) : bookingSearch(city, s.date, addDays(s.date, n), adults, kids))}
+                target="_blank"
+                rel="noreferrer"
+                title={isCampsite(s) ? 'Campsites around, on the map' : 'Find a hotel for these nights'}
+              >
+                {isCampsite(s) ? 'Campsites ↗' : 'Booking ↗'}
               </a>
             )}
           </div>
         )
       })}
       <p className="tiny muted" style={{ margin: 0 }}>
-        Each day starts at last night's hotel and ends at tonight's (at the city centre until you enter the address). The checklist and budget follow.
+        Each day starts where you slept and ends where you sleep that night (at the city centre until you enter the address). The checklist and budget follow.
       </p>
       {editing && <StayEditor stay={editing} city={cityOf(editing)} currency={currency} onClose={() => setEditing(undefined)} />}
     </div>
   )
 }
 
-function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; city: string; currency: string; onClose: () => void }) {
+export function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; city: string; currency: string; onClose: () => void }) {
   const placeholder = isPlaceholderStay(s)
   const [name, setName] = useState(placeholder ? '' : s.title)
   const [place, setPlace] = useState<Place | undefined>(placeholder || s.location?.name === `${city} centre` ? undefined : s.location)
@@ -166,8 +173,8 @@ function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; city: st
     <Modal title={`🏨 ${city} · ${short(s.date)} → ${short(addDays(s.date, nights))}`} onClose={onClose}>
       <div className="stack">
         <label>
-          Hotel name
-          <input value={name} placeholder={`e.g. Hotel in ${city}`} onChange={(e) => setName(e.target.value)} />
+          {isCampsite(s) ? 'Campsite name' : 'Hotel name'}
+          <input value={name} placeholder={isCampsite(s) ? `e.g. Camping ${city}` : `e.g. Hotel in ${city}`} onChange={(e) => setName(e.target.value)} />
         </label>
         <PlaceSearch label="Address (or the hotel's name), then Find" value={place} onChange={setPlace} near={city} placeholder="Street, area or hotel name" />
         <p className="tiny muted" style={{ margin: 0 }}>
@@ -218,13 +225,27 @@ function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; city: st
             </div>
           </details>
         )}
-        <div className="row" style={{ justifyContent: 'flex-end' }}>
+        <div className="row between">
+          <button
+            type="button"
+            className="btn-danger btn-ghost"
+            onClick={async () => {
+              if (!confirm(`Delete “${s.title}”? Its nights get a ${isCampsite(s) ? 'campsite' : 'hotel'} to choose instead.`)) return
+              await db.items.delete(s.id)
+              await touchTrip(s.tripId)
+              onClose()
+            }}
+          >
+            Delete
+          </button>
+          <div className="row">
           <button type="button" onClick={onClose}>
             Cancel
           </button>
           <button type="button" className="btn-primary" onClick={save}>
             Save
           </button>
+          </div>
         </div>
       </div>
     </Modal>

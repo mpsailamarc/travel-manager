@@ -46,7 +46,12 @@ export function groupTravelHint(t: Trip) {
 }
 
 /** Cities or the outdoors, and flights between places: the two questions that shape the route. */
-export function RouteFields({ value: t, onChange }: { value: Trip; onChange: (v: Partial<Pick<Trip, 'focus' | 'innerFlights'>>) => void }) {
+export const SLEEP: Record<'hotels' | 'camper', { label: string; desc: string }> = {
+  hotels: { label: '🏨 Hotels', desc: 'Hotels, B&Bs or apartments' },
+  camper: { label: '🚐 Camper van', desc: 'Sleep in the van, at campsites' },
+}
+
+export function RouteFields({ value: t, onChange }: { value: Trip; onChange: (v: Partial<Pick<Trip, 'focus' | 'innerFlights' | 'sleep'>>) => void }) {
   const hint = groupTravelHint(t)
   return (
     <>
@@ -55,6 +60,8 @@ export function RouteFields({ value: t, onChange }: { value: Trip; onChange: (v:
       <label>Flights between places</label>
       <ChoiceGrid options={INNER_FLIGHTS} value={t.innerFlights ?? 'auto'} onChange={(v) => onChange({ innerFlights: v })} />
       {hint && <p className="tiny muted" style={{ margin: 0 }}>👥 {hint}</p>}
+      <label>Where you sleep</label>
+      <ChoiceGrid options={SLEEP} value={t.sleep ?? 'hotels'} onChange={(v) => onChange({ sleep: v })} />
     </>
   )
 }

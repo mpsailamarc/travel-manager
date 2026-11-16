@@ -24,6 +24,7 @@ import { BackupIdeas } from '../components/BackupIdeas'
 import { tripPhase, useTripCtx } from './TripLayout'
 import { AnswerBox, PromptBox } from './IdeasPage'
 import { saveLocal } from '../lib/storage'
+import { StayEditor } from '../components/StaysCard'
 
 export default function TodayPage() {
   const { trip, items, days, settings } = useTripCtx()
@@ -38,7 +39,7 @@ export default function TodayPage() {
   const dayItems = useMemo(() => sortItems(items.filter((i) => i.date === date)), [items, date])
   const untimed = untimedItems(items, date)
   // The day's path: every item with a place, numbered in time order. The numbers in the list match the ones on the map.
-  const { route, loading: routeLoading, stops: routeStops } = useDayRoute(items, date, day, settings)
+  const { route, loading: routeLoading, stops: routeStops } = useDayRoute(items, date, day, settings, { trip, days })
   const stopNo = new Map(routeStops.map((i, n) => [i.id, n + 1]))
   const [mapOpen, setMapOpen] = useState(() => localStorage.getItem('tm-day-map') !== '0')
   const mapBox = useRef<HTMLDivElement>(null)
@@ -367,8 +368,14 @@ export default function TodayPage() {
           {tonight && (
             <div className="card stack" style={{ gap: 6 }}>
               <h3>🛏️ Tonight</h3>
-              <div className="strong">{tonight.title}</div>
-              <div className="small muted">{itemSubtitle(tonight)}</div>
+              <button type="button" className="btn-ghost" style={{ textAlign: 'left', padding: 0, minHeight: 0, border: 0 }} onClick={() => setEditing(tonight)} title="Edit the hotel: name, address, nights, booking">
+                <div className="strong">
+                  {tonight.title} <span className="small" style={{ color: 'var(--primary)' }}>✏️</span>
+                </div>
+                <div className="small muted">
+                  {[itemSubtitle(tonight), tonight.location?.name && tonight.location.name !== tonight.title ? tonight.location.name : ''].filter(Boolean).join(' · ')}
+                </div>
+              </button>
               {tonight.location?.lat != null && (
                 <a className="btn btn-sm" href={directionsUrl(tonight.location.lat, tonight.location.lon!, 'transit')} target="_blank" rel="noreferrer">
                   Directions
@@ -380,7 +387,12 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {editing && <ItemEditor trip={trip} item={editing} city={day?.city} area={day} onClose={() => setEditing(null)} />}
+      {/* A hotel opens the same editor as in "Where you sleep" on the Plan tab: name, address, nights, booking. */}
+      {editing?.kind === 'stay' && editing.id ? (
+        <StayEditor stay={editing as Item} city={days.find((d) => d.date === editing.date)?.city ?? day?.city ?? ''} currency={settings.homeCurrency} onClose={() => setEditing(null)} />
+      ) : (
+        editing && <ItemEditor trip={trip} item={editing} city={day?.city} area={day} onClose={() => setEditing(null)} />
+      )}
       {replan && <ReplanModal date={date} dayItems={dayItems} onClose={() => setReplan(false)} />}
     </div>
   )

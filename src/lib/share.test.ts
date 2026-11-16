@@ -199,3 +199,17 @@ describe('fuel when there is a car', () => {
     expect(f.km).toBe(Math.round(1.5 * 70 + 30)) // 1 h 30 at about 70 km/h, plus a day of local driving
   })
 })
+
+describe('the budget of a camper van trip', () => {
+  it('has the van and campsites instead of a car rental and hotels', async () => {
+    const { estimateBudgetLines } = await import('./budget')
+    const { makeTrip } = await import('../test/fixtures')
+    const trip = await makeTrip({ sleep: 'camper', countryCodes: ['FR'], travellers: [{ id: 'a', name: 'a', type: 'adult' }, { id: 'b', name: 'b', type: 'adult' }] })
+    const { lines } = await estimateBudgetLines(trip, 'FR', 'EUR', [])
+    const labels = lines.map((l) => l.label)
+    expect(labels).toContain('Camper van rental')
+    expect(labels).toContain('Campsites')
+    expect(labels).not.toContain('Accommodation')
+    expect(labels.some((l) => /^Fuel/.test(l))).toBe(true)
+  })
+})

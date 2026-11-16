@@ -55,3 +55,20 @@ describe("tidying the trip's stays", () => {
     expect(put.find((p) => p.title === 'Hotel in Rome (to choose)')).toMatchObject({ date: '2027-09-26', nights: 2 })
   })
 })
+
+describe('nights on the road', () => {
+  it('in a camper van, the nights get campsites to choose (from its pick-up), not hotels', () => {
+    const pickUp = { id: 'c', tripId: 't', date: '2027-09-22', kind: 'car', title: 'Pick up the campervan', status: 'planned', order: 0 } as Item
+    const { put } = tidyStaysPlan(trip, days, [pickUp])
+    expect(put.map((p) => p.title)).toEqual(['Hotel in Florence (to choose)', 'Campsite near Amsterdam (to choose)', 'Campsite near Rome (to choose)'])
+    // Said in Trip details: the whole trip.
+    expect(tidyStaysPlan({ ...trip, sleep: 'camper' }, days, []).put.every((p) => p.title.startsWith('Campsite near'))).toBe(true)
+  })
+
+  it('the night before a flight in the small hours needs no hotel', () => {
+    const early = { id: 'f', tripId: 't', date: '2027-09-22', kind: 'flight', title: 'Florence → Sydney', status: 'booked', order: 0, startTime: '01:30', endTime: '06:00', from: { name: 'Florence (FLR)', lat: 43.81, lon: 11.2 }, to: { name: 'Sydney (SYD)', lat: -33.94, lon: 151.18 } } as Item
+    const nights = stayStretches(trip, days, [early]).flatMap((s) => s.nights)
+    expect(nights).not.toContain('2027-09-21')
+    expect(nights).toContain('2027-09-20')
+  })
+})

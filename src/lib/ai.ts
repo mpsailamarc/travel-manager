@@ -112,6 +112,9 @@ function tripBrief(trip: Trip, settings: Settings) {
     trip.interests.length ? `Interests: ${trip.interests.join(', ')}` : '',
     `Focus: ${FOCUS_LINE[trip.focus ?? 'mix']}`,
     `Getting between places: ${movesLine(trip)}`,
+    trip.sleep === 'camper'
+      ? 'Sleeping: in a camper van, every night. Each night is at a campsite or aire: a "stay" item titled "Campsite …" with its real coordinates, one per stop with its nights. Drives of at most about 4 hours a day, to arrive before dark. Include the camper pick-up and return as "car" items; no hotels.'
+      : '',
     settings.nationality ? `Nationality: ${country(settings.nationality)?.name ?? settings.nationality}` : '',
     startLine(trip) ?? (settings.homeAirport ? `Departing from: ${settings.homeAirport}` : ''),
     `Currency for costs: ${settings.homeCurrency}`,

@@ -381,7 +381,7 @@ export default function FavoritesPage() {
   const [focus, setFocus] = useState<string | undefined>(params.get('day') ?? undefined)
   useEffect(() => setFocus(params.get('day') ?? undefined), [city])
   // Everything with a place on that day, planned here or added by hand, in time order: the same path as on Day by day.
-  const { route: focusRoute, stops: focusItems } = useDayRoute(items, focus ?? '', days.find((x) => x.date === focus), settings)
+  const { route: focusRoute, stops: focusItems } = useDayRoute(items, focus ?? '', days.find((x) => x.date === focus), settings, { trip, days })
   const focusSegments = focusRoute?.segments ?? []
   const focusStart = focusRoute?.start
   const mapBox = useRef<HTMLDivElement>(null)
