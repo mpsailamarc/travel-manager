@@ -37,12 +37,13 @@ describe('time zones', () => {
     expect(itemZones(flight({ fromTz: 'Pacific/Auckland' }), ctx).from).toBe('Pacific/Auckland')
   })
 
-  it('shows the flight on the destination calendar, and its landing on the next day', () => {
+  it('shows the flight from home only as its landing, in local time, on the day it lands', () => {
     const d1 = buildDayView([flight()], '2027-03-10', ctx)
     expect(d1.tz).toBe('Asia/Tokyo')
-    expect(d1.entries[0].start).toBe(20 * 60 + 30) // 22:30 Sydney = 20:30 Tokyo
+    expect(d1.entries).toHaveLength(0) // it lands tomorrow
     const d2 = buildDayView([flight()], '2027-03-11', ctx)
-    expect(d2.entries[0]).toMatchObject({ start: 0, end: 7 * 60, spill: true })
+    expect(d2.entries[0]).toMatchObject({ start: 7 * 60, end: 7 * 60 + 15, marker: 'lands' })
+    expect(d2.zones).toBeUndefined() // the flight from home isn't a change of time zone on the calendar
   })
 })
 
@@ -87,7 +88,7 @@ describe('the flight from home on a day 1 already at the destination', () => {
   it('lands that morning when day 1 is planned in London, so nothing clashes', () => {
     const v = buildDayView([syd, southBank], '2027-07-01', { trip: eu, days: edays })
     const f = v.entries.find((e) => e.item.id === 's')!
-    expect(f).toMatchObject({ start: 0, end: 9 * 60, clippedStart: true })
+    expect(f).toMatchObject({ start: 9 * 60, end: 9 * 60 + 15, marker: 'lands' })
   })
 
   it('with nothing else planned on day 1, it leaves that day and lands the next', () => {
@@ -161,5 +162,35 @@ describe('day 1: Sydney → Santiago, then on to Calama the same morning', () =>
     const v = buildDayView([intl, conn, taxi], '2027-01-15', { trip: t, days: ds, items: [intl, conn, taxi] })
     expect(v.entries.map((e) => e.item.id).sort()).toEqual(['a', 'b', 'c'])
     expect(v.entries.find((e) => e.item.id === 'b')!.start).toBe(8 * 60 + 30)
+  })
+})
+
+describe('a day that changes time zone during the trip: London → Athens', () => {
+  const t = { id: 'Z', startDate: '2027-06-01', endDate: '2027-06-05', countryCodes: ['GB', 'GR'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as Trip
+  const zd = [
+    { id: 'Z:1', tripId: 'Z', date: '2027-06-01', city: 'London', lat: 51.5074, lon: -0.1278 },
+    { id: 'Z:2', tripId: 'Z', date: '2027-06-02', city: 'Athens', lat: 37.98, lon: 23.73 },
+  ]
+  const mk = (id: string, kind: string, title: string, s: string, e: string, more: Partial<Item> = {}) => ({ id, tripId: 'Z', date: '2027-06-02', kind, title, status: 'planned', order: 0, startTime: s, endTime: e, ...more }) as Item
+  const museum = mk('m', 'activity', 'British Museum', '09:00', '11:00', { location: { name: 'British Museum', lat: 51.519, lon: -0.127 } })
+  const fly = mk('f', 'flight', 'London → Athens', '13:00', '18:45', { from: { name: 'Heathrow (LHR)', lat: 51.47, lon: -0.45 }, to: { name: 'Athens (ATH)', lat: 37.94, lon: 23.94 } })
+  const dinner = mk('d', 'meal', 'Dinner in Plaka', '20:30', '22:00')
+  const all = [museum, fly, dinner]
+
+  it('shows the day in the zone you set off from, the rest marked with its own local time', () => {
+    const v = buildDayView(all, '2027-06-02', { trip: t, days: zd, items: all })
+    expect(v.tz).toBe('Europe/London')
+    expect(v.zones).toEqual(['Europe/London', 'Europe/Athens'])
+    expect(v.entries.find((e) => e.item.id === 'm')).toMatchObject({ start: 9 * 60 })
+    expect(v.entries.find((e) => e.item.id === 'm')!.otherZone).toBeUndefined()
+    // Dinner at 20:30 in Athens is 18:30 in London.
+    expect(v.entries.find((e) => e.item.id === 'd')).toMatchObject({ start: 18 * 60 + 30, otherZone: 'Europe/Athens', shift: 120 })
+  })
+
+  it('can be switched to the other zone', () => {
+    const v = buildDayView(all, '2027-06-02', { trip: t, days: zd, items: all }, 'Europe/Athens')
+    expect(v.tz).toBe('Europe/Athens')
+    expect(v.entries.find((e) => e.item.id === 'm')).toMatchObject({ start: 11 * 60, otherZone: 'Europe/London', shift: -120 })
+    expect(v.entries.find((e) => e.item.id === 'd')).toMatchObject({ start: 20 * 60 + 30 })
   })
 })

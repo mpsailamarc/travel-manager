@@ -11,6 +11,7 @@ import { ItemRow, itemSubtitle } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
 import { DayProportions, DayTimeline } from '../components/DayTimeline'
 import { buildDayView, journeyNote } from '../lib/dayview'
+import { tzCity } from '../lib/tz'
 import { durationMin } from '../lib/tz'
 import { fillUntimed, retimeAfter, untimedItems } from '../lib/favorites'
 import { planRipple } from '../lib/ripple'
@@ -48,7 +49,10 @@ export default function TodayPage() {
     setTimeout(() => mapBox.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
   }
   // The calendar in this day's own time (a flight from another zone is converted; one landing today shows its landing part).
-  const view = useMemo(() => buildDayView(items, date, { trip, days }), [items, date, trip, days])
+  // On a day that changes time zone, the calendar can be shown in either zone (it starts in the one you set off from).
+  const [zonePick, setZonePick] = useState<{ date: string; tz: string } | undefined>()
+  const showIn = zonePick?.date === date ? zonePick.tz : undefined
+  const view = useMemo(() => buildDayView(items, date, { trip, days }, showIn), [items, date, trip, days, showIn])
   const [mode, setViewState] = useState<'timeline' | 'list'>(() => (localStorage.getItem('tm-day-view') === 'list' ? 'list' : 'timeline'))
   const setMode = (v: 'timeline' | 'list') => {
     setViewState(v)
@@ -283,6 +287,7 @@ export default function TodayPage() {
                 now={isToday ? now : undefined}
                 onOpen={(it) => setEditing(it)}
                 onChange={moveOnCalendar}
+                onZone={(tz) => setZonePick({ date, tz })}
                 onUnlock={async (it) => {
                   await db.items.update(it.id, { locked: undefined })
                   await touchTrip(trip.id)
@@ -296,7 +301,10 @@ export default function TodayPage() {
                 <div key={it.id}>
                   <ItemRow
                     item={it}
-                    zoneNote={journeyNote(it, { trip, days })}
+                    zoneNote={journeyNote(it, { trip, days }) ?? (() => {
+                      const z = view.entries.find((e) => e.item.id === it.id)?.otherZone
+                      return z ? `${tzCity(z)} time` : undefined
+                    })()}
                     pin={stopNo.get(it.id)}
                     onPin={showMap}
                     onClick={() => setEditing(it)}

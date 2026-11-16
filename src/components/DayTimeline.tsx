@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Item, ItemKind } from '../types'
 import { KIND_META } from './kinds'
 import { formatDuration, minToHHMM } from '../lib/dates'
-import { tzLabel } from '../lib/tz'
+import { tzCity, tzLabel } from '../lib/tz'
 import type { DayEntry, DayView } from '../lib/dayview'
 
 const PX_PER_HOUR = 52
@@ -152,7 +152,7 @@ interface Gesture {
   activate: () => void
 }
 
-const hhmm = (min: number) => minToHHMM(Math.min(min, 24 * 60 - 1))
+const hhmm = (min: number) => minToHHMM(Math.min(((min % 1440) + 1440) % 1440 || (min >= 1440 ? 1439 : 0), 24 * 60 - 1))
 
 /**
  * The day laid out on an hour scale, in the day's destination time: a block is as tall as the activity is long.
@@ -165,12 +165,14 @@ export function DayTimeline({
   onOpen,
   onChange,
   onUnlock,
+  onZone,
 }: {
   view: DayView
   now?: Date
   onOpen: (item: Item) => void
   onChange?: (item: Item, times: { startTime: string; endTime?: string }) => void
   onUnlock?: (item: Item) => void // tap the 📌 on a block to let it move again
+  onZone?: (tz: string) => void // on a day that changes time zone: show the calendar in the other one
 }) {
   const blocks = layout(view.entries)
   const { untimed } = view
@@ -245,8 +247,10 @@ export function DayTimeline({
       const changed = g.live.start !== b.start || g.live.end !== b.end
       if (changed && cb) {
         // Only the part you changed is written: moving keeps the length, an item with no end time stays without one.
+        // An item in the day's other time zone keeps its own local time (the calendar shows it on this one's clock).
         const hasEnd = !!b.item.endTime || g.mode === 'end' || (g.mode === 'start' && !b.estimated)
-        cb(b.item, { startTime: hhmm(g.live.start), endTime: hasEnd || g.mode !== 'move' ? hhmm(g.live.end) : undefined })
+        const own = (m: number) => hhmm(m + (b.entry.shift ?? 0))
+        cb(b.item, { startTime: own(g.live.start), endTime: hasEnd || g.mode !== 'move' ? own(g.live.end) : undefined })
       }
     }
     setLive(null)
@@ -300,10 +304,26 @@ export function DayTimeline({
 
   return (
     <div className="stack" style={{ gap: 8 }}>
-      {view.tz && (
+      {view.tz && !view.zones && (
         <p className="tiny muted" style={{ margin: 0 }}>
-          🕒 Times in <b>{tzLabel(view.tz)}</b>, the local time of this day
+          🕒 Times in <b>{tzLabel(view.tz, view.noonUtc)}</b>, the local time of this day
         </p>
+      )}
+      {view.tz && view.zones && (
+        <div className="stack" style={{ gap: 4 }}>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            🕒 This day changes time zone. Times in <b>{tzLabel(view.tz, view.noonUtc)}</b>; what's in <b>{tzCity(view.zones.find((z) => z !== view.tz)!)}</b> time is highlighted, with its own local time.
+          </p>
+          {onZone && (
+            <div className="chips">
+              {view.zones.map((z) => (
+                <button key={z} className={`chip ${z === view.tz ? 'on' : ''}`} onClick={() => onZone(z)}>
+                  {tzCity(z)} time
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
       <div className="tl" ref={wrap} style={{ height: y(to) }}>
         {hours.map((m) => (
@@ -324,7 +344,7 @@ export function DayTimeline({
           return (
             <button
               key={b.item.id + (b.entry.spill ? ':spill' : '')}
-              className={`tl-block ${meta.cls || b.item.kind} ${b.item.status === 'done' ? 'is-done' : ''} ${b.estimated && !l ? 'is-estimated' : ''} ${l ? 'is-dragging' : ''} ${b.fixed ? '' : 'is-editable'} ${gripTop ? 'has-top-grip' : ''} ${gripBottom ? 'has-bottom-grip' : ''}`}
+              className={`tl-block ${meta.cls || b.item.kind} ${b.item.status === 'done' ? 'is-done' : ''} ${b.estimated && !l ? 'is-estimated' : ''} ${l ? 'is-dragging' : ''} ${b.fixed ? '' : 'is-editable'} ${b.entry.otherZone ? 'is-otherzone' : ''} ${gripTop ? 'has-top-grip' : ''} ${gripBottom ? 'has-bottom-grip' : ''}`}
               style={{
                 top: y(start),
                 height,
@@ -334,7 +354,7 @@ export function DayTimeline({
               onPointerDown={(e) => down(e, b, 'move')}
               onContextMenu={(e) => gesture.current && e.preventDefault()}
               onClick={() => !suppressClick.current && onOpen(b.item)}
-              title={`${b.item.title} · ${hhmm(start)}–${hhmm(end)}${b.estimated ? ' (estimated length)' : ''}${note ? ` · ${note}` : ''}`}
+              title={`${b.item.title} · ${hhmm(start)}–${hhmm(end)}${b.estimated ? ' (estimated length)' : ''}${note ? ` · ${note}` : ''}${b.entry.otherZone ? ` · ${hhmm(start + (b.entry.shift ?? 0))} ${tzCity(b.entry.otherZone)} time` : ''}`}
             >
               {gripTop && <i className="tl-grip top" onPointerDown={(e) => down(e, b, 'start')} onClick={(e) => e.stopPropagation()} aria-label="Drag to change the start" />}
               {b.item.locked && (
@@ -353,15 +373,28 @@ export function DayTimeline({
                 </i>
               )}
               <b>
-                {meta.emoji} {b.item.title}
+                {meta.emoji} {b.entry.marker && !tall ? `${b.entry.marker === 'lands' ? 'Lands' : 'Leaves'} ${hhmm(start)} · ` : ''}
+                {b.item.title}
               </b>
               {tall && (
                 <span>
-                  {b.entry.spill ? `lands ${hhmm(end)}` : `${hhmm(start)}–${hhmm(end)}`} · {b.estimated && !l ? '~' : ''}
-                  {formatDuration((end - start) * 60)}
+                  {b.entry.marker ? (
+                    `${b.entry.marker} ${hhmm(start)}`
+                  ) : (
+                    <>
+                      {b.entry.spill ? `lands ${hhmm(end)}` : `${hhmm(start)}–${hhmm(end)}`} · {b.estimated && !l ? '~' : ''}
+                      {formatDuration((end - start) * 60)}
+                    </>
+                  )}
                 </span>
               )}
               {tall && note && <span>🌏 {note}</span>}
+              {b.entry.otherZone && (
+                <span className="tl-zone">
+                  🕒 {hhmm(b.start + (b.entry.shift ?? 0))}
+                  {b.estimated ? '' : `–${hhmm(b.end + (b.entry.shift ?? 0))}`} {tzCity(b.entry.otherZone)} time
+                </span>
+              )}
               {gripBottom && <i className="tl-grip bottom" onPointerDown={(e) => down(e, b, 'end')} onClick={(e) => e.stopPropagation()} aria-label="Drag to change the end" />}
               {l && (
                 <em className="tl-tip">
