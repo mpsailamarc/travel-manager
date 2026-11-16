@@ -4,11 +4,23 @@ import type { DayRoute } from '../lib/dayroute'
 import { legText, MODE_COLOR } from '../lib/legs'
 import { distance } from '../lib/format'
 import LazyMap, { type MapMarker } from './LazyMap'
-import { useMapSize } from '../lib/hooks'
+import { useMapSize, type MapSize } from '../lib/hooks'
 
 /** The day's path on a map: numbered stops in time order joined by the way you get between them, and the same list underneath. */
-export function DayRouteMap({ route, loading, onOpen, sizeKey = 'tm-day-route-map' }: { route?: DayRoute; loading: boolean; onOpen: (it: Item) => void; sizeKey?: string }) {
-  const [size, setSize] = useMapSize(sizeKey)
+export function DayRouteMap({
+  route,
+  loading,
+  onOpen,
+  sizeKey = 'tm-day-route-map',
+  initialSize,
+}: {
+  route?: DayRoute
+  loading: boolean
+  onOpen: (it: Item) => void
+  sizeKey?: string
+  initialSize?: MapSize // from Settings
+}) {
+  const [size, setSize] = useMapSize(sizeKey, initialSize)
   const markers = useMemo((): MapMarker[] => {
     if (!route) return []
     const m: MapMarker[] = route.stops.map((s, n) => ({

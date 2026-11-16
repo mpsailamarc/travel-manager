@@ -84,6 +84,8 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   motorhome…) also counts from its pick-up to its return. Those nights get "Campsite near … (to choose)" instead of hotels; the budget has
   the van's rental and campsites instead of a car and hotels; the checklist links to campsites on the map and reminds you later; ChatGPT is
   asked for campsites and drives of at most about 4 hours a day.
+- **Map size in Settings**: "Maps on Plan and Day by day": Small, Large or Hidden. Each screen's Small / Large / Hide chips still change
+  that map there (remembered on the device), until the setting is changed again.
 - **Edit the hotel from Day by day**: "🛏️ Tonight" (and the stay in the day's plan) opens the same editor as "Where you sleep".
 - **Each day starts and ends at the hotel**: from last night's hotel (on a moving day, before you move on) and back to tonight's (on a moving
   day, the new one), once the stay has an address (Edit → Where → Find; until then the city centre). The way back is counted when the day is

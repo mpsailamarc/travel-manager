@@ -87,6 +87,14 @@ export default function SettingsPage() {
               ))}
             </select>
           </label>
+          <label>
+            Maps on Plan and Day by day
+            <select value={s.mapSize ?? 'small'} onChange={(e) => set({ mapSize: e.target.value as 'small' | 'large' | 'hidden' })}>
+              <option value="small">Small</option>
+              <option value="large">Large</option>
+              <option value="hidden">Hidden (tap to show)</option>
+            </select>
+          </label>
           <label className="full">
             Between places in the City planner
             <select value={s.getAround ?? 'transit'} onChange={(e) => set({ getAround: e.target.value as GetAround })}>

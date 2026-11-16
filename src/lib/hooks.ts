@@ -73,14 +73,22 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): { data?: T; 
 
 export type MapSize = 'small' | 'large' | 'hidden'
 
-/** Small / large / hidden map, remembered per screen on this device. */
+/**
+ * Small / large / hidden map. It follows Settings (`initial`); a choice made on the screen is remembered there on this
+ * device until the setting is changed, which every screen then follows again.
+ */
 export function useMapSize(storageKey: string, initial: MapSize = 'small') {
-  const [size, setSize] = useState<MapSize>(() => (localStorage.getItem(storageKey) as MapSize) || initial)
+  const read = (): MapSize => {
+    const [size, base = 'small'] = (localStorage.getItem(storageKey) ?? '').split('|') // "large|small": chosen here, when Settings said small
+    return size && base === initial ? (size as MapSize) : initial
+  }
+  const [size, setSize] = useState<MapSize>(read)
+  useEffect(() => setSize(read()), [initial]) // eslint-disable-line react-hooks/exhaustive-deps
   return [
     size,
     (v: MapSize) => {
       setSize(v)
-      saveLocal(storageKey, v)
+      saveLocal(storageKey, `${v}|${initial}`)
     },
   ] as const
 }

@@ -32,7 +32,7 @@ export default function PlanPage() {
     setDetailedState(v)
     saveLocal('tm-plan-detail', v ? '1' : '0')
   }
-  const [mapSize, setMapSize] = useMapSize('tm-plan-map')
+  const [mapSize, setMapSize] = useMapSize('tm-plan-map', settings.mapSize)
   const wide = useMediaQuery('(min-width: 721px)')
   const dates = dateRange(trip.startDate, trip.endDate)
   const dayByDate = new Map(days.map((d) => [d.date, d]))
