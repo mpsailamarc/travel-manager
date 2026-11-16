@@ -133,11 +133,11 @@ export default function NewTripPage() {
               <h2>When, and for how long?</h2>
               <div className="form-grid">
                 <label>
-                  First day
+                  First day there (you land)
                   <input type="date" value={t.startDate} onChange={(e) => set('startDate', e.target.value)} />
                 </label>
                 <label>
-                  Number of days
+                  Days there
                   <input type="number" min={1} max={90} value={days} onChange={(e) => setDays(Math.max(1, Number(e.target.value)))} />
                 </label>
               </div>
@@ -148,7 +148,12 @@ export default function NewTripPage() {
                   </button>
                 ))}
               </div>
-              <p className="small muted">You can change dates later — the plan follows.</p>
+              <p className="small muted">
+                The trip's days are the days at the destination: from the day you land there to the day you fly out. 14 days in Chile is 14 days, however long the flights from home take (the flight out may leave the day before; the flight home lands after the last day).
+              </p>
+              <p className="small muted">
+                Last day there (you fly out): <b>{formatDate(addDays(t.startDate, days - 1))}</b>. You can change dates later — the plan follows.
+              </p>
             </>
           )}
 
@@ -179,7 +184,7 @@ export default function NewTripPage() {
               <div className="info-grid">
                 <Tile k="Name" v={t.name.trim() || autoName()} />
                 <Tile k="Where" v={[...t.countryCodes.map(countryLabel), ...t.cities].join(', ') || 'Open'} />
-                <Tile k="When" v={`${formatDate(t.startDate)} · ${days} days`} />
+                <Tile k="When" v={`${formatDate(t.startDate)} → ${formatDate(addDays(t.startDate, days - 1))} · ${days} days there`} />
                 <Tile k="Who" v={`${plural(t.travellers.filter((x) => x.type === 'adult').length, 'adult')}, ${plural(t.travellers.filter((x) => x.type === 'child').length, 'child', 'children')}`} />
                 <Tile k="Style" v={`${STYLES[t.style].label} · ${BUDGET_LEVELS[t.budgetLevel].label}`} />
                 <Tile k="Route" v={`${FOCUS[t.focus ?? 'mix'].label} · ${INNER_FLIGHTS[t.innerFlights ?? 'auto'].label}`} />

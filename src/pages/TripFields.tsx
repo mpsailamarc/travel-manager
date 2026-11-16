@@ -299,13 +299,16 @@ export function TripFields({ value: t, onChange }: { value: Trip; onChange: (t: 
           <input value={t.name} onChange={(e) => set('name', e.target.value)} />
         </label>
         <label>
-          Start
+          First day there (you land)
           <input type="date" value={t.startDate} onChange={(e) => set('startDate', e.target.value)} />
         </label>
         <label>
-          End
+          Last day there (you fly out)
           <input type="date" value={t.endDate} onChange={(e) => set('endDate', e.target.value)} />
         </label>
+        <p className="tiny muted full" style={{ margin: 0 }}>
+          The days at the destination, not counting the flights from and to home (the flight out may leave the day before).
+        </p>
       </div>
       <label>Icon</label>
       <div className="chips">

@@ -3,7 +3,7 @@ import type { Item, Trip } from '../types'
 import { itemZones, transportSpan, tzOfPlace, zonedToUtc } from './tz'
 import { buildDayView } from './dayview'
 
-const trip = { id: 'T', startDate: '2027-03-10', endDate: '2027-03-20', countryCodes: ['JP'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as Trip
+const trip = { id: 'T', startDate: '2027-03-09', endDate: '2027-03-20', countryCodes: ['JP'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as Trip
 const days = [
   { id: 'T:2027-03-10', tripId: 'T', date: '2027-03-10', city: 'Tokyo', lat: 35.68, lon: 139.69 },
   { id: 'T:2027-03-11', tripId: 'T', date: '2027-03-11', city: 'Tokyo', lat: 35.68, lon: 139.69 },
@@ -91,8 +91,8 @@ describe('the flight from home on a day 1 already at the destination', () => {
     expect(f).toMatchObject({ start: 9 * 60, end: 9 * 60 + 15, marker: 'lands' })
   })
 
-  it('with nothing else planned on day 1, it leaves that day and lands the next', () => {
-    expect(transportSpan(syd, { trip: eu, days: edays, items: [syd] })!.arrDate).toBe('2027-07-02')
+  it('with nothing else planned on day 1, it still lands on day 1: the trip’s dates are the days at the destination', () => {
+    expect(transportSpan(syd, { trip: eu, days: edays, items: [syd] })!.arrDate).toBe('2027-07-01')
   })
 })
 

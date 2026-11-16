@@ -9,7 +9,7 @@ import { country } from './countries'
 import { cityIn, trustedPlace } from './cities'
 import type { Place } from '../types'
 import { haversineM } from './geo'
-import { isHome } from './home'
+import { atHome, isHome } from './home'
 
 export function tzAt(lat?: number, lon?: number): string | undefined {
   if (lat == null || lon == null) return undefined
@@ -186,7 +186,11 @@ export function transportSpan(it: Item, ctx: ZoneCtx): TransportSpan | undefined
     const t = zonedToUtc(it.date, o.startTime, toTz)
     return t >= lands && t < arrUtc
   })
-  if (it.kind === 'flight' && it.date === ctx.trip.startDate && arrDate > it.date && z.from !== z.to && zoneOfDate(it.date, ctx) === z.to && plannedThere) {
+  // The trip's first day is the day you land (its dates are the days at the destination): the flight from home lands then —
+  // unless the plan says otherwise (made when day 1 was the day you leave: the first night there is the next one).
+  const stays = ctx.items?.filter((o) => o.kind === 'stay' && o.status !== 'skipped') ?? []
+  const landsDay1 = atHome(ctx.trip, it.from) && (!stays.length || stays.some((o) => o.date <= it.date))
+  if (it.kind === 'flight' && it.date === ctx.trip.startDate && arrDate > it.date && z.from !== z.to && zoneOfDate(it.date, ctx) === z.to && (plannedThere || landsDay1)) {
     for (const k of [0, -1, -2]) {
       const leaves = zonedToUtc(addDays(it.date, k), it.startTime, z.from)
       if (lands > leaves + shortest) return { depUtc: leaves, arrUtc: lands, durationMin: Math.round((lands - leaves) / 60000), fromTz: z.from, toTz: z.to, arrDate: it.date, zonesDiffer: true }
