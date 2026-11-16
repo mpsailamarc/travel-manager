@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db'
+import { db, deleteTrip } from '../db'
 import { createDemoTrip } from '../lib/sample'
 import { duplicateTrip, importAny } from '../lib/share'
 import { formatRange } from '../lib/dates'
@@ -107,6 +107,11 @@ function TripGroup({ title, trips }: { title: string; trips: Trip[] }) {
     toast(`📄 “${name.trim()}” created: a copy to try things on, the original is unchanged`)
     navigate(`/trip/${id}/plan`)
   }
+  async function remove(t: Trip) {
+    if (!confirm(`Remove "${t.name}" and everything in it (plan, checklist, expenses, documents)? This can't be undone.`)) return
+    await deleteTrip(t.id)
+    toast(`🗑️ “${t.name}” removed`)
+  }
   if (!trips.length) return null
   return (
     <section className="stack">
@@ -137,6 +142,18 @@ function TripGroup({ title, trips }: { title: string; trips: Trip[] }) {
                   }}
                 >
                   📄 Duplicate
+                </button>{' '}
+                <button
+                  type="button"
+                  className="btn-sm btn-ghost"
+                  title="Delete this trip and everything in it"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    void remove(t)
+                  }}
+                >
+                  🗑️ Remove
                 </button>
               </div>
             </Link>
