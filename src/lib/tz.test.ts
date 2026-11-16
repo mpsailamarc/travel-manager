@@ -126,3 +126,24 @@ describe('the way home: Rome → Dubai → Sydney, both listed on the last day',
     expect(v.entries.map((e) => e.item.id)).toEqual(['a'])
   })
 })
+
+describe('the day you fly home', () => {
+  const t = { id: 'R', startDate: '2027-07-01', endDate: '2027-07-06', countryCodes: ['IT'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as Trip
+  const d = (date: string, city: string, lat: number, lon: number) => ({ id: date, tripId: 'R', date, city, lat, lon })
+  const ds = [d('2027-07-05', 'Rome', 41.9, 12.5), d('2027-07-06', 'Sydney', -33.87, 151.21)]
+  const home = flight({ tripId: 'R', date: '2027-07-06', startTime: '22:00', endTime: '18:00', from: { name: 'Rome (FCO)', lat: 41.8, lon: 12.25 }, to: { name: 'Sydney (SYD)', lat: -33.94, lon: 151.18 } })
+
+  it('is on the local time of where you leave from, and shows the evening flight home (even when the day is written as Sydney)', () => {
+    const view = buildDayView([home], '2027-07-06', { trip: t, days: ds, items: [home] })
+    expect(view.tz).toBe('Europe/Rome')
+    expect(view.entries).toHaveLength(1)
+    expect(view.entries[0].start).toBe(22 * 60)
+  })
+
+  it('a day at home with only the landing on it stays on home time', async () => {
+    const { zoneOfDate } = await import('./tz')
+    const t2 = { ...t, endDate: '2027-07-07' }
+    const ds2 = [...ds.map((x) => (x.date === '2027-07-06' ? d('2027-07-06', 'Rome', 41.9, 12.5) : x)), d('2027-07-07', 'Sydney', -33.87, 151.21)]
+    expect(zoneOfDate('2027-07-07', { trip: t2, days: ds2, items: [home] })).toBe('Australia/Sydney')
+  })
+})

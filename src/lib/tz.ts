@@ -9,6 +9,7 @@ import { country } from './countries'
 import { cityIn, trustedPlace } from './cities'
 import type { Place } from '../types'
 import { haversineM } from './geo'
+import { isHome } from './home'
 
 export function tzAt(lat?: number, lon?: number): string | undefined {
   if (lat == null || lon == null) return undefined
@@ -86,11 +87,25 @@ const dayZone = (d?: Day) => d?.tz ?? tzAt(d?.lat, d?.lon)
  * The zone of a trip day: its own city, else the closest day with a location, else the country's capital. A day out near
  * a border (El Tatio, by Bolivia) whose spot falls in the neighbour's zone keeps the zone of the days around it.
  */
+/** A place known to be somewhere other than home ("Rome (FCO)", or coordinates more than 50 km from it). */
+function awayPlace(trip: Trip, p?: Place): boolean {
+  if (!p) return false
+  const q = trustedPlace(p)
+  const c = q.lat != null && q.lon != null ? { name: q.name, lat: q.lat, lon: q.lon } : cityIn(p.name)
+  return !!c && !isHome(trip, c) && !isHome(trip, { name: p.name })
+}
+
 export function zoneOfDate(date: ISODate, ctx: ZoneCtx): string | undefined {
   const sorted = [...ctx.days].sort((a, b) => a.date.localeCompare(b.date))
   const day = sorted.find((d) => d.date === date)
   const own = dayZone(day)
   const before = [...sorted].reverse().find((d) => d.date < date && dayZone(d))
+  // The day you fly home is written as home (where you sleep that night), but it's spent where you leave from: its
+  // times are that place's local time, not home's. A day at home with only the landing on it stays on home time.
+  if (own && before && day && ctx.items && isHome(ctx.trip, { name: day.city, lat: day.lat, lon: day.lon }) && !isHome(ctx.trip, { name: before.city, lat: before.lat, lon: before.lon })) {
+    const leavesFromAway = ctx.items.some((i) => i.date === date && TRANSPORT.has(i.kind) && i.status !== 'skipped' && awayPlace(ctx.trip, i.from))
+    if (leavesFromAway) return zoneOfDate(before.date, ctx)
+  }
   if (own && !day?.tz && day?.lat != null && day.lon != null) {
     const after = sorted.find((d) => d.date > date && dayZone(d))
     const around = before && after && dayZone(before) === dayZone(after) ? dayZone(before) : undefined

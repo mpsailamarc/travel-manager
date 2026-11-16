@@ -39,6 +39,7 @@ export function buildDayView(allItems: Item[], date: ISODate, zoneCtx: ZoneCtx):
   const untimed: Item[] = []
   const mid = tz ? midnight(date, tz) : undefined
   const MIN = 60000
+  const later: Item[] = []
 
   for (const it of allItems.filter((i) => i.date === date)) {
     if (!it.startTime) {
@@ -51,7 +52,10 @@ export function buildDayView(allItems: Item[], date: ISODate, zoneCtx: ZoneCtx):
       if (span) {
         const start = (span.depUtc - mid) / MIN
         const end = (span.arrUtc - mid) / MIN
-        if (start >= 24 * 60) continue // a connection that really leaves the next day: shown there
+        if (start >= 24 * 60) {
+          later.push(it) // a connection that really leaves the next day: shown there
+          continue
+        }
         entries.push({
           item: it,
           start: Math.min(Math.max(start, 0), 24 * 60 - 1),
@@ -75,6 +79,10 @@ export function buildDayView(allItems: Item[], date: ISODate, zoneCtx: ZoneCtx):
     if (end != null && end <= start) end = end === start ? undefined : 24 * 60 // runs past midnight (no zone info)
     entries.push({ item: it, start, end })
   }
+
+  // The last day has no next one: if the way home would vanish from it entirely, it shows at the end of the day.
+  if (date >= ctx.trip.endDate && later.length && !entries.some((e) => isTransportKind(e.item.kind) && e.item.date === date))
+    for (const it of later) entries.push({ item: it, start: 24 * 60 - 1, clippedEnd: true, converted: true })
 
   // Journeys that began the day before and land today.
   if (tz && mid != null) {
