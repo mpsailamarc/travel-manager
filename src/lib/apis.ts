@@ -71,6 +71,23 @@ export async function searchPlaces(q: string): Promise<GeoResult[]> {
   return out
 }
 
+/**
+ * A place as people type it ("The Savoy, Strand"), near a city: the free search is picky about commas and word order,
+ * so a few ways of asking are tried in turn (a second apart, as the service asks) until one finds it.
+ */
+export async function findPlace(text: string, near?: string): Promise<GeoResult[]> {
+  const t = text.trim()
+  const withCity = (q: string) => (near && !q.toLowerCase().includes(near.toLowerCase()) ? `${q}, ${near}` : q)
+  const plain = t.replace(/\s*,\s*/g, ' ').replace(/^the\s+/i, '').trim()
+  const tries = [...new Set([withCity(t), t, withCity(plain).replace(/,/g, ''), ...(/hotel|hostel|inn|apartment/i.test(t) ? [] : [withCity(`${plain} hotel`).replace(/,/g, '')])])]
+  for (const [k, q] of tries.entries()) {
+    if (k) await new Promise((r) => setTimeout(r, 1100))
+    const r = await searchPlaces(q).catch(() => [] as GeoResult[])
+    if (r.length) return r
+  }
+  return []
+}
+
 /** A place typed by name gets its coordinates and country from the first search result (one lookup, cached). */
 export async function locatePlace<T extends { name: string; lat?: number; lon?: number; country?: string }>(place: T | undefined): Promise<T | undefined> {
   if (!place?.name.trim() || place.lat != null) return place

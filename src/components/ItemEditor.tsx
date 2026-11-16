@@ -10,12 +10,13 @@ import { Modal, StatusBadge, toast } from './ui'
 import { itemSubtitle } from './ItemRow'
 import { PlaceSearch } from './PlaceSearch'
 import { PlaceInfo } from './PlaceInfo'
-import { localWiki } from '../lib/apis'
+import { findPlace, localWiki } from '../lib/apis'
 import { planRipple } from '../lib/ripple'
 import { applyProposal, proposeDay, retimeAfter, sendToBackup } from '../lib/favorites'
 import { journeyNote } from '../lib/dayview'
 import { forPace, legText, taxiLink, transitLink } from '../lib/legs'
 import { distance } from '../lib/format'
+import { haversineM } from '../lib/geo'
 import { itemZones, offsetMin, transportSpan, tzAt, tzCity, tzLabel, zonedToUtc } from '../lib/tz'
 import { CITIES } from '../lib/cities'
 import { useSettings } from '../lib/hooks'
@@ -98,6 +99,14 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
     }
     if (saving) return
     setSaving(true)
+    // A stay's address typed without tapping Find is looked up now: the days start and end at the hotel.
+    let located = it.location
+    if (kind === 'stay' && it.location?.name && (it.location.lat == null || !it.location.country)) {
+      const was = it.location.lat != null && it.location.lon != null ? { lat: it.location.lat, lon: it.location.lon } : (item as Item).location?.lat != null ? (item as Item).location : undefined
+      // Not a namesake in another town: near where the stay already was, when it was somewhere.
+      const hit = (await findPlace(it.location.name, city)).find((h) => !was || was.lat == null || was.lon == null || haversineM({ lat: was.lat, lon: was.lon }, h) < 50_000)
+      if (hit) located = { name: it.location.name, lat: hit.lat, lon: hit.lon, country: hit.countryCode }
+    }
     let order = it.order
     if (order == null) {
       const sameDay = await db.items.where({ tripId: trip.id, date: it.date }).toArray()
@@ -117,7 +126,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       toTz: isTransport(kind) ? it.toTz || undefined : undefined,
       from: isTransport(kind) ? it.from : undefined,
       to: isTransport(kind) ? it.to : undefined,
-      location: isTransport(kind) ? undefined : it.location,
+      location: isTransport(kind) ? undefined : located,
       nights: kind === 'stay' ? it.nights ?? 1 : undefined,
       hotelSet: kind === 'stay' ? true : it.hotelSet, // a stay you saved yourself: tidying the stays leaves it as it is
       bookingRef: it.bookingRef || undefined,

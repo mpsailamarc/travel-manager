@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { searchPlaces, type GeoResult } from '../lib/apis'
+import { findPlace, type GeoResult } from '../lib/apis'
 import type { Place } from '../types'
 
 interface Props {
@@ -21,10 +21,9 @@ export function PlaceSearch({ label, value, onChange, placeholder, near }: Props
     setBusy(true)
     setError(undefined)
     try {
-      const q = near && !value.name.toLowerCase().includes(near.toLowerCase()) ? `${value.name}, ${near}` : value.name
-      const r = await searchPlaces(q)
+      const r = await findPlace(value.name, near)
       setResults(r)
-      if (!r.length) setError('No match — try a different spelling.')
+      if (!r.length) setError(navigator.onLine ? 'No match — try a different spelling, or the street.' : 'Search needs an internet connection.')
     } catch {
       setError('Search needs an internet connection.')
     } finally {

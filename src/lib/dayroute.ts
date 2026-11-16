@@ -73,14 +73,18 @@ export function dayEndPlace(items: Item[], date: string, day?: Day): { lat: numb
 
 const near = (p: [number, number] | undefined, at: { lat: number; lon: number }) => !!p && haversineM({ lat: p[1], lon: p[0] }, at) < 150
 
-/** A stored leg is still right if it starts at the previous stop's name (or is the first) and ends at this place. */
-function storedLeg(it: Item, prev?: Item): Leg | undefined {
+/**
+ * A stored leg is still right if it ends at this place and starts where the day now comes from: the previous stop, or
+ * for the first one the hotel (a leg planned from the city centre goes once the hotel's address is in).
+ */
+function storedLeg(it: Item, prev?: Item, begin?: { lat: number; lon: number }): Leg | undefined {
   if (MOVES.has(it.kind)) return undefined
   const l = it.legIn
   const g = l?.geometry
   if (!l || !g?.length || !near(g[g.length - 1], placeAt(it)!)) return undefined
   if (prev && l.fromName !== prev.title) return undefined
   if (prev && !near(g[0], placeAt(prev)!)) return undefined
+  if (!prev && (!begin || !near(g[0], begin))) return undefined
   return l
 }
 
@@ -133,7 +137,7 @@ export async function buildRoute(
       prev = it
       continue
     }
-    let l = storedLeg(it, prev)
+    let l = storedLeg(it, prev, begin)
     if (!l && prev) l = await leg(placeAt(prev)!, at, it, prev.title)
     if (!l && !prev && begin) l = await leg(begin, at, it, begin.name)
     out.push({ item: it, at, leg: l })

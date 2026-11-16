@@ -1,15 +1,46 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { db, touchTrip } from '../db'
 import type { Day, Item, ItemStatus, Place, Trip } from '../types'
 import { addDays, formatDate } from '../lib/dates'
 import { plural } from '../lib/format'
 import { uid } from '../lib/ids'
 import { bookingSearch } from '../lib/checklist'
+import { findPlace } from '../lib/apis'
+import { haversineM } from '../lib/geo'
 import { isPlaceholderStay, nightsOf } from '../lib/stays'
 import { Modal, StatusBadge, toast } from './ui'
 import { PlaceSearch } from './PlaceSearch'
 
 const short = (d: string) => formatDate(d, { weekday: 'short', day: 'numeric', month: 'short' })
+
+/** An address that was typed but never looked up (no point, or the point it had before): a place found by Find has its country. */
+const needsLookup = (p: Place, city: string) => !!p.name && (p.lat == null || !p.country) && p.name !== `${city} centre`
+
+/** The first search result, unless it's far from where the stay already was (a namesake in another town). */
+async function lookUp(p: Place, city: string) {
+  const hits = await findPlace(p.name, city)
+  return hits.find((h) => p.lat == null || p.lon == null || haversineM({ lat: p.lat, lon: p.lon }, h) < 50_000)
+}
+
+/**
+ * Hotels whose address was typed without being looked up (before saving did it) are looked up once, in the background,
+ * so their days start and end at the real address.
+ */
+function useLookUpTypedHotels(stays: Item[], cityOf: (s: Item) => string) {
+  const done = useRef(new Set<string>())
+  useEffect(() => {
+    const todo = stays.filter((s) => s.hotelSet && s.location && needsLookup(s.location, cityOf(s)) && !done.current.has(s.id))
+    if (!todo.length) return
+    void (async () => {
+      for (const s of todo) {
+        done.current.add(s.id)
+        const hit = await lookUp(s.location!, cityOf(s))
+        if (hit) await db.items.update(s.id, { location: { name: s.location!.name, lat: hit.lat, lon: hit.lon, country: hit.countryCode } })
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stays.map((s) => `${s.id}:${s.location?.name}`).join()])
+}
 
 /**
  * Where you sleep, in one place: one row per stay (normally one per city). Enter the hotel here — its name and address,
@@ -20,8 +51,9 @@ export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: 
   const stays = items
     .filter((i) => i.kind === 'stay' && i.status !== 'skipped' && nightsOf(i).some((n) => n >= trip.startDate && n < trip.endDate))
     .sort((a, b) => a.date.localeCompare(b.date))
-  if (!stays.length) return null
   const cityOf = (s: Item) => days.find((d) => d.date === s.date)?.city ?? s.location?.name ?? ''
+  useLookUpTypedHotels(stays, cityOf)
+  if (!stays.length) return null
   const adults = Math.max(1, trip.travellers.filter((t) => t.type === 'adult').length)
   const kids = trip.travellers.filter((t) => t.type === 'child').map((t) => t.age ?? 8)
   const toChoose = stays.filter(isPlaceholderStay).length
@@ -81,8 +113,17 @@ function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; city: st
 
   async function save() {
     const title = name.trim() || place?.name || s.title
-    // Typed but not looked up: the name is kept, and the day keeps starting from where the stay was until you tap Find.
-    const location = place?.name ? (place.lat != null ? place : { ...place, lat: s.location?.lat, lon: s.location?.lon }) : s.location
+    // An address typed without tapping Find is looked up now, so the days really start and end there; if it can't be
+    // found (offline, a typo), the stay keeps its old point and says so.
+    let location = place?.name ? place : s.location
+    if (place?.name && needsLookup(place, city)) {
+      const hit = await lookUp({ ...place, lat: place.lat ?? s.location?.lat, lon: place.lon ?? s.location?.lon }, city)
+      if (hit) location = { name: place.name, lat: hit.lat, lon: hit.lon, country: hit.countryCode }
+      else {
+        location = { ...place, lat: s.location?.lat, lon: s.location?.lon }
+        toast("Couldn't find that address: the days start from the city centre until you tap Find with a different spelling")
+      }
+    }
     await db.items.update(s.id, {
       title,
       location,

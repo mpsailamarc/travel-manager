@@ -70,3 +70,19 @@ describe('the day ends at the hotel', () => {
     expect(r.segments.at(-1)?.coords.at(-1)).toEqual([hotelA.lon, hotelA.lat])
   })
 })
+
+describe('after entering the hotel address', () => {
+  it("the day's first leg starts at the hotel, not where it was planned from before", async () => {
+    const centre = { name: 'Gothenburg centre', lat: 57.7089, lon: 11.9746 }
+    const hotel = { name: 'Hotel Pigalle', lat: 57.70695, lon: 11.97075 }
+    const visit = { name: 'Feskekörka', lat: 57.7015, lon: 11.9601 }
+    const oldLeg = { mode: 'walk' as const, minutes: 15, distanceM: 1200, geometry: [[centre.lon, centre.lat], [visit.lon, visit.lat]] as [number, number][], fromName: 'Gothenburg centre' }
+    const items = [
+      it_({ id: 'h', date: '2027-09-02', kind: 'stay', title: 'Hotel Pigalle', nights: 2, location: hotel }),
+      it_({ id: 'v', date: '2027-09-03', kind: 'activity', title: 'Feskekörka', startTime: '09:00', location: visit, legIn: oldLeg }),
+    ]
+    const r = await buildRoute(routeItems(items, '2027-09-03'), 'walk', SETTINGS, dayStartPlace(items, '2027-09-03'))
+    expect(r.stops[0].leg?.fromName).toBe('Hotel Pigalle')
+    expect(r.stops[0].leg?.geometry?.[0]).toEqual([hotel.lon, hotel.lat])
+  })
+})
