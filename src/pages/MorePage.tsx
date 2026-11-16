@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 const LINKS = [
   { to: '../ideas', emoji: '✨', label: 'Itinerary ideas (AI)', desc: 'Questionnaire → 3 itinerary options, budget & tips' },
-  { to: '../favorites', emoji: '🗺️', label: 'City planner', desc: 'Find sights on the map, build a wishlist, spread it over your days with a walking tour for each' },
+  { to: '../favorites', emoji: '🗺️', label: 'City planner', desc: 'Every activity per city and day, sights and ChatGPT ideas, and your backup ideas' },
   { to: '../essentials', emoji: '🧭', label: 'Essentials', desc: 'Emergency numbers, plugs, currency converter, tipping' },
   { to: '../docs', emoji: '📄', label: 'Documents', desc: 'Passports, tickets, insurance — offline' },
   { to: '../share', emoji: '📤', label: 'Share trip', desc: 'Send the plan to family as a file' },

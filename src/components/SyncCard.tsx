@@ -58,7 +58,7 @@ export function SyncCard() {
         </div>
         <p className="small">{syncLabel(status)}</p>
         <p className="small muted">
-          Trips, plans, checklists, expenses, wishlists and your settings sync automatically with every device using the same code. Documents stay on each device.
+          Trips, plans, checklists, expenses, backup ideas and your settings sync automatically with every device using the same code. Documents stay on each device.
         </p>
         <div className="row wrap">
           <button onClick={() => syncNow()} disabled={status.state === 'syncing'}>

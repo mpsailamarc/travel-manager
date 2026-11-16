@@ -127,7 +127,7 @@ export default function TripLayout() {
     const t = setTimeout(async () => {
       const released = await reconcileTrip(tripId)
       if (released.length)
-        toast(`${released.length === 1 ? released[0] : `${released.length} wishlist places`} went back to the backup ideas: ${released.length === 1 ? 'its day' : 'their days'} changed city or left the trip.`, {
+        toast(`${released.length === 1 ? released[0] : `${released.length} places`} went back to the backup ideas: ${released.length === 1 ? 'its day' : 'their days'} changed city or left the trip.`, {
           label: 'City planner',
           run: () => navigate(`/trip/${tripId}/favorites`),
         })

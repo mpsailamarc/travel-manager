@@ -574,7 +574,7 @@ export default function FavoritesPage() {
                   </div>
                 </>
               ) : (
-                <div className="notice info">No day of the trip is in {city} yet. Set the city on a day (Plan tab) to spread your wishlist over it — until then they're backup ideas.</div>
+                <div className="notice info">No day of the trip is in {city} yet. Set the city on a day (Plan tab) to plan your backup ideas over it.</div>
               )}
               {cityFavs.length === 0 && <p className="small muted">Tap ＋ on things to do (below) to keep them as backup ideas, or tap one to read about it first.</p>}
             </div>
@@ -717,7 +717,7 @@ export default function FavoritesPage() {
                         </Link>
                       </>
                     ) : (
-                      <span className="muted">Nothing with a location on this day yet. Add places from the wishlist, then “Plan my days”.</span>
+                      <span className="muted">Nothing with a location on this day yet. Add backup ideas, then “Plan my days”.</span>
                     )}
                   </div>
                 )}
@@ -1260,7 +1260,7 @@ function OwnIdea({ city, onAdd }: { city: string; onAdd: (f: Omit<Favorite, 'id'
       <p className="tiny muted">Tap “Find” to attach a location so it can join a walking tour.</p>
       <div>
         <button className="btn-primary" disabled={!place?.name} onClick={add}>
-          🎯 Add to wishlist
+          🧺 Add to backup ideas
         </button>
       </div>
     </div>

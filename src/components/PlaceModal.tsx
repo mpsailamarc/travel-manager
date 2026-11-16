@@ -46,8 +46,8 @@ export function PlaceModal({
   onClose,
   onInterest,
   dayPicker,
-  addLabel = '🎯 Add to wishlist',
-  removeLabel = 'Remove from wishlist',
+  addLabel = '🧺 Add to backup ideas',
+  removeLabel = 'Remove from backup ideas',
 }: {
   subject: PlaceSubject
   city?: string
