@@ -14,6 +14,7 @@ import { carKind } from './drive'
 import { isSameItem } from './duplicates'
 import { CATEGORY_META, visitMinutes } from './favorites'
 import { nightsOf } from './stays'
+import { isHome } from './home'
 
 export const CHATBOTS = [
   { name: 'Claude', url: 'https://claude.ai/new' },
@@ -93,9 +94,10 @@ function startLine(trip: Trip) {
   const start = trip.startPlace?.name
   if (!start) return undefined
   const end = trip.endPlace?.name
+  const home = ` ${start}${end && end !== start ? ` and ${end} are` : ' is'} only where we start and finish: no activities, meals or stays there, and leave ${end && end !== start ? 'them' : 'it'} out of the route.`
   return end && end !== start
-    ? `Starting in ${start} and returning to ${end} (include only the transport actually needed from and to these places; no flights if they are close to the destination)`
-    : `Starting and ending in ${start} (include only the transport actually needed from and back to there; no flights if it is close to the destination)`
+    ? `Starting in ${start} and returning to ${end} (include only the transport actually needed from and to these places; no flights if they are close to the destination).${home}`
+    : `Starting and ending in ${start} (include only the transport actually needed from and back to there; no flights if it is close to the destination).${home}`
 }
 
 function tripBrief(trip: Trip, settings: Settings) {
@@ -537,7 +539,11 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
     await db.trips.update(trip.id, {
       endDate: newEnd,
       userEndDate: newEnd > userEnd ? userEnd : undefined,
-      cities: option.route.length ? option.route : trip.cities,
+      // The route without home: "Sydney → Rome → … → Sydney" is Rome and the rest; Sydney is where you start.
+      cities: (() => {
+        const away = option.route.filter((c) => !isHome(trip, { name: c }))
+        return away.length ? away : option.route.length ? option.route : trip.cities
+      })(),
       budget,
       planBudget: replace ? fromPlan : [...new Set([...(trip.planBudget ?? []), ...fromPlan])],
       ...(() => {
@@ -546,10 +552,15 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
       })(),
       notes: [replace ? withoutPlanTips(trip.notes) : trip.notes, option.tips.length ? `Tips from "${option.title}":\n• ${option.tips.join('\n• ')}` : ''].filter(Boolean).join('\n\n') || undefined,
     })
+    // Home isn't a place of the trip: on a day at home (leaving, coming back) only the journeys count — no sightseeing,
+    // meals or walks there — unless the whole trip is at home.
+    const awayTrip = option.days.some((d) => d.city && !isHome(trip, { name: d.city, lat: d.lat, lon: d.lon }))
+    const atHome = (d: (typeof option.days)[number]) => awayTrip && !!d.city && isHome(trip, { name: d.city, lat: d.lat, lon: d.lon })
     for (const d of option.days) {
       const date = addDays(trip.startDate, d.day - 1)
       await db.days.put({ id: `${trip.id}:${date}`, tripId: trip.id, date, city: d.city, lat: d.lat, lon: d.lon, title: d.title })
-      const built = d.items.length ? d.items.map((a, i) => toItem(a, trip.id, date, i, currency)) : d.highlights.map((h, i) => base(trip.id, date, 'activity', h, i, 'idea'))
+      const all = d.items.length ? d.items.map((a, i) => toItem(a, trip.id, date, i, currency)) : atHome(d) ? [] : d.highlights.map((h, i) => base(trip.id, date, 'activity', h, i, 'idea'))
+      const built = atHome(d) ? all.filter((i) => !['activity', 'meal', 'walk'].includes(i.kind) && !(i.kind === 'stay' && isHome(trip, i.location ?? {}))) : all
       // Adding to an existing plan: don't add what the day already has (or what the answer lists twice).
       const already = replace ? [] : await db.items.where({ tripId: trip.id, date }).toArray()
       await db.items.bulkAdd(withoutDuplicates(built, already))

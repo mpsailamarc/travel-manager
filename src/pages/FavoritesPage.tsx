@@ -7,6 +7,7 @@ import { fetchPois, interestOf, interestTier, type Interest, type Poi } from '..
 import { cityIdeasPrompt, parseCityIdeas, type CityIdea } from '../lib/ai'
 import { askCityIdeas, cityIdeasStatus, cityIdeasText, setCityIdeasText, useCityIdeasVersion } from '../lib/cityideas'
 import { KIND_META } from '../components/kinds'
+import { isHome } from '../lib/home'
 import { ItemEditor } from '../components/ItemEditor'
 import { applyCityPlan, linkWishlistToPlan, sendToBackup, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, fillUntimed, isIndoor, planDays, sameCity } from '../lib/favorites'
 import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin, today } from '../lib/dates'
@@ -53,16 +54,18 @@ export default function FavoritesPage() {
   // Cities of the trip, in order, with the first coordinates known for each.
   const cities = useMemo(() => {
     const out: { name: string; lat?: number; lon?: number }[] = []
+    // Home (where the trip starts and ends) isn't one of the trip's cities, unless the whole trip is there.
+    const away = days.some((d) => d.city && !isHome(trip, { name: d.city, lat: d.lat, lon: d.lon }))
     for (const d of days) {
-      if (!d.city) continue
+      if (!d.city || (away && isHome(trip, { name: d.city, lat: d.lat, lon: d.lon }))) continue
       const c = out.find((x) => sameCity(x.name, d.city))
       if (!c) out.push({ name: d.city, lat: d.lat, lon: d.lon })
       else if (c.lat == null && d.lat != null) Object.assign(c, { lat: d.lat, lon: d.lon })
     }
     return out
-  }, [days])
+  }, [days, trip.startPlace, trip.endPlace])
 
-  const todayCity = days.find((d) => d.date === today())?.city
+  const todayCity = cities.find((c) => sameCity(c.name, days.find((d) => d.date === today())?.city))?.name // not home on the day you leave
   const [other, setOther] = useState<Place>()
   const city = params.get('city') ?? todayCity ?? cities[0]?.name ?? other?.name
   const cityInfo = cities.find((c) => sameCity(c.name, city)) ?? (other && sameCity(other.name, city) ? other : undefined)

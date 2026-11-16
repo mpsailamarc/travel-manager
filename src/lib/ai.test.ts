@@ -147,3 +147,29 @@ describe('city ideas', () => {
     expect(parseCityIdeas(text).map((i) => i.visitMin)).toEqual([120, 180, 90])
   })
 })
+
+describe('home is only the starting point', () => {
+  it('leaves the start out of the trip’s places and drops what an itinerary planned there', async () => {
+    const { applyPlan } = await import('./ai')
+    const { makeTrip } = await import('../test/fixtures')
+    const { db } = await import('../db')
+    const trip = await makeTrip({ startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 }, startDate: '2027-07-01', endDate: '2027-07-03' })
+    const option = {
+      title: 'A',
+      bestFor: '',
+      summary: '',
+      route: ['Sydney', 'Rome', 'Sydney'],
+      days: [
+        { day: 1, city: 'Sydney', lat: -33.87, lon: 151.21, title: 'Leave', highlights: [], items: [{ kind: 'meal', title: 'Last brunch in Bondi' }, { kind: 'flight', title: 'Sydney → Rome', from: 'Sydney (SYD)', to: 'Rome (FCO)', time: '21:00', endTime: '07:00' }] },
+        { day: 2, city: 'Rome', lat: 41.9, lon: 12.5, title: 'Rome', highlights: [], items: [{ kind: 'activity', title: 'Colosseum', time: '10:00' }] },
+      ],
+      budget: {},
+      checklist: [],
+      tips: [],
+    }
+    await applyPlan(trip, option as never, 'EUR', true)
+    expect((await db.trips.get(trip.id))!.cities).toEqual(['Rome'])
+    const titles = (await db.items.where('tripId').equals(trip.id).toArray()).map((i) => i.title).sort()
+    expect(titles).toEqual(['Colosseum', 'Sydney → Rome'])
+  })
+})
