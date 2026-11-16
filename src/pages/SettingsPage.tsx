@@ -88,7 +88,7 @@ export default function SettingsPage() {
             </select>
           </label>
           <label>
-            Maps on Plan and Day by day
+            Maps (Plan, Day by day, City planner)
             <select value={s.mapSize ?? 'small'} onChange={(e) => set({ mapSize: e.target.value as 'small' | 'large' | 'hidden' })}>
               <option value="small">Small</option>
               <option value="large">Large</option>

@@ -12,7 +12,7 @@ import { applyCityPlan, linkWishlistToPlan, sendToBackup, CATEGORY_META, categor
 import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin, today } from '../lib/dates'
 import { distance, plural } from '../lib/format'
 import { haversineM, type LatLon } from '../lib/geo'
-import { useAsync, useOnline } from '../lib/hooks'
+import { useAsync, useMapSize, useOnline } from '../lib/hooks'
 import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
 import { Empty, Progress, Section, Stars, toast } from '../components/ui'
@@ -25,7 +25,6 @@ import LazyMap, { type MapMarker, type MapViewState } from '../components/LazyMa
 import { tripadvisorSearch } from '../lib/links'
 import { AnswerBox, PromptBox, useAiWords } from './IdeasPage'
 import { useTripCtx } from './TripLayout'
-import { saveLocal } from '../lib/storage'
 
 /** One thing on a day: a plan item (the itinerary's, yours, or one the City planner made from the wishlist), a wishlist place, or both. */
 interface Entry {
@@ -473,11 +472,7 @@ export default function FavoritesPage() {
   const [openDays, setOpenDays] = useState<Record<string, boolean>>({})
   const [backupsOpen, setBackupsOpen] = useState(true)
   const [cityOpen, setCityOpen] = useState(false)
-  const [mapSize, setMapSizeState] = useState<'small' | 'large' | 'hidden'>(() => (localStorage.getItem('tm-fav-map') as 'small' | 'large' | 'hidden') || 'small')
-  const setMapSize = (v: 'small' | 'large' | 'hidden') => {
-    setMapSizeState(v)
-    saveLocal('tm-fav-map', v)
-  }
+  const [mapSize, setMapSize] = useMapSize('tm-fav-map', settings.mapSize)
   const shown = detail && (detail.fav ? cityFavs.find((f) => f.id === detail.fav!.id) : findFav(detail.subject.name, detail.subject.wikidata))
   const findIsOpen = findOpen ?? (favs !== undefined && cityFavs.length === 0)
 

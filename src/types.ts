@@ -237,5 +237,5 @@ export interface Settings {
   walkSpeedKmh: number
   getAround?: GetAround // City planner default between places (default: walk short hops, public transport for longer ones)
   walkMaxMin?: number // what counts as a short hop, in minutes of walking (default 15)
-  mapSize?: 'small' | 'large' | 'hidden' // how the maps on Plan and Day by day show (default small); each screen's chips still change it there
+  mapSize?: 'small' | 'large' | 'hidden' // how the maps on Plan, Day by day and the City planner show (default small); each screen's chips still change it there
 }
