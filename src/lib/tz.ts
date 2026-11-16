@@ -76,6 +76,7 @@ export interface ZoneCtx {
   trip: Trip
   days: Day[]
   items?: Item[] // the trip's items, when at hand: they tell which day a long flight lands on
+  noFeeder?: boolean // working out a connection's first leg: its own first leg isn't followed
 }
 
 const TRANSPORT = new Set(['flight', 'train', 'bus', 'car', 'drive', 'ferry', 'taxi'])
@@ -158,7 +159,7 @@ export function transportSpan(it: Item, ctx: ZoneCtx): TransportSpan | undefined
   let depUtc = zonedToUtc(it.date, it.startTime, z.from)
   // A connection ("Dubai → Sydney" on the same day as "Rome → Dubai", which lands at 05:10 the next morning) leaves after
   // the flight into its airport has landed: a day or two later on the clock if need be.
-  const feeder = it.kind === 'flight' ? connectionInto(it, ctx) : undefined
+  const feeder = it.kind === 'flight' && !ctx.noFeeder ? connectionInto(it, ctx) : undefined
   for (let k = 1; feeder && depUtc <= feeder && k <= 2; k++) depUtc = zonedToUtc(addDays(it.date, k), it.startTime, z.from)
   // The first moment after departure when the arrival clock shows that time: it may be the next day, or even the previous
   // date across the date line — but never quicker than a plane can fly the distance (Sydney → Santiago isn't 4 hours).
@@ -206,7 +207,9 @@ function connectionInto(it: Item, ctx: ZoneCtx): number | undefined {
   let lands: number | undefined
   for (const f of ctx.items) {
     if (f.id === it.id || f.kind !== 'flight' || f.status === 'skipped' || (f.date !== it.date && f.date !== addDays(it.date, -1)) || !same(f.to)) continue
-    const span = transportSpan(f, { trip: ctx.trip, days: ctx.days }) // without items: a connection of a connection isn't followed
+    // With the items (so the first leg lands when the rest of its day says: the Sydney flight landing on day 1), but a
+    // connection of a connection isn't followed.
+    const span = transportSpan(f, { ...ctx, noFeeder: true })
     if (span && span.depUtc < zonedToUtc(it.date, it.startTime!, itemZones(it, ctx).from!) + 86_400_000 && (lands == null || span.arrUtc > lands)) lands = span.arrUtc
   }
   return lands

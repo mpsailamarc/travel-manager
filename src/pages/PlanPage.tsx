@@ -7,6 +7,9 @@ import { distance, money } from '../lib/format'
 import { haversineM } from '../lib/geo'
 import { drivingRoute, locatePlace } from '../lib/apis'
 import { journeyNote } from '../lib/dayview'
+import { transportSpan } from '../lib/tz'
+import { cityIn, trustedPlace } from '../lib/cities'
+import { atHome } from '../lib/home'
 import { ItemRow } from '../components/ItemRow'
 import { ItemEditor } from '../components/ItemEditor'
 import { Empty, Modal, toast } from '../components/ui'
@@ -124,21 +127,37 @@ export default function PlanPage() {
   const carFrom = carDates[0]
   const carTo = carDates[carDates.length - 1]
   const stops = useMemo(() => {
-    const out: { name: string; lat: number; lon: number; arrive: string }[] = []
-    const push = (name: string, lat: number | undefined, lon: number | undefined, arrive: string) => {
+    const out: { name: string; lat: number; lon: number; arrive: string; air?: boolean }[] = []
+    const push = (name: string, lat: number | undefined, lon: number | undefined, arrive: string, air?: boolean) => {
       if (lat == null || lon == null) return
       const last = out[out.length - 1]
-      if (!last || last.lat !== lat || last.lon !== lon) out.push({ name, lat, lon, arrive })
+      if (!last || last.lat !== lat || last.lon !== lon) out.push({ name, lat, lon, arrive, air })
     }
     if (fromHome) push(trip.startPlace?.name ?? '', trip.startPlace?.lat, trip.startPlace?.lon, trip.startDate)
+    // On a flying day the route goes through the airports, in the order you fly (Sydney → Santiago → Calama, then by road
+    // to San Pedro), not straight from one night's town to the next. Airports near the town, or at home, aren't stops.
+    const zctx = { trip, days, items }
+    let lastCity: string | undefined
     for (const date of dateRange(trip.startDate, trip.endDate)) {
       const d = days.find((x) => x.date === date)
-      if (!homeDay(d)) push(d?.city ?? 'Stop', d?.lat, d?.lon, date)
+      const flights = items
+        .filter((i) => i.date === date && i.kind === 'flight' && i.status !== 'skipped')
+        .map((i) => ({ i, at: transportSpan(i, zctx)?.depUtc ?? 0, to: i.to && (trustedPlace(i.to).lat != null ? trustedPlace(i.to) : cityIn(i.to.name)) }))
+        .sort((a, b) => a.at - b.at || (a.i.startTime ?? '').localeCompare(b.i.startTime ?? ''))
+      for (const f of flights) {
+        const p = f.to
+        if (p?.lat == null || p.lon == null || atHome(trip, f.i.to)) continue
+        if (d?.lat != null && d.lon != null && haversineM({ lat: p.lat, lon: p.lon }, { lat: d.lat, lon: d.lon }) < 50_000) continue
+        if (fromHome || !homeDay(d)) push((f.i.to!.name || p.name).split(',')[0], p.lat, p.lon, date, true)
+      }
+      // The night's town, when you move (on the day you fly home it's still the last town: you've left it already).
+      if (!homeDay(d) && (!d?.city || d.city !== lastCity)) push(d?.city ?? 'Stop', d?.lat, d?.lon, date)
+      if (d?.city) lastCity = d.city
     }
     const endP = trip.endPlace?.name ? trip.endPlace : trip.startPlace
     if (fromHome) push(endP?.name ?? '', endP?.lat, endP?.lon, trip.endDate)
     return out
-  }, [days, trip.startDate, trip.endDate, trip.startPlace, trip.endPlace, fromHome, homeDay])
+  }, [days, items, trip, fromHome, homeDay])
   // How each leg is travelled: a flight or a boat stays a straight dashed line; everything else follows the roads
   // (a train or bus line roughly does too). Colours: car orange, public transport blue, flights grey, boats cyan.
   const legMode = (date: string, byCar: boolean): 'flight' | 'ferry' | 'car' | 'public' => {
@@ -150,7 +169,10 @@ export default function PlanPage() {
   }
   const legs = stops.slice(1).map((to, i) => {
     const byCar = !!carFrom && to.arrive >= carFrom && to.arrive <= carTo
-    return { from: stops[i], to, mode: legMode(to.arrive, byCar) }
+    // Into an airport is a flight; from an airport to the town nearby is by road.
+    const fromAir = stops[i].air && haversineM(stops[i], to) < 400_000 // a transfer, not the flight home from that airport
+    const mode = to.air ? 'flight' : fromAir ? (byCar ? 'car' : 'public') : legMode(to.arrive, byCar)
+    return { from: stops[i], to, mode: mode as ReturnType<typeof legMode> }
   })
   const roadLegs = legs.filter((l) => l.mode === 'car' || l.mode === 'public')
   const roadKey = roadLegs.map((l) => `${l.from.lat},${l.from.lon}>${l.to.lat},${l.to.lon}`).join('|')

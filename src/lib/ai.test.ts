@@ -194,4 +194,26 @@ describe('home is only the starting point', () => {
     await applyPlan(both, plan([day1, day6]) as never, 'AUD', true)
     expect((await db.items.where('tripId').equals(both.id).toArray()).filter((i) => i.kind === 'flight')).toHaveLength(2)
   })
+
+  it('drops the taxi to the airport at home, and the budget is at least what the plan’s own prices add up to', async () => {
+    const { applyPlan } = await import('./ai')
+    const { makeTrip } = await import('../test/fixtures')
+    const { db } = await import('../db')
+    const trip = await makeTrip({ startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 }, startDate: '2027-07-01', endDate: '2027-07-03' })
+    const day1 = {
+      day: 1, city: 'Rome', lat: 41.9, lon: 12.5, title: 'Fly', highlights: [],
+      items: [
+        { kind: 'taxi', title: 'Drive to Sydney Airport', from: 'Home / central Sydney', to: 'Sydney Kingsford Smith Airport (SYD)', time: '18:30' },
+        { kind: 'flight', title: 'Flight SYD → FCO', from: 'Sydney (SYD)', to: 'Rome (FCO)', time: '21:30', estCost: 1500 },
+        { kind: 'taxi', title: 'Taxi to the hotel', from: 'Rome (FCO)', to: 'Hotel in Rome', time: '09:00' },
+      ],
+    }
+    const day3 = { day: 3, city: 'Rome', lat: 41.9, lon: 12.5, title: 'Home', highlights: [], items: [{ kind: 'flight', title: 'Flight FCO → SYD', from: 'Rome (FCO)', to: 'Sydney (SYD)', time: '12:00', estCost: 1600 }] }
+    await applyPlan(trip, { title: 'A', bestFor: '', summary: '', route: ['Rome'], days: [day1, day3], budget: { flights: 2000, food: 300 }, checklist: [], tips: [] } as never, 'AUD', true)
+    const titles = (await db.items.where('tripId').equals(trip.id).toArray()).map((i) => i.title)
+    expect(titles).not.toContain('Drive to Sydney Airport')
+    expect(titles).toContain('Taxi to the hotel')
+    expect((await db.trips.get(trip.id))!.budget).toMatchObject({ flights: 3100, food: 300 })
+  })
 })
+

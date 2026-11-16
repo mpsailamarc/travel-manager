@@ -19,6 +19,24 @@ export function isHome(trip: Pick<Trip, 'startPlace' | 'endPlace'>, place: { nam
   return false
 }
 
+/** Is this place home, reading well-known airports as their city ("Sydney Kingsford Smith (SYD)" is Sydney)? */
+export function atHome(trip: Pick<Trip, 'startPlace' | 'endPlace'>, p?: Place): boolean {
+  if (!p) return false
+  const c = cityIn(p.name)
+  return isHome(trip, p) || (!!c && isHome(trip, { name: c.name, lat: c.lat, lon: c.lon }))
+}
+
+const GROUND = new Set(['taxi', 'drive', 'car', 'bus', 'train'])
+
+/**
+ * Getting to the airport at home, or back from it: the trip starts and ends at home's airport, so that isn't planned (it
+ * landed in the middle of the flight on the destination's clock). Booked ones stay.
+ */
+export function isHomeTransfer(trip: Pick<Trip, 'startPlace' | 'endPlace'>, i: Pick<Item, 'kind' | 'from' | 'to' | 'status' | 'bookingRef'>): boolean {
+  if (!GROUND.has(i.kind) || i.status === 'booked' || i.bookingRef) return false
+  return (atHome(trip, i.to) && (!i.from || atHome(trip, i.from))) || (atHome(trip, i.from) && !i.to)
+}
+
 const JOURNEY_KINDS = new Set(['flight', 'train', 'bus', 'ferry', 'car', 'drive', 'taxi'])
 
 export interface HomeLeg {
@@ -43,11 +61,7 @@ export function missingHomeLegs(trip: Trip, days: Day[], items: Item[]): { out?:
   if (!away.length) return {}
   const far = (h: Place | undefined, d: Day) => h?.lat != null && h.lon != null && haversineM({ lat: h.lat, lon: h.lon }, { lat: d.lat!, lon: d.lon! }) > 500_000
   const names = [start, end].flatMap((h) => (h?.name ? [cityBase(h.name.split(',')[0]).toLowerCase()] : []))
-  // "Sydney Kingsford Smith (SYD)" is Sydney: well-known airports count as their city.
-  const homeEnd = (p?: Place) => {
-    const c = cityIn(p?.name)
-    return !!p && (isHome(trip, p) || (!!c && isHome(trip, { name: c.name, lat: c.lat, lon: c.lon })))
-  }
+  const homeEnd = (p?: Place) => atHome(trip, p)
   const touchesHome = (i: Item) =>
     homeEnd(i.from) || homeEnd(i.to) || /\bhome\b/i.test(i.title) || names.some((n) => n && i.title.toLowerCase().includes(n))
   const legs = items.filter((i) => JOURNEY_KINDS.has(i.kind) && i.status !== 'skipped' && touchesHome(i))

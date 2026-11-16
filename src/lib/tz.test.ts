@@ -147,3 +147,19 @@ describe('the day you fly home', () => {
     expect(zoneOfDate('2027-07-07', { trip: t2, days: ds2, items: [home] })).toBe('Australia/Sydney')
   })
 })
+
+describe('day 1: Sydney → Santiago, then on to Calama the same morning', () => {
+  const t = { id: 'S', startDate: '2027-01-15', endDate: '2027-01-20', countryCodes: ['CL'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as Trip
+  const ds = [{ id: 'S:1', tripId: 'S', date: '2027-01-15', city: 'San Pedro de Atacama', lat: -23.03, lon: -67.75 }]
+  const mk = (id: string, kind: string, title: string, s: string, e: string, from: string, to: string) =>
+    ({ id, tripId: 'S', date: '2027-01-15', kind, title, status: 'planned', order: 0, startTime: s, endTime: e, from: { name: from }, to: { name: to } }) as Item
+  const intl = mk('a', 'flight', 'Sydney → Santiago', '21:30', '06:30', 'Sydney Kingsford Smith Airport (SYD)', 'Arturo Merino Benítez Airport (SCL)')
+  const conn = mk('b', 'flight', 'Santiago → Calama', '08:30', '10:05', 'Arturo Merino Benítez Airport (SCL)', 'El Loa Airport (CJC / Calama)')
+  const taxi = mk('c', 'taxi', 'Calama airport → San Pedro', '10:45', '12:00', 'El Loa Airport (CJC / Calama)', 'San Pedro de Atacama town centre')
+
+  it('the connection leaves that morning, after the long flight has landed (not a day later)', () => {
+    const v = buildDayView([intl, conn, taxi], '2027-01-15', { trip: t, days: ds, items: [intl, conn, taxi] })
+    expect(v.entries.map((e) => e.item.id).sort()).toEqual(['a', 'b', 'c'])
+    expect(v.entries.find((e) => e.item.id === 'b')!.start).toBe(8 * 60 + 30)
+  })
+})

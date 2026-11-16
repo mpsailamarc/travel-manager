@@ -14,7 +14,7 @@ import { carKind } from './drive'
 import { isSameItem } from './duplicates'
 import { CATEGORY_META, visitMinutes } from './favorites'
 import { nightsOf } from './stays'
-import { addMissingHomeLegs, isHome } from './home'
+import { addMissingHomeLegs, isHome, isHomeTransfer } from './home'
 
 export const CHATBOTS = [
   { name: 'Claude', url: 'https://claude.ai/new' },
@@ -95,7 +95,7 @@ function startLine(trip: Trip) {
   if (!start) return undefined
   const end = trip.endPlace?.name
   const back = end && end !== start ? end : start
-  const home = ` ${start}${end && end !== start ? ` and ${end} are` : ' is'} only where we start and finish: no activities, meals or stays there, and not a place of the route — but the plan still includes getting there from ${start} at the start and the journey back to ${back} at the end.`
+  const home = ` ${start}${end && end !== start ? ` and ${end} are` : ' is'} only where we start and finish: no activities, meals or stays there, and not a place of the route — but the plan still includes getting there from ${start} at the start and the journey back to ${back} at the end. We start and finish at the airport (or station) there: no taxi or drive to it or home from it.`
   return end && end !== start
     ? `Starting in ${start} and returning to ${end} (include only the transport actually needed from and to these places; no flights if they are close to the destination).${home}`
     : `Starting and ending in ${start} (include only the transport actually needed from and back to there; no flights if it is close to the destination).${home}`
@@ -307,6 +307,8 @@ Guidelines:
 - If the trip starts with a long flight from home, day 1 is the day it leaves: put it on day 1, and plan nothing at the destination until after it has landed (on day 1 or day 2, whichever it is). The trip always ends with the journey home: the flight home is an item on the day it leaves (with the trip to the airport before it), never left out.
 - Nothing is planned during a journey, and the first thing after landing starts at least 1 hour later (2 hours after a long-haul flight). Before a flight, be at the airport 2 hours ahead (3 for a long-haul one), with the trip to the airport as its own item, and plan nothing in that time.
 - A connecting flight is its own item on the day it actually leaves: after a flight that lands past midnight, that's the next day.
+- The flight from home comes first: a connection, a transfer or anything at the destination is after it has landed, never earlier that day.
+- Only flights on routes that really have scheduled flights (no invented ones, e.g. between two small regional airports); otherwise drive, or take a bus or ferry.
 - Things at sunrise or sunset start at that place's real sunrise or sunset time on that date; evening and night things are in the evening.
 - Visits last a realistic time (a big museum 2–3 hours, a viewpoint 30–60 minutes, a meal 1 hour or more).
 - Give real coordinates for each day's town and for places. Every journey needs both ends: "fromLat"/"fromLon" where it leaves and "lat"/"lon" where it arrives — the actual airport, station, port or car-rental office, not the city centre.
@@ -510,6 +512,20 @@ function toItem(a: AiItem & { bookingRef?: string; provider?: string }, tripId: 
   }
 }
 
+const ITEM_CATEGORY: Partial<Record<string, BudgetCategory>> = {
+  flight: 'flights',
+  train: 'transport',
+  bus: 'transport',
+  car: 'transport',
+  drive: 'transport',
+  ferry: 'transport',
+  taxi: 'transport',
+  stay: 'stays',
+  meal: 'food',
+  activity: 'activities',
+  walk: 'activities',
+}
+
 /** Drops the "Tips from …" blocks an earlier itinerary idea added to the notes; your own notes stay. */
 function withoutPlanTips(notes?: string) {
   return (notes ?? '').split(/\n\n+/).filter((b) => !b.startsWith('Tips from "')).join('\n\n')
@@ -536,7 +552,15 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
     // Budget figures the previous idea set (and you haven't changed) go too, unless the new idea sets them again.
     if (replace) for (const c of trip.planBudget ?? []) if (typeof option.budget[c] !== 'number') delete budget[c]
     const fromPlan = BUDGET_CATEGORIES.filter((c) => typeof option.budget[c] === 'number')
-    for (const c of fromPlan) budget[c] = option.budget[c]
+    // The outline's figures were guessed before the detailed plan priced each flight and hotel: when those prices add up
+    // to more (A$4,280 of flights against "flights: 3,300"), the category is at least what the plan itself costs.
+    const priced: Partial<Record<BudgetCategory, number>> = {}
+    for (const d of option.days)
+      for (const a of d.items) {
+        const c = ITEM_CATEGORY[a.kind]
+        if (c && a.estCost) priced[c] = (priced[c] ?? 0) + a.estCost
+      }
+    for (const c of fromPlan) budget[c] = Math.max(option.budget[c]!, Math.round(priced[c] ?? 0))
     await db.trips.update(trip.id, {
       endDate: newEnd,
       userEndDate: newEnd > userEnd ? userEnd : undefined,
@@ -561,7 +585,8 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
       const date = addDays(trip.startDate, d.day - 1)
       await db.days.put({ id: `${trip.id}:${date}`, tripId: trip.id, date, city: d.city, lat: d.lat, lon: d.lon, title: d.title })
       const all = d.items.length ? d.items.map((a, i) => toItem(a, trip.id, date, i, currency)) : atHome(d) ? [] : d.highlights.map((h, i) => base(trip.id, date, 'activity', h, i, 'idea'))
-      const built = atHome(d) ? all.filter((i) => !['activity', 'meal', 'walk'].includes(i.kind) && !(i.kind === 'stay' && isHome(trip, i.location ?? {}))) : all
+      const kept = awayTrip ? all.filter((i) => !isHomeTransfer(trip, i)) : all // you start and finish at home's airport
+      const built = atHome(d) ? kept.filter((i) => !['activity', 'meal', 'walk'].includes(i.kind) && !(i.kind === 'stay' && isHome(trip, i.location ?? {}))) : kept
       // Adding to an existing plan: don't add what the day already has (or what the answer lists twice).
       const already = replace ? [] : await db.items.where({ tripId: trip.id, date }).toArray()
       await db.items.bulkAdd(withoutDuplicates(built, already))
