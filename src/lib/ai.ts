@@ -181,7 +181,7 @@ const OPTIONS_SHAPE = `{
       "bestFor": string (a few words: who or what this option suits best),
       "summary": string (1 sentence),
       "route": [city names in order],
-      "days": [ { "day": 1, "city": string, "title": string, "highlights": [string, ...] } ],
+      "days": [ { "day": 1, "city": string, "lat": number, "lon": number (the city's coordinates), "title": string, "highlights": [string, ...] } ],
       "budget": { "flights": number, "transport": number, "stays": number, "food": number, "activities": number, "other": number },
       "tips": [up to 2 strings]
     }
@@ -271,7 +271,7 @@ export function routeShape(o: AiOption) {
 }
 
 /** Step 2: the full plan for the chosen option — or, when continuing, only the days still missing. */
-export function detailPrompt(trip: Trip, settings: Settings, option: AiOption, days: number[], continuing: boolean) {
+export function detailPrompt(trip: Trip, settings: Settings, option: AiOption, days: number[], continuing: boolean, changes?: string) {
   const outline = days
     .map((n) => {
       const d = option.days.find((x) => x.day === n)
@@ -294,8 +294,11 @@ Route: ${option.route.join(' → ')}`
 ${tripBrief(trip, settings)}
 
 Route: ${option.route.join(' → ')}`
+  const wanted = changes?.trim()
+    ? `\nChanges I want to this option (they come before the outline: where they differ, follow them, keeping the same trip dates and the same number of days, and move the other days to fit — nights per place, places added or removed, a different order):\n${changes.trim()}\n`
+    : ''
   return `${intro}
-
+${wanted}
 Outline:
 ${outline}
 
@@ -727,4 +730,28 @@ export async function applyTemplate(trip: Trip) {
 
 function base(tripId: string, date: string, kind: ItemKind, title: string, order: number, status: Item['status']): Item {
   return { id: uid(), tripId, date, kind, title, status, order }
+}
+
+
+/** Where the places of an option are: its days' own coordinates, else (asked for) the well-known city list. In order, one per stretch. */
+export function optionStops(o: AiOption): { name: string; lat?: number; lon?: number; nights: number }[] {
+  const out: { name: string; lat?: number; lon?: number; nights: number }[] = []
+  for (const d of [...o.days].sort((a, b) => a.day - b.day)) {
+    const name = d.city?.trim()
+    if (!name) continue
+    const last = out[out.length - 1]
+    if (last && last.name.toLowerCase() === name.toLowerCase()) {
+      last.nights++
+      if (last.lat == null && d.lat != null) Object.assign(last, { lat: d.lat, lon: d.lon })
+    } else out.push({ name, lat: d.lat, lon: d.lon, nights: 1 })
+  }
+  // An outline without day cities still has its route.
+  if (!out.length) for (const r of o.route) out.push({ name: r, nights: 0 })
+  return out
+}
+
+/** The route of an option from the days actually planned (after changes): cities in order, once per stretch. */
+export function routeFromDays(o: AiOption): string[] {
+  const names = optionStops(o).map((s) => s.name)
+  return names.length ? names : o.route
 }

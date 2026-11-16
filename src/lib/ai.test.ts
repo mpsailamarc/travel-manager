@@ -217,3 +217,28 @@ describe('home is only the starting point', () => {
   })
 })
 
+describe('options on a map, and changes to an option', () => {
+  const o = { title: 'A', bestFor: '', summary: '', route: ['Rome', 'Florence'], budget: {}, checklist: [], tips: [], days: [
+    { day: 1, city: 'Rome', lat: 41.9, lon: 12.5, highlights: [], items: [] },
+    { day: 2, city: 'Rome', highlights: [], items: [] },
+    { day: 3, city: 'Florence', lat: 43.77, lon: 11.25, highlights: [], items: [] },
+  ] }
+  it('lists the places in order with the days spent in each', async () => {
+    const { optionStops } = await import('./ai')
+    expect(optionStops(o as never)).toEqual([
+      { name: 'Rome', lat: 41.9, lon: 12.5, nights: 2 },
+      { name: 'Florence', lat: 43.77, lon: 11.25, nights: 1 },
+    ])
+  })
+  it('adds the requested changes to the detailed plan request, ahead of the outline', async () => {
+    const { detailPrompt } = await import('./ai')
+    const { makeTrip } = await import('../test/fixtures')
+    const { SETTINGS } = await import('../test/fixtures')
+    const trip = await makeTrip()
+    const p = detailPrompt(trip, SETTINGS, o as never, [1, 2, 3], false, '4 nights in Rome, add Venice')
+    expect(p).toContain('4 nights in Rome, add Venice')
+    expect(p.indexOf('4 nights in Rome')).toBeLessThan(p.indexOf('Outline:'))
+    expect(detailPrompt(trip, SETTINGS, o as never, [1], false)).not.toContain('Changes I want')
+  })
+})
+
