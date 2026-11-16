@@ -478,14 +478,22 @@ export default function FavoritesPage() {
   const shown = detail && (detail.fav ? cityFavs.find((f) => f.id === detail.fav!.id) : findFav(detail.subject.name, detail.subject.wikidata))
   const findIsOpen = findOpen ?? (favs !== undefined && cityFavs.length === 0)
 
+  /** Everything planned on a city's days, as its day sections count it: plan items, and wishlist places not planned yet. */
+  const activityCount = (name: string) => {
+    const ds = new Set(cityDates(days, name))
+    const its = items.filter((i) => ds.has(i.date) && ['activity', 'meal', 'walk'].includes(i.kind) && i.status !== 'skipped')
+    const waiting = (favs ?? []).filter((f) => sameCity(f.city, name) && f.date && ds.has(f.date) && !its.some((i) => i.favId === f.id || i.id === f.itemId))
+    return its.length + waiting.length
+  }
+
   const cityPicker = (
     <div className="card tight stack" style={{ gap: 8 }}>
       <div className="row wrap" style={{ gap: 6 }}>
         <div className="chips grow">
           {cities.map((c) => (
-            <button key={c.name} className={`chip ${sameCity(c.name, city) ? 'on' : ''}`} onClick={() => setParams({ city: c.name })}>
+            <button key={c.name} className={`chip ${sameCity(c.name, city) ? 'on' : ''}`} onClick={() => setParams({ city: c.name })} title={`${plural(activityCount(c.name), 'activity', 'activities')} planned`}>
               {c.name}
-              {(favs ?? []).filter((f) => sameCity(f.city, c.name)).length > 0 && ` 🎯${(favs ?? []).filter((f) => sameCity(f.city, c.name)).length}`}
+              {activityCount(c.name) > 0 && ` · ${activityCount(c.name)}`}
             </button>
           ))}
           {city && !cities.some((c) => sameCity(c.name, city)) && <button className="chip on">{city}</button>}
