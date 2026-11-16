@@ -1,3 +1,5 @@
+import { lang } from '../i18n'
+
 // Built-in country facts so the app works offline. Hand-curated: always double-check entry rules
 // on official sites (the checklist links to them).
 
@@ -85,11 +87,11 @@ export function flag(code: string): string {
 /** A country's name: the built-in list, else the browser's own names (any ISO code), else the code itself. */
 export function countryName(code: string): string {
   const c = country(code)
-  if (c) return c.name
+  if (c && lang() === 'en') return c.name
   try {
-    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code.toUpperCase()) ?? code
+    return new Intl.DisplayNames([lang()], { type: 'region' }).of(code.toUpperCase()) ?? c?.name ?? code
   } catch {
-    return code
+    return c?.name ?? code
   }
 }
 

@@ -10,6 +10,7 @@ import { toast } from '../components/ui'
 import { SyncCard } from '../components/SyncCard'
 import { AiCard } from '../components/AiCard'
 import { getConfig } from '../lib/sync'
+import { lang, LANGS, setLang, t } from '../i18n'
 
 /** Drops the saved copy of the app (not your data) and reloads, so the newest version is fetched. */
 async function forceUpdate() {
@@ -36,7 +37,24 @@ export default function SettingsPage() {
 
   return (
     <div className="page stack-lg" style={{ maxWidth: 720 }}>
-      <h1>Settings</h1>
+      <h1>{t('Settings')}</h1>
+      <div className="card stack">
+        <h3>{t('Language')}</h3>
+        <div className="chips">
+          {LANGS.map((l) => (
+            <button key={l.code} className={`chip ${lang() === l.code ? 'on' : ''}`} onClick={() => lang() !== l.code && setLang(l.code)}>
+              {l.label}
+            </button>
+          ))}
+        </div>
+        <p className="small muted">
+          {t('The app, and what ChatGPT writes for you, in this language. To open the app in a language from a link, add ?lang=fr (or ?lang=en) to its address; it is remembered on that device.')}
+        </p>
+        <p className="tiny muted" style={{ margin: 0, wordBreak: 'break-all' }}>
+          {location.origin}
+          {location.pathname}?lang=fr
+        </p>
+      </div>
       <div className="card stack">
         <h3>About you</h3>
         <div className="form-grid">

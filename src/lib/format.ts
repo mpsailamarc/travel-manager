@@ -1,6 +1,8 @@
+import { locale } from '../i18n'
+
 export function money(amount: number, currency: string, digits = 0) {
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(locale(), {
       style: 'currency',
       currency,
       maximumFractionDigits: digits,

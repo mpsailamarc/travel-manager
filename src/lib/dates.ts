@@ -1,4 +1,5 @@
 import type { HHMM, ISODate } from '../types'
+import { locale } from '../i18n'
 
 export function toISODate(d: Date): ISODate {
   const y = d.getFullYear()
@@ -33,7 +34,7 @@ export function dateRange(start: ISODate, end: ISODate): ISODate[] {
 }
 
 export function formatDate(s: ISODate, opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }) {
-  return parseISODate(s).toLocaleDateString(undefined, opts)
+  return parseISODate(s).toLocaleDateString(locale(), opts)
 }
 
 export function formatRange(start: ISODate, end: ISODate) {

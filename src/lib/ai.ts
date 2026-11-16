@@ -9,6 +9,7 @@ import type { BudgetCategory, Day, Item, ItemKind, Settings, Trip, TripFocus, Tr
 import { BUDGET_CATEGORIES, CHECKLIST_CATEGORIES } from '../types'
 import { addDays, daysBetween, formatDate } from './dates'
 import { country } from './countries'
+import { lang } from '../i18n'
 import { uid } from './ids'
 import { carKind } from './drive'
 import { isSameItem } from './duplicates'
@@ -89,6 +90,17 @@ const BookingResponse = z.object({ items: lenientArray(AiItem.extend({ date: z.s
 
 /* ------------------------------- Prompts ---------------------------------- */
 
+/**
+ * In French, ChatGPT writes what you read (titles, highlights, notes, tips) in French, while everything the app reads stays
+ * exactly as asked: the JSON field names, the item kinds and checklist categories, and place names as written locally or
+ * in English ("Londres" would no longer be recognised as London).
+ */
+export function languageLine(): string {
+  return lang() === 'fr'
+    ? 'Language: write every text value you give (titles, highlights, summaries, notes, tips, checklist items) in French. Keep the JSON exactly as specified: field names, "kind" values and checklist categories stay in English, times stay HH:MM, and place names (cities, airports, hotels, sights) stay as written locally or in English, not translated.'
+    : ''
+}
+
 /** "Starting and ending in X": the AI should plan from there, and skip flights if X is next to the destination. */
 function startLine(trip: Trip) {
   const start = trip.startPlace?.name
@@ -121,6 +133,7 @@ function tripBrief(trip: Trip, settings: Settings) {
     settings.nationality ? `Nationality: ${country(settings.nationality)?.name ?? settings.nationality}` : '',
     startLine(trip) ?? (settings.homeAirport ? `Departing from: ${settings.homeAirport}` : ''),
     `Currency for costs: ${settings.homeCurrency}`,
+    languageLine(),
     trip.notes ? `Other wishes: ${trip.notes}` : '',
   ]
   return lines.filter(Boolean).join('\n')
