@@ -9,6 +9,7 @@ import { money } from '../lib/format'
 import { uid } from '../lib/ids'
 import { today } from '../lib/dates'
 import { toast } from './ui'
+import { t } from '../i18n'
 
 export function QuickExpense({ tripId, home, local }: { tripId: string; home: string; local: string }) {
   const [amount, setAmount] = useState('')
@@ -24,7 +25,7 @@ export function QuickExpense({ tripId, home, local }: { tripId: string; home: st
     if (!value || busy) return
     setBusy(true) // the exchange-rate lookup can take a moment: a second tap must not log it twice
     const rate = await fxRate(currency, home)
-    if (rate == null) toast(`No ${currency}→${home} rate available offline; saved without conversion`)
+    if (rate == null) toast(t('No {from}→{to} rate available offline; saved without conversion', { from: currency, to: home }))
     await db.expenses.add({
       id: uid(),
       tripId,
@@ -39,14 +40,14 @@ export function QuickExpense({ tripId, home, local }: { tripId: string; home: st
     setAmount('')
     setNote('')
     setBusy(false)
-    toast(`Logged ${money(value, currency, 2)}`)
+    toast(t('Logged {amount}', { amount: money(value, currency, 2) }))
   }
 
   return (
     <div className="card stack" style={{ gap: 8 }}>
-      <h3>💳 Log a spend</h3>
+      <h3>{t('💳 Log a spend')}</h3>
       <div className="row">
-        <input inputMode="decimal" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+        <input inputMode="decimal" placeholder={t('Amount')} value={amount} onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
         <select style={{ width: 90 }} value={currency} onChange={(e) => setCurrency(e.target.value)}>
           {CURRENCIES.map((c) => (
             <option key={c}>{c}</option>
@@ -61,10 +62,10 @@ export function QuickExpense({ tripId, home, local }: { tripId: string; home: st
         ))}
       </div>
       <div className="row">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value || today())} style={{ maxWidth: 160 }} aria-label="Date" />
-        <input placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value || today())} style={{ maxWidth: 160 }} aria-label={t('Date')} />
+        <input placeholder={t('Note (optional)')} value={note} onChange={(e) => setNote(e.target.value)} />
         <button className="btn-primary" onClick={add} disabled={!amount || busy}>
-          Add
+          {t('Add')}
         </button>
       </div>
     </div>

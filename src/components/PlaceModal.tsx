@@ -5,6 +5,7 @@ import { formatDuration } from '../lib/dates'
 import { useAsync, useOnline } from '../lib/hooks'
 import { tripadvisorSearch } from '../lib/links'
 import { useTripCtx } from '../pages/TripLayout'
+import { t, tn } from '../i18n'
 import { WikiCard } from './PlaceInfo'
 import { Modal, Stars } from './ui'
 
@@ -46,8 +47,8 @@ export function PlaceModal({
   onClose,
   onInterest,
   dayPicker,
-  addLabel = '🧺 Add to backup ideas',
-  removeLabel = 'Remove from backup ideas',
+  addLabel = t('🧺 Add to backup ideas'),
+  removeLabel = t('Remove from backup ideas'),
 }: {
   subject: PlaceSubject
   city?: string
@@ -107,35 +108,35 @@ export function PlaceModal({
                 <b className="small">{interestTier(r.stars)}</b>
               </div>
               <div className="tiny muted">
-                Written about in {r.langs} Wikipedia language{r.langs === 1 ? '' : 's'}
-                {views.data != null && ` · ~${compact(views.data)} views a month`}. A guide to how well known it is, not visitor reviews.
+                {t('Written about in {langs}', { langs: tn(r.langs, '{n} Wikipedia language', '{n} Wikipedia languages') })}
+                {views.data != null && ` · ${t('~{views} views a month', { views: compact(views.data) })}`}. {t('A guide to how well known it is, not visitor reviews.')}
               </div>
             </>
           ) : (
-            <div className="small muted">{rating.loading || wiki.loading ? 'Checking how well known it is…' : 'No rating: little is written about it online, so it may be a quiet local spot.'}</div>
+            <div className="small muted">{rating.loading || wiki.loading ? t('Checking how well known it is…') : t('No rating: little is written about it online, so it may be a quiet local spot.')}</div>
           )}
         </div>
 
         <div className="chips" style={{ pointerEvents: 'none' }}>
           {meta && <span className="chip">{meta.label}</span>}
           {subject.visitMin != null && <span className="chip">~{formatDuration(subject.visitMin * 60)}</span>}
-          {subject.indoor && <span className="chip">Indoor</span>}
+          {subject.indoor && <span className="chip">{t('Indoor')}</span>}
           {subject.openingHours && <span className="chip">🕘 {subject.openingHours}</span>}
-          {subject.fee && <span className="chip">Fee: {subject.fee}</span>}
+          {subject.fee && <span className="chip">{t('Fee: {fee}', { fee: subject.fee })}</span>}
         </div>
         {subject.notes && <p className="small">{subject.notes}</p>}
 
-        {wiki.loading && <p className="small muted">Loading description…</p>}
+        {wiki.loading && <p className="small muted">{t('Loading description…')}</p>}
         {wiki.data ? (
           <WikiCard key={wiki.data.title} title={wiki.data.title} extract={wiki.data.extract} image={wiki.data.image ?? wiki.data.thumbnail} thumbnail={wiki.data.thumbnail} url={wiki.data.url} />
         ) : (
-          !wiki.loading && <p className="small">{subject.description ?? (online ? 'No matching Wikipedia article found.' : 'Descriptions need an internet connection.')}</p>
+          !wiki.loading && <p className="small">{subject.description ?? (online ? t('No matching Wikipedia article found.') : t('Descriptions need an internet connection.'))}</p>
         )}
 
         <div className="row wrap">
           {inPlan && !inList ? (
             <span className="badge done" style={{ alignSelf: 'center' }}>
-              📅 Already in your plan · {inPlan}
+              {t('📅 Already in your plan · {plan}', { plan: inPlan })}
             </span>
           ) : (
             <button className={inList ? '' : 'btn-primary'} onClick={onToggle}>
@@ -144,10 +145,10 @@ export function PlaceModal({
           )}
           {dayPicker}
           <a className="btn btn-ghost" href={mapUrl} target="_blank" rel="noreferrer">
-            🗺️ Map
+            {t('🗺️ Map')}
           </a>
           <a className="btn btn-ghost" href={tripadvisorSearch(subject.name, city)} target="_blank" rel="noreferrer">
-            🦉 Tripadvisor ↗
+            {t('🦉 Tripadvisor ↗')}
           </a>
         </div>
       </div>

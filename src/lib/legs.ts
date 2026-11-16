@@ -5,6 +5,7 @@
 import type { Day, GetAround, Item, Leg, Settings, TripStyle } from '../types'
 import { drivingRoute, walkingRoute } from './apis'
 import { haversineM, type LatLon } from './geo'
+import { t } from '../i18n'
 
 export const DEFAULT_WALK_MAX_MIN = 15
 
@@ -17,11 +18,11 @@ const TRANSIT_WAIT_MIN = 10 // getting to the stop, waiting, getting from the st
 const TRANSIT_KMH = 18 // average door-to-stop city speed, stops included
 
 export const GET_AROUND_LABEL: Record<GetAround, string> = {
-  walk: '🚶 Walk everywhere',
-  transit: '🚇 Walk short hops, public transport for longer ones',
-  taxi: '🚕 Walk short hops, taxi for longer ones',
-  fastest: '⚡ Whatever is quickest',
-  car: '🚗 We have a car: walk short hops, drive the rest',
+  walk: t('🚶 Walk everywhere'),
+  transit: t('🚇 Walk short hops, public transport for longer ones'),
+  taxi: t('🚕 Walk short hops, taxi for longer ones'),
+  fastest: t('⚡ Whatever is quickest'),
+  car: t('🚗 We have a car: walk short hops, drive the rest'),
 }
 
 /**
@@ -94,7 +95,7 @@ export async function planLeg(a: LatLon, b: LatLon, pref: GetAround, walkMaxMin 
 /** "🚶 12 min · 900 m", "🚇 about 25 min (estimate)" */
 export function legText(l: Leg, fmtDistance: (m: number) => string): string {
   const mins = l.minutes < 60 ? `${l.minutes} min` : `${Math.floor(l.minutes / 60)} h ${String(l.minutes % 60).padStart(2, '0')}`
-  return `${MODE_EMOJI[l.mode]} ${l.mode === 'transit' || l.mode === 'flight' ? `about ${mins} (estimate)` : mins} · ${fmtDistance(l.distanceM)}`
+  return `${MODE_EMOJI[l.mode]} ${l.mode === 'transit' || l.mode === 'flight' ? t('about {mins} (estimate)', { mins }) : mins} · ${fmtDistance(l.distanceM)}`
 }
 
 /** Real timetables and fares live outside the app: these open the same trip there. */

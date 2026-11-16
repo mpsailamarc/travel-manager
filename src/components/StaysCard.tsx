@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { db, touchTrip } from '../db'
 import type { Day, Item, ItemStatus, Place, Trip } from '../types'
 import { addDays, formatDate } from '../lib/dates'
-import { plural } from '../lib/format'
+import { t, tn } from '../i18n'
 import { uid } from '../lib/ids'
 import { bookingSearch, campsiteSearch } from '../lib/checklist'
 import { findPlace } from '../lib/apis'
@@ -62,11 +62,11 @@ export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: 
   return (
     <div className="card stack" style={{ gap: 8 }}>
       <div className="row between wrap">
-        <b>🏨 Where you sleep</b>
+        <b>{t('🏨 Where you sleep')}</b>
         <span className="tiny muted">
-          {plural(stays.reduce((n, s) => n + (s.nights ?? 1), 0), 'night')}
-          {booked > 0 && ` · ${booked} booked`}
-          {toChoose > 0 && ` · ${toChoose} to choose`}
+          {tn(stays.reduce((n, s) => n + (s.nights ?? 1), 0), '{n} night', '{n} nights')}
+          {booked > 0 && ` · ${t('{n} booked', { n: booked })}`}
+          {toChoose > 0 && ` · ${t('{n} to choose', { n: toChoose })}`}
         </span>
       </div>
       {stays.map((s) => {
@@ -77,12 +77,12 @@ export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: 
             <button type="button" className="grow btn-ghost" style={{ textAlign: 'left', padding: '4px 0', minHeight: 0, border: 0 }} onClick={() => setEditing(s)}>
               <div className="small strong">
                 {isCampsite(s) ? '🏕️ ' : ''}
-                {city} · {short(s.date)} → {short(addDays(s.date, n))} · {plural(n, 'night')}
+                {city} · {short(s.date)} → {short(addDays(s.date, n))} · {tn(n, '{n} night', '{n} nights')}
               </div>
               <div className="tiny muted">
-                {isPlaceholderStay(s) ? `✏️ ${isCampsite(s) ? 'Campsite' : 'Hotel'} to choose — tap to enter it` : s.title}
+                {isPlaceholderStay(s) ? (isCampsite(s) ? t('✏️ Campsite to choose — tap to enter it') : t('✏️ Hotel to choose — tap to enter it')) : s.title}
                 {!isPlaceholderStay(s) && s.location?.name && s.location.name !== s.title && ` · ${s.location.name}`}
-                {s.location?.lat == null && ' · 📍 no address yet'}
+                {s.location?.lat == null && ` · ${t('📍 no address yet')}`}
               </div>
             </button>
             <StatusBadge status={s.status} />
@@ -92,18 +92,17 @@ export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: 
                 href={s.url ?? (isCampsite(s) ? campsiteSearch(city) : bookingSearch(city, s.date, addDays(s.date, n), adults, kids))}
                 target="_blank"
                 rel="noreferrer"
-                title={isCampsite(s) ? 'Campsites around, on the map' : 'Find a hotel for these nights'}
+                title={isCampsite(s) ? t('Campsites around, on the map') : t('Find a hotel for these nights')}
               >
-                {isCampsite(s) ? 'Campsites ↗' : 'Booking ↗'}
+                {isCampsite(s) ? t('Campsites ↗') : t('Booking ↗')}
               </a>
             )}
           </div>
         )
       })}
       <p className="tiny muted" style={{ margin: 0 }}>
-        Each day starts where you slept and ends where you sleep that night (at the city centre until you enter the address). The checklist and budget follow.
-        {' '}
-        <Link to="../ideas?tab=bookings">📧 Import a booking email</Link> to fill a stay from its confirmation.
+        {t('Each day starts where you slept and ends where you sleep that night (at the city centre until you enter the address). The checklist and budget follow.')}{' '}
+        <Link to="../ideas?tab=bookings">{t('📧 Import a booking email')}</Link> {t('to fill a stay from its confirmation.')}
       </p>
       {editing && <StayEditor stay={editing} city={cityOf(editing)} currency={currency} onClose={() => setEditing(undefined)} />}
     </div>
@@ -131,7 +130,7 @@ export function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; c
       if (hit) location = { name: place.name, lat: hit.lat, lon: hit.lon, country: hit.countryCode }
       else {
         location = { ...place, lat: s.location?.lat, lon: s.location?.lon }
-        toast("Couldn't find that address: the days start from the city centre until you tap Find with a different spelling")
+        toast(t("Couldn't find that address: the days start from the city centre until you tap Find with a different spelling"))
       }
     }
     await db.items.update(s.id, {
@@ -145,7 +144,7 @@ export function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; c
       hotelSet: true,
     })
     await touchTrip(s.tripId)
-    toast(`🏨 ${title} saved · days in ${city} start and end there`)
+    toast(t('🏨 {title} saved · days in {city} start and end there', { title, city }))
     onClose()
   }
 
@@ -167,7 +166,7 @@ export function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; c
       hotelSet: true,
     })
     await touchTrip(s.tripId)
-    toast(`Split: ${plural(splitAt, 'night')} here, then ${plural(n - splitAt, 'night')} at a second hotel to choose`)
+    toast(t('Split: {first} here, then {second} at a second hotel to choose', { first: tn(splitAt, '{n} night', '{n} nights'), second: tn(n - splitAt, '{n} night', '{n} nights') }))
     onClose()
   }
 
@@ -176,54 +175,54 @@ export function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; c
     <Modal title={`🏨 ${city} · ${short(s.date)} → ${short(addDays(s.date, nights))}`} onClose={onClose}>
       <div className="stack">
         <label>
-          {isCampsite(s) ? 'Campsite name' : 'Hotel name'}
-          <input value={name} placeholder={isCampsite(s) ? `e.g. Camping ${city}` : `e.g. Hotel in ${city}`} onChange={(e) => setName(e.target.value)} />
+          {isCampsite(s) ? t('Campsite name') : t('Hotel name')}
+          <input value={name} placeholder={isCampsite(s) ? t('e.g. Camping {city}', { city }) : t('e.g. Hotel in {city}', { city })} onChange={(e) => setName(e.target.value)} />
         </label>
-        <PlaceSearch label="Address (or the hotel's name), then Find" value={place} onChange={setPlace} near={city} placeholder="Street, area or hotel name" />
+        <PlaceSearch label={t("Address (or the hotel's name), then Find")} value={place} onChange={setPlace} near={city} placeholder={t('Street, area or hotel name')} />
         <p className="tiny muted" style={{ margin: 0 }}>
-          {place?.lat != null ? '📍 Placed on the map: each day here starts and ends at this address.' : 'Tap Find so the days start and end at the hotel; until then they use the city centre.'}
+          {place?.lat != null ? t('📍 Placed on the map: each day here starts and ends at this address.') : t('Tap Find so the days start and end at the hotel; until then they use the city centre.')}
         </p>
         <div className="form-grid">
           <label>
-            Nights
+            {t('Nights')}
             <input type="number" min={1} max={60} value={nights} onChange={(e) => setNights(Math.max(1, Number(e.target.value)))} />
           </label>
           <label>
-            Status
+            {t('Status')}
             <select value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}>
-              <option value="idea">Idea</option>
-              <option value="planned">To book</option>
-              <option value="booked">Booked</option>
+              <option value="idea">{t('Idea')}</option>
+              <option value="planned">{t('To book')}</option>
+              <option value="booked">{t('Booked')}</option>
             </select>
           </label>
           <label>
-            Price ({s.cost?.currency ?? currency}, all nights)
+            {t('Price ({currency}, all nights)', { currency: s.cost?.currency ?? currency })}
             <input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} />
           </label>
           <label>
-            Booking reference
+            {t('Booking reference')}
             <input value={ref} onChange={(e) => setRef(e.target.value)} />
           </label>
           <label className="full">
-            Link (booking or hotel page)
+            {t('Link (booking or hotel page)')}
             <input value={url} placeholder="https://…" onChange={(e) => setUrl(e.target.value)} />
           </label>
         </div>
         {n > 1 && (
           <details className="card tight">
             <summary className="small" style={{ cursor: 'pointer' }}>
-              Changing hotel part-way?
+              {t('Changing hotel part-way?')}
             </summary>
             <div className="row wrap" style={{ marginTop: 8 }}>
               <select value={splitAt} onChange={(e) => setSplitAt(Number(e.target.value))} style={{ width: 'auto' }}>
                 {Array.from({ length: n - 1 }, (_, k) => k + 1).map((k) => (
                   <option key={k} value={k}>
-                    From the night of {short(addDays(s.date, k))}
+                    {t('From the night of {date}', { date: short(addDays(s.date, k)) })}
                   </option>
                 ))}
               </select>
               <button type="button" className="btn-sm" onClick={split}>
-                Split the stay
+                {t('Split the stay')}
               </button>
             </div>
           </details>
@@ -233,20 +232,20 @@ export function StayEditor({ stay: s, city, currency, onClose }: { stay: Item; c
             type="button"
             className="btn-danger btn-ghost"
             onClick={async () => {
-              if (!confirm(`Delete “${s.title}”? Its nights get a ${isCampsite(s) ? 'campsite' : 'hotel'} to choose instead.`)) return
+              if (!confirm(isCampsite(s) ? t('Delete “{title}”? Its nights get a campsite to choose instead.', { title: s.title }) : t('Delete “{title}”? Its nights get a hotel to choose instead.', { title: s.title }))) return
               await db.items.delete(s.id)
               await touchTrip(s.tripId)
               onClose()
             }}
           >
-            Delete
+            {t('Delete')}
           </button>
           <div className="row">
           <button type="button" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button type="button" className="btn-primary" onClick={save}>
-            Save
+            {t('Save')}
           </button>
           </div>
         </div>

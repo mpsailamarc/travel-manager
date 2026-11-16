@@ -8,7 +8,8 @@ import { BUDGET_LABELS, FUEL_EUR_PER_KM, fuelEstimate, budgetFromLines, estimate
 import { fxRate } from '../lib/apis'
 import { country } from '../lib/countries'
 import { daysBetween, formatDate, today } from '../lib/dates'
-import { money, plural } from '../lib/format'
+import { money } from '../lib/format'
+import { t, tn } from '../i18n'
 import { useAsync } from '../lib/hooks'
 import { Progress, toast } from '../components/ui'
 import { uid } from '../lib/ids'
@@ -49,7 +50,7 @@ export default function BudgetPage() {
     const flyIn = !!trip.startPlace?.country && trip.countryCodes.length > 0 && !trip.countryCodes.includes(trip.startPlace.country)
     const next = old
       .map((l) => (l.qty && l.price ? l : inferAssumption(l)))
-      .map((l) => (flyIn && /^Fuel \(from .+\)$/.test(l.label) ? { ...l, label: 'Fuel' } : l))
+      .map((l) => (flyIn && /^(Fuel|Carburant) \((from|depuis) .+\)$/.test(l.label) ? { ...l, label: t('Fuel') } : l))
       .map((l) => modernLine(l, trip)) // 8.4 person-days becomes 4 days x 2 people x a price per person
     // Amounts don't change here, so the category totals stay as they are.
     if (next.some((l, i) => l !== old[i])) db.trips.update(trip.id, { budgetLines: next })
@@ -87,7 +88,7 @@ export default function BudgetPage() {
   // win; an estimate that already has a Fuel line keeps that instead.
   const fuelPlan = fuelEstimate(items, days)
   const fuel =
-    fuelPlan && !(trip.budgetLines ?? []).some((l) => /^fuel/i.test(l.label))
+    fuelPlan && !(trip.budgetLines ?? []).some((l) => /^(fuel|carburant)/i.test(l.label))
       ? { km: trip.fuel?.km ?? fuelPlan.km, perKm: trip.fuel?.perKm ?? Math.round(FUEL_EUR_PER_KM * (eurRate ?? 1) * 100) / 100, route: fuelPlan.route }
       : undefined
   const fuelAmount = fuel ? Math.round(fuel.km * fuel.perKm) : 0
@@ -138,8 +139,9 @@ export default function BudgetPage() {
       !auto &&
       (totalBudget || lines.length) &&
       !confirm(
-        'This builds a fresh rough budget from typical costs for your destination, your budget level and your group.\n\n' +
-          'It REPLACES the budget numbers and lines you have now (your expenses and plan costs are not touched).\n\nContinue?',
+        t(
+          'This builds a fresh rough budget from typical costs for your destination, your budget level and your group.\n\nIt REPLACES the budget numbers and lines you have now (your expenses and plan costs are not touched).\n\nContinue?',
+        ),
       )
     )
       return
@@ -154,18 +156,18 @@ export default function BudgetPage() {
       }
       return [l]
     })
-    const basis = [...est.basis, ...(totalPlanned > 0 ? ['Prices already on plan items (flights, hotels, tickets) are counted as they are and not estimated again.'] : [])]
+    const basis = [...est.basis, ...(totalPlanned > 0 ? [t('Prices already on plan items (flights, hotels, tickets) are counted as they are and not estimated again.')] : [])]
     // A fresh estimate replaces everything: categories it has no lines for (e.g. flights) are cleared.
     await db.trips.update(trip.id, { budgetLines: next, budgetBasis: basis, planBudget: undefined, budget: budgetFromLines(next, {}, []) })
     await touchTrip(trip.id)
     if (auto) return
     setBasisOpen(true)
-    toast('Estimate filled in — see “How this was estimated” below the table')
+    toast(t('Estimate filled in — see “How this was estimated” below the table'))
   }
 
   /** Adding the first line to a category that had a typed-in budget keeps that amount as a line, so nothing is lost. */
   async function addLine(c: BudgetCategory) {
-    const keep = !hasLines(c) && trip.budget[c] ? [{ id: uid(), category: c, label: 'Your earlier budget', amount: trip.budget[c]! }] : []
+    const keep = !hasLines(c) && trip.budget[c] ? [{ id: uid(), category: c, label: t('Your earlier budget'), amount: trip.budget[c]! }] : []
     const line: BudgetLine = { id: uid(), category: c, label: '', amount: 0, qty: 1 }
     await saveLines([...lines, ...keep, line])
     setFolded((f) => ({ ...f, [c]: false }))
@@ -189,12 +191,12 @@ export default function BudgetPage() {
   return (
     <div className="stack-lg">
       <div className="info-grid">
-        <Kpi k="Budget" v={money(totalBudget, home)} sub={totalPlanned > 0 ? `incl. ${money(totalPlanned, home)} priced in the plan` : undefined} />
-        <Kpi k="Spent" v={money(totalSpent, home)} sub={`${money(prepaid, home)} booked ahead · ${money(onTrip, home)} on the trip`} />
+        <Kpi k={t('Budget')} v={money(totalBudget, home)} sub={totalPlanned > 0 ? t('incl. {amount} priced in the plan', { amount: money(totalPlanned, home) }) : undefined} />
+        <Kpi k={t('Spent')} v={money(totalSpent, home)} sub={t('{ahead} booked ahead · {onTrip} on the trip', { ahead: money(prepaid, home), onTrip: money(onTrip, home) })} />
         <Kpi
-          k="Left"
+          k={t('Left')}
           v={money(totalBudget - totalSpent, home)}
-          sub={daysLeft ? `${money((totalBudget - totalSpent) / daysLeft, home)}/day for ${daysLeft} days` : undefined}
+          sub={daysLeft ? tn(daysLeft, '{amount}/day for {n} day', '{amount}/day for {n} days', { amount: money((totalBudget - totalSpent) / daysLeft, home) }) : undefined}
           warn={totalBudget > 0 && totalSpent > totalBudget}
         />
       </div>
@@ -209,18 +211,19 @@ export default function BudgetPage() {
       <div className="grid-2 wide-left">
         <div className="card">
           <div className="card-title">
-            <h3>By category</h3>
+            <h3>{t('By category')}</h3>
             <div className="row">
               {BUDGET_CATEGORIES.some(hasRows) && (
                 <button className="btn-sm btn-ghost" onClick={() => setFolded(BUDGET_CATEGORIES.every((c) => !hasRows(c) || folded[c]) ? {} : Object.fromEntries(BUDGET_CATEGORIES.map((c) => [c, true])))}>
-                  {BUDGET_CATEGORIES.every((c) => !hasRows(c) || folded[c]) ? 'Expand all' : 'Collapse all'}
+                  {BUDGET_CATEGORIES.every((c) => !hasRows(c) || folded[c]) ? t('Expand all') : t('Collapse all')}
                 </button>
               )}
             </div>
           </div>
           <p className="small muted" style={{ marginBottom: 8 }}>
-            The budget starts from a rough estimate (typical costs for your destination, budget level and group) plus the prices in your plan. Open a category
-            to see its lines: each shows <i>quantity × price</i> (for example <i>3 nights × A$263 per night</i>) so you can change it, remove it, or add your own with ＋.
+            {t('The budget starts from a rough estimate (typical costs for your destination, budget level and group) plus the prices in your plan. Open a category to see its lines: each shows')}{' '}
+            <i>{t('quantity × price')}</i> {t('(for example')} <i>{t('3 nights × A$263 per night')}</i>
+            {t(') so you can change it, remove it, or add your own with ＋.')}
           </p>
           <datalist id="budget-units">
             {['days', 'nights', 'km', 'person-days', 'travellers', 'trips', 'tickets', 'meals'].map((u) => (
@@ -230,9 +233,9 @@ export default function BudgetPage() {
           <table className="budget-table">
             <thead>
               <tr>
-                <th>Category</th>
-                <th className="num">Budget ({home})</th>
-                <th className="num" title="Bookings paid ahead + expenses">Spent</th>
+                <th>{t('Category')}</th>
+                <th className="num">{t('Budget ({currency})', { currency: home })}</th>
+                <th className="num" title={t('Bookings paid ahead + expenses')}>{t('Spent')}</th>
               </tr>
             </thead>
             <tbody>
@@ -247,7 +250,7 @@ export default function BudgetPage() {
                     <td>
                       <div className="row" style={{ gap: 4 }}>
                         {catLines.length > 0 || planCount > 0 ? (
-                          <button className="icon-btn" aria-expanded={!isFolded} aria-label={`${isFolded ? 'Expand' : 'Collapse'} ${BUDGET_LABELS[c].label}`} onClick={() => setFolded((f) => ({ ...f, [c]: !isFolded }))}>
+                          <button className="icon-btn" aria-expanded={!isFolded} aria-label={t(isFolded ? 'Expand {category}' : 'Collapse {category}', { category: BUDGET_LABELS[c].label })} onClick={() => setFolded((f) => ({ ...f, [c]: !isFolded }))}>
                             {isFolded ? '▸' : '▾'}
                           </button>
                         ) : (
@@ -255,9 +258,9 @@ export default function BudgetPage() {
                         )}
                         <span className="grow">
                           {BUDGET_LABELS[c].emoji} {BUDGET_LABELS[c].label}
-                          {isFolded && <span className="tiny muted"> · {plural(catLines.length + planCount, 'line')}</span>}
+                          {isFolded && <span className="tiny muted"> · {tn(catLines.length + planCount, '{n} line', '{n} lines')}</span>}
                         </span>
-                        <button className="icon-btn" aria-label={`Add a line to ${BUDGET_LABELS[c].label}`} title="Add a line" onClick={() => addLine(c)}>
+                        <button className="icon-btn" aria-label={t('Add a line to {category}', { category: BUDGET_LABELS[c].label })} title={t('Add a line')} onClick={() => addLine(c)}>
                           ＋
                         </button>
                       </div>
@@ -269,14 +272,14 @@ export default function BudgetPage() {
                     </td>
                     <td className="num">
                       {catLines.length || planCount ? (
-                        <b title="Adds up the lines underneath">{money(b, home)}</b>
+                        <b title={t('Adds up the lines underneath')}>{money(b, home)}</b>
                       ) : (
                         <input
                           type="number"
                           min={0}
                           style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
                           defaultValue={own(c) || ''}
-                          aria-label={`${BUDGET_LABELS[c].label} budget`}
+                          aria-label={t('{category} budget', { category: BUDGET_LABELS[c].label })}
                           key={`${c}-${own(c)}`}
                           onBlur={(e) => setBudget(c, Number(e.target.value))}
                         />
@@ -293,10 +296,10 @@ export default function BudgetPage() {
                       ...fromPlan.map((i) => (
                         <tr key={'plan-' + i.id} className="budget-line">
                           <td style={{ paddingLeft: 14 }}>
-                            <Link className="small" to={`../today?date=${i.date}&item=${i.id}`} title="Open it in Day by day (change or remove it there)">
+                            <Link className="small" to={`../today?date=${i.date}&item=${i.id}`} title={t('Open it in Day by day (change or remove it there)')}>
                               📌 {i.title}
                             </Link>{' '}
-                            <span className="tiny muted">· day {daysBetween(trip.startDate, i.date) + 1}</span>
+                            <span className="tiny muted">{t('· day {n}', { n: daysBetween(trip.startDate, i.date) + 1 })}</span>
                           </td>
                           <td className="num small">
                             {(() => {
@@ -313,7 +316,7 @@ export default function BudgetPage() {
                                       style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
                                       defaultValue={each}
                                       key={`${i.id}-${i.cost!.amount}`}
-                                      aria-label={`Price of ${i.title}${n > 1 ? ' per person' : ''} (${i.cost!.currency})`}
+                                      aria-label={n > 1 ? t('Price of {title} per person ({currency})', { title: i.title, currency: i.cost!.currency }) : t('Price of {title} ({currency})', { title: i.title, currency: i.cost!.currency })}
                                       onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                                       onBlur={async (e) => {
                                         const v = Math.round((Number(e.target.value) || 0) * n * 100) / 100
@@ -326,7 +329,7 @@ export default function BudgetPage() {
                                   </div>
                                   {n > 1 && (
                                     <div className="tiny muted">
-                                      per person × {n} = {money(i.cost!.amount, i.cost!.currency)}
+                                      {t('per person × {n} = {total}', { n, total: money(i.cost!.amount, i.cost!.currency) })}
                                     </div>
                                   )}
                                   {i.cost!.currency !== home && <div className="tiny muted">≈ {money(inHome(i), home)}</div>}
@@ -341,14 +344,14 @@ export default function BudgetPage() {
                         ? [
                             <tr key="fuel" className="budget-line">
                               <td style={{ paddingLeft: 14 }}>
-                                <span className="small">⛽ Fuel for your drives</span>{' '}
-                                <span className="tiny muted">· {fuel.route.join(' · ')}, plus local driving</span>
+                                <span className="small">{t('⛽ Fuel for your drives')}</span>{' '}
+                                <span className="tiny muted">{t('· {route}, plus local driving', { route: fuel.route.join(' · ') })}</span>
                                 <div className="row wrap" style={{ gap: 4, marginTop: 4 }}>
                                   <input
                                     type="number"
                                     min={0}
                                     style={{ width: 84 }}
-                                    aria-label="Kilometres"
+                                    aria-label={t('Kilometres')}
                                     defaultValue={fuel.km}
                                     key={`fuel-km-${fuel.km}`}
                                     onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
@@ -360,13 +363,13 @@ export default function BudgetPage() {
                                     min={0}
                                     step="any"
                                     style={{ width: 76 }}
-                                    aria-label="Fuel per km"
+                                    aria-label={t('Fuel per km')}
                                     defaultValue={fuel.perKm}
                                     key={`fuel-pk-${fuel.perKm}`}
                                     onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                                     onBlur={(e) => Number(e.target.value) !== fuel.perKm && db.trips.update(trip.id, { fuel: { ...trip.fuel, perKm: Number(e.target.value) || 0 } })}
                                   />
-                                  <span className="small muted">per km (for everyone)</span>
+                                  <span className="small muted">{t('per km (for everyone)')}</span>
                                 </div>
                               </td>
                               <td className="num small">{money(fuelAmount, home)}</td>
@@ -378,7 +381,7 @@ export default function BudgetPage() {
                         ? [
                             <tr key={c + '-rest'} className="budget-line">
                               <td style={{ paddingLeft: 14 }}>
-                                <span className="small">Rest of the budget you set</span> <span className="tiny muted">· not in the plan yet</span>
+                                <span className="small">{t('Rest of the budget you set')}</span> <span className="tiny muted">{t('· not in the plan yet')}</span>
                               </td>
                               <td className="num small">
                                 <input
@@ -387,13 +390,13 @@ export default function BudgetPage() {
                                   style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
                                   defaultValue={Math.round(rest(c))}
                                   key={`${c}-rest-${rest(c)}`}
-                                  aria-label={`Rest of the ${BUDGET_LABELS[c].label} budget`}
+                                  aria-label={t('Rest of the {category} budget', { category: BUDGET_LABELS[c].label })}
                                   onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                                   onBlur={(e) => setBudget(c, planned[c] + (Number(e.target.value) || 0))}
                                 />
                               </td>
                               <td className="num">
-                                <button className="icon-btn" aria-label="Remove the rest of the budget" onClick={() => setBudget(c, 0)}>
+                                <button className="icon-btn" aria-label={t('Remove the rest of the budget')} onClick={() => setBudget(c, 0)}>
                                   ✕
                                 </button>
                               </td>
@@ -424,8 +427,8 @@ export default function BudgetPage() {
                               rows={l.label.length > 34 ? 2 : 1}
                               style={{ minHeight: 0, resize: 'none', fontSize: '0.9rem', lineHeight: 1.3, padding: '6px 8px' }}
                               defaultValue={l.label}
-                              placeholder="What is it?"
-                              aria-label="Line name"
+                              placeholder={t('What is it?')}
+                              aria-label={t('Line name')}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   e.preventDefault()
@@ -439,12 +442,12 @@ export default function BudgetPage() {
                         <tr key={l.id} className="budget-line">
                           <td style={{ paddingLeft: 14 }}>
                             <button className="btn-ghost btn-sm" style={{ minHeight: 24, padding: '0 4px', color: 'var(--primary)', textAlign: 'left' }} onClick={toggle} aria-expanded={open}>
-                              {calc ? lineFormula(l, (n) => money(n, home, Number.isInteger(n) ? 0 : 2)) : '＋ how it adds up'} {open ? '▴' : '▾'}
+                              {calc ? lineFormula(l, (n) => money(n, home, Number.isInteger(n) ? 0 : 2)) : t('＋ how it adds up')} {open ? '▴' : '▾'}
                             </button>
                           </td>
                           <td className="num">
                             {calc ? (
-                              <span title="Quantity × price">{money(lineAmount(l), home)}</span>
+                              <span title={t('Quantity × price')}>{money(lineAmount(l), home)}</span>
                             ) : (
                               <input
                                 type="number"
@@ -452,14 +455,14 @@ export default function BudgetPage() {
                                 style={{ width: '100%', minWidth: 0, textAlign: 'right' }}
                                 defaultValue={l.amount}
                                 key={`${l.id}-${l.amount}`}
-                                aria-label={`${l.label} amount`}
+                                aria-label={t('{label} amount', { label: l.label })}
                                 onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                                 onBlur={(e) => Number(e.target.value) !== l.amount && saveLines(lines.map((x) => (x.id === l.id ? { ...x, amount: Number(e.target.value) || 0 } : x)))}
                               />
                             )}
                           </td>
                           <td className="num">
-                            <button className="icon-btn" aria-label={`Remove ${l.label}`} onClick={() => saveLines(lines.filter((x) => x.id !== l.id))}>
+                            <button className="icon-btn" aria-label={t('Remove {label}', { label: l.label })} onClick={() => saveLines(lines.filter((x) => x.id !== l.id))}>
                               ✕
                             </button>
                           </td>
@@ -475,8 +478,8 @@ export default function BudgetPage() {
                                   min={0}
                                   step="any"
                                   style={{ width: 84 }}
-                                  placeholder="Qty"
-                                  aria-label="Quantity"
+                                  placeholder={t('Qty')}
+                                  aria-label={t('Quantity')}
                                   defaultValue={l.qty ?? ''}
                                   key={`${l.id}-q-${l.qty}`}
                                   onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
@@ -485,8 +488,8 @@ export default function BudgetPage() {
                                 <input
                                   list="budget-units"
                                   style={{ width: 104 }}
-                                  placeholder="unit (days, km…)"
-                                  aria-label="Unit"
+                                  placeholder={t('unit (days, km…)')}
+                                  aria-label={t('Unit')}
                                   defaultValue={l.unit ?? ''}
                                   key={`${l.id}-u-${l.unit}`}
                                   onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
@@ -495,16 +498,16 @@ export default function BudgetPage() {
                                 <span className="muted">×</span>
                                 <select
                                   style={{ width: 'auto' }}
-                                  aria-label="Who it's for"
+                                  aria-label={t("Who it's for")}
                                   value={l.per ?? ''}
                                   onChange={(e) => {
                                     const per = (e.target.value || undefined) as BudgetLine['per']
                                     setAssumption(l, { per, count: per ? l.count ?? (per === 'person' ? trip.travellers.length || 1 : 1) : undefined })
                                   }}
                                 >
-                                  <option value="">for everyone</option>
-                                  <option value="person">per person</option>
-                                  <option value="room">per room</option>
+                                  <option value="">{t('for everyone')}</option>
+                                  <option value="person">{t('per person')}</option>
+                                  <option value="room">{t('per room')}</option>
                                 </select>
                                 {l.per && (
                                   <>
@@ -513,13 +516,13 @@ export default function BudgetPage() {
                                       min={1}
                                       step={1}
                                       style={{ width: 64 }}
-                                      aria-label={l.per === 'person' ? 'How many people' : 'How many rooms'}
+                                      aria-label={l.per === 'person' ? t('How many people') : t('How many rooms')}
                                       defaultValue={l.count ?? 1}
                                       key={`${l.id}-c-${l.count}`}
                                       onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                                       onBlur={(e) => Number(e.target.value) !== (l.count ?? 1) && setAssumption(l, { count: Number(e.target.value) || 1 })}
                                     />
-                                    <span className="small muted">{l.per === 'person' ? ((l.count ?? 1) === 1 ? 'person' : 'people') : (l.count ?? 1) === 1 ? 'room' : 'rooms'}</span>
+                                    <span className="small muted">{l.per === 'person' ? ((l.count ?? 1) === 1 ? t('person') : t('people')) : (l.count ?? 1) === 1 ? t('room') : t('rooms')}</span>
                                     <span className="muted">×</span>
                                   </>
                                 )}
@@ -528,8 +531,8 @@ export default function BudgetPage() {
                                   min={0}
                                   step="any"
                                   style={{ width: 92 }}
-                                  placeholder={`Price ${l.per === 'person' ? 'per person ' : l.per === 'room' ? 'per room ' : ''}per ${unitFor(1, l.unit) || 'unit'} (${home})`}
-                                  aria-label="Price per unit"
+                                  placeholder={t(l.per === 'person' ? 'Price per person per {unit} ({currency})' : l.per === 'room' ? 'Price per room per {unit} ({currency})' : 'Price per {unit} ({currency})', { unit: unitFor(1, l.unit) || t('unit'), currency: home })}
+                                  aria-label={t('Price per unit')}
                                   defaultValue={l.price ?? ''}
                                   key={`${l.id}-p-${l.price}`}
                                   onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
@@ -537,7 +540,7 @@ export default function BudgetPage() {
                                 />
                                 <b className="small">= {money(lineAmount(l), home)}</b>
                               </div>
-                              <span className="tiny muted">e.g. 4 days × 2 people × {money(45, home)} per person per day, 3 nights × 1 room × {money(120, home)}, or 600 km × {money(0.2, home, 2)} per km (for everyone). Leave it empty to type the amount directly.</span>
+                              <span className="tiny muted">{t('e.g. 4 days × 2 people × {a} per person per day, 3 nights × 1 room × {b}, or 600 km × {c} per km (for everyone). Leave it empty to type the amount directly.', { a: money(45, home), b: money(120, home), c: money(0.2, home, 2) })}</span>
                             </td>
                           </tr>,
                         )
@@ -550,34 +553,33 @@ export default function BudgetPage() {
           {trip.budgetBasis && lines.length > 0 && (
             <details className="card tight" style={{ marginTop: 10 }} open={basisOpen} onToggle={(e) => setBasisOpen(e.currentTarget.open)}>
               <summary className="small strong" style={{ cursor: 'pointer' }}>
-                ℹ️ How this was estimated
+                {t('ℹ️ How this was estimated')}
               </summary>
               <ul className="small" style={{ margin: '8px 0 0', paddingLeft: 18 }}>
                 {trip.budgetBasis.map((b, i) => (
                   <li key={i} style={{ marginBottom: 4 }}>
-                    {b}
+                    {t(b)}
                   </li>
                 ))}
               </ul>
               <button className="btn-sm" style={{ marginTop: 6 }} onClick={() => estimate()}>
-                ↻ Start the estimate again
+                {t('↻ Start the estimate again')}
               </button>
             </details>
           )}
           <p className="tiny muted" style={{ marginTop: 8 }}>
-            Each category adds up the lines under it: the prices of plan items (📌: change one here and the plan item changes too) and your own
-            lines for everything else, such as meals and local transport.
+            {t('Each category adds up the lines under it: the prices of plan items (📌: change one here and the plan item changes too) and your own lines for everything else, such as meals and local transport.')}
           </p>
           <p className="tiny muted" style={{ marginTop: 8 }}>
-            <b>Spent</b> = bookings that have a booking reference (paid ahead) + expenses you log.
+            <b>{t('Spent')}</b> {t('= bookings that have a booking reference (paid ahead) + expenses you log.')}
           </p>
         </div>
 
         <div className="stack">
           <QuickExpense tripId={trip.id} home={home} local={country(trip.countryCodes[0])?.currency ?? home} />
           <div className="card">
-            <h3 style={{ marginBottom: 8 }}>Expenses</h3>
-            {byDate.length === 0 && <p className="small muted">Nothing logged yet. Log what you spend above as you go.</p>}
+            <h3 style={{ marginBottom: 8 }}>{t('Expenses')}</h3>
+            {byDate.length === 0 && <p className="small muted">{t('Nothing logged yet. Log what you spend above as you go.')}</p>}
             <table>
               <tbody>
                 {byDate.map((e) => (
@@ -593,7 +595,7 @@ export default function BudgetPage() {
                     <td style={{ width: 64 }} className="nowrap">
                       <button
                         className="icon-btn"
-                        aria-label="Edit"
+                        aria-label={t('Edit')}
                         onClick={(ev) => {
                           ev.stopPropagation()
                           setEditing(e)
@@ -603,10 +605,10 @@ export default function BudgetPage() {
                       </button>
                       <button
                         className="icon-btn"
-                        aria-label="Delete"
+                        aria-label={t('Delete')}
                         onClick={(ev) => {
                           ev.stopPropagation()
-                          if (confirm(`Delete this expense (${money(e.amount, e.currency, 2)})?`)) db.expenses.delete(e.id)
+                          if (confirm(t('Delete this expense ({amount})?', { amount: money(e.amount, e.currency, 2) }))) db.expenses.delete(e.id)
                         }}
                       >
                         🗑️
@@ -649,20 +651,22 @@ function BudgetBars({ rows, home }: { rows: { c: BudgetCategory; budget: number;
   return (
     <div className="card stack" style={{ gap: 10 }}>
       <div className="row between wrap">
-        <h3>📊 Budget by type</h3>
+        <h3>{t('📊 Budget by type')}</h3>
         <div className="row small muted" style={{ gap: 12 }} aria-hidden>
           <span className="row" style={{ gap: 4 }}>
-            <i className="bb-key bb-key-spent" /> spent
+            <i className="bb-key bb-key-spent" /> {t('spent')}
           </span>
           <span className="row" style={{ gap: 4 }}>
-            <i className="bb-key bb-key-budget" /> budget
+            <i className="bb-key bb-key-budget" /> {t('budget')}
           </span>
         </div>
       </div>
       <div className="bb" role="list">
         {sorted.map((r) => {
           const over = r.spent > r.budget
-          const label = `${BUDGET_LABELS[r.c].label}: ${money(r.spent, home)} spent of ${money(r.budget, home)}${over ? `, ${money(r.spent - r.budget, home)} over` : ''}`
+          const label = over
+            ? t('{category}: {spent} spent of {budget}, {over} over', { category: BUDGET_LABELS[r.c].label, spent: money(r.spent, home), budget: money(r.budget, home), over: money(r.spent - r.budget, home) })
+            : t('{category}: {spent} spent of {budget}', { category: BUDGET_LABELS[r.c].label, spent: money(r.spent, home), budget: money(r.budget, home) })
           return (
             <div key={r.c} className="bb-row" role="listitem" title={label} aria-label={label}>
               <span className="bb-name small">
@@ -675,8 +679,8 @@ function BudgetBars({ rows, home }: { rows: { c: BudgetCategory; budget: number;
               </span>
               <span className="bb-value small">
                 <b>{money(r.budget, home)}</b>
-                <span className="muted">{r.spent > 0 ? ` · ${money(r.spent, home)} spent` : ''}</span>
-                {over && <span style={{ color: 'var(--danger)' }}> · ⚠ {money(r.spent - r.budget, home)} over</span>}
+                <span className="muted">{r.spent > 0 ? ` · ${t('{amount} spent', { amount: money(r.spent, home) })}` : ''}</span>
+                {over && <span style={{ color: 'var(--danger)' }}> · {t('⚠ {amount} over', { amount: money(r.spent - r.budget, home) })}</span>}
               </span>
             </div>
           )
@@ -697,7 +701,10 @@ function WhoIsTravelling({ trip }: { trip: Trip }) {
     await db.trips.update(trip.id, { travellers })
     const r = await syncBudgetToTrip(trip, after)
     await touchTrip(trip.id)
-    if (r.lines || r.prices) toast(`Budget updated for ${travellersText(travellers)}${r.prices ? ` · ${r.prices} estimated price${r.prices > 1 ? 's' : ''} in the plan too` : ''}`)
+    if (r.lines || r.prices) {
+      const who = travellersText(travellers)
+      toast(r.prices ? tn(r.prices, 'Budget updated for {who} · {n} estimated price in the plan too', 'Budget updated for {who} · {n} estimated prices in the plan too', { who }) : t('Budget updated for {who}', { who }))
+    }
   }
   return (
     <div className="card tight stack" style={{ gap: 8 }}>
@@ -706,7 +713,7 @@ function WhoIsTravelling({ trip }: { trip: Trip }) {
           👥 <b>{travellersText(trip.travellers)}</b>
         </span>
         <button className="btn-sm" onClick={() => setOpen((o) => !o)}>
-          {open ? 'Done' : 'Change who is travelling'}
+          {open ? t('Done') : t('Change who is travelling')}
         </button>
       </div>
       {open && <TravellersEditor value={trip.travellers} onChange={change} />}

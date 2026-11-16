@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 import { db } from '../db'
 import { saveLocal } from './storage'
+import { t } from '../i18n'
 
 const TABLES = ['trips', 'days', 'items', 'checklist', 'expenses', 'favorites', 'settings'] as const
 type SyncTable = (typeof TABLES)[number]
@@ -177,10 +178,10 @@ async function request(cfg: SyncConfig, keys: Keys, since: number, changes: Chan
       body: JSON.stringify({ since, changes }),
     })
   } catch {
-    throw new Error(navigator.onLine ? 'Could not reach the sync server.' : 'offline')
+    throw new Error(navigator.onLine ? t('Could not reach the sync server.') : 'offline')
   }
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(body.error ?? `Sync server error (${res.status}).`)
+  if (!res.ok) throw new Error(body.error ?? t('Sync server error ({status}).', { status: res.status }))
   return body as { seq: number; records: { key: string; seq: number; deleted: boolean; payload?: string }[] }
 }
 
@@ -248,7 +249,7 @@ export async function syncNow(): Promise<void> {
     applyingRemote = false
     const message = (e as Error).message
     if (message === 'offline') setStatus({ state: 'offline', lastSync: cfg.lastSync })
-    else if (e instanceof DOMException && e.name === 'OperationError') setStatus({ state: 'error', message: 'Could not decrypt data from the server — is the sync code right?', lastSync: cfg.lastSync })
+    else if (e instanceof DOMException && e.name === 'OperationError') setStatus({ state: 'error', message: t('Could not decrypt data from the server — is the sync code right?'), lastSync: cfg.lastSync })
     else setStatus({ state: 'error', message, lastSync: cfg.lastSync })
   } finally {
     running = false
@@ -267,8 +268,8 @@ export function scheduleSync(ms = DEBOUNCE_MS) {
 
 /** Turn sync on with a code (new or from another device) and run the first sync, which merges both sides. */
 export async function enableSync(code: string, server = defaultServer()) {
-  if (normaliseCode(code).length < 16) throw new Error('That code is too short.')
-  if (!crypto.subtle) throw new Error('Sync needs a secure (https) connection.')
+  if (normaliseCode(code).length < 16) throw new Error(t('That code is too short.'))
+  if (!crypto.subtle) throw new Error(t('Sync needs a secure (https) connection.'))
   await db.syncState.clear() // first sync: everything here counts as new and is merged with the server
   saveConfig({ code: code.trim(), server: server.endsWith('/') ? server : server + '/', lastSeq: 0 })
   await syncNow()

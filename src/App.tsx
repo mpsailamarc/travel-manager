@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { createHashRouter, Link, Navigate, Outlet, RouterProvider } from 'react-router-dom'
 import { Toaster } from './components/ui'
+import { t } from './i18n'
 import { useOnline } from './lib/hooks'
 import { useSyncStatus } from './lib/sync'
 import { syncLabel } from './components/SyncCard'
@@ -43,14 +44,14 @@ function Shell() {
             Travel Manager
           </Link>
           <span className="spacer" />
-          {!online && <span className="offline-pill">Offline</span>}
+          {!online && <span className="offline-pill">{t('Offline')}</span>}
           {sync.state !== 'off' && (
             <Link to="/settings" className="btn btn-ghost btn-sm" title={syncLabel(sync)} aria-label={syncLabel(sync)}>
               {sync.state === 'syncing' ? '☁️ …' : sync.state === 'error' ? '☁️ ⚠️' : sync.state === 'offline' ? '☁️ ⏸' : '☁️ ✓'}
             </Link>
           )}
-          <Link to="/settings" className="btn btn-ghost btn-sm" aria-label="Settings">
-            ⚙️ <span className="hide-mobile">Settings</span>
+          <Link to="/settings" className="btn btn-ghost btn-sm" aria-label={t('Settings')}>
+            ⚙️ <span className="hide-mobile">{t('Settings')}</span>
           </Link>
         </div>
       </header>

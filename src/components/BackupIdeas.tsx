@@ -10,6 +10,7 @@ import { distance } from '../lib/format'
 import { haversineM } from '../lib/geo'
 import { useAsync } from '../lib/hooks'
 import { toast } from './ui'
+import { t } from '../i18n'
 
 /** Favourites not on any day, near today's city — the fallback list when plans change. */
 export function BackupIdeas({ tripId, day }: { tripId: string; day: Day }) {
@@ -46,23 +47,23 @@ export function BackupIdeas({ tripId, day }: { tripId: string; day: Day }) {
     })
     await db.favorites.update(f.id, { date: day.date, pinned: true, itemId: id })
     await touchTrip(tripId)
-    toast(`Added ${f.name} to the day`)
+    toast(t('Added {name} to the day', { name: f.name }))
   }
 
   return (
     <div className="card stack" style={{ gap: 8 }}>
       <div className="row between wrap">
-        <h3>{rainy ? '☔ Rain likely — backup ideas' : '🧺 Backup ideas nearby'}</h3>
+        <h3>{rainy ? t('☔ Rain likely — backup ideas') : t('🧺 Backup ideas nearby')}</h3>
         <div className="chips">
           <button className={`chip ${!onlyIndoor ? 'on' : ''}`} onClick={() => setIndoorOnly(false)}>
-            All
+            {t('All')}
           </button>
           <button className={`chip ${onlyIndoor ? 'on' : ''}`} onClick={() => setIndoorOnly(true)}>
-            Indoor
+            {t('Indoor')}
           </button>
         </div>
       </div>
-      {list.length === 0 && <p className="small muted">No indoor places among your backup ideas here — try “All”, or add some in the City planner.</p>}
+      {list.length === 0 && <p className="small muted">{t('No indoor places among your backup ideas here — try “All”, or add some in the City planner.')}</p>}
       {list.slice(0, 6).map((f) => (
         <div key={f.id} className="row">
           <span style={{ fontSize: '1.2rem' }}>{categoryMeta(f.category).emoji}</span>
@@ -70,22 +71,22 @@ export function BackupIdeas({ tripId, day }: { tripId: string; day: Day }) {
             <div className="small strong">{f.name}</div>
             <div className="tiny muted">
               ~{formatDuration(f.visitMin * 60)}
-              {isIndoor(f) && ' · indoor'}
-              {dist(f) < Infinity && ` · ${distance(dist(f))} from the centre`}
+              {isIndoor(f) && t(' · indoor')}
+              {dist(f) < Infinity && t(' · {distance} from the centre', { distance: distance(dist(f)) })}
             </div>
           </div>
           {f.lat != null && (
-            <a className="btn btn-sm btn-ghost" href={`https://www.google.com/maps/dir/?api=1&destination=${f.lat},${f.lon}&travelmode=walking`} target="_blank" rel="noreferrer" aria-label="Directions">
+            <a className="btn btn-sm btn-ghost" href={`https://www.google.com/maps/dir/?api=1&destination=${f.lat},${f.lon}&travelmode=walking`} target="_blank" rel="noreferrer" aria-label={t('Directions')}>
               🧭
             </a>
           )}
           <button className="btn-sm" onClick={() => addToday(f)}>
-            + Today
+            {t('+ Today')}
           </button>
         </div>
       ))}
       <Link to={`../favorites?city=${encodeURIComponent(day.city ?? '')}`} className="small">
-        Open the City planner →
+        {t('Open the City planner →')}
       </Link>
     </div>
   )

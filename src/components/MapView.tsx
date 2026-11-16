@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { nearLon, unwrapPath, unwrapSegments } from '../lib/geo'
+import { t } from '../i18n'
 
 // MapLibre locates its worker relative to its own file, which breaks once bundled; point it at the emitted asset.
 maplibregl.setWorkerUrl(workerUrl)
@@ -64,6 +65,13 @@ export default function MapView({ markers, line, dashed, segments, className = '
       center: [first.lon, first.lat],
       zoom,
       attributionControl: { compact: true },
+      locale: {
+        'NavigationControl.ZoomIn': t('Zoom in'),
+        'NavigationControl.ZoomOut': t('Zoom out'),
+        'GeolocateControl.FindMyLocation': t('Find my location'),
+        'GeolocateControl.LocationNotAvailable': t('Location not available'),
+        'AttributionControl.ToggleAttribution': t('Toggle attribution'),
+      },
     })
     m.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
     if (locate) m.addControl(new maplibregl.GeolocateControl({ trackUserLocation: true }), 'top-right')

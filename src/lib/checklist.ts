@@ -4,7 +4,8 @@
 import type { ChecklistCategory, ChecklistItem, Day, Item, Settings, Trip } from '../types'
 import { db } from '../db'
 import { addDays, dateRange, formatDate } from './dates'
-import { country, needsAdapter, travelAdvice, visaWikipediaUrl } from './countries'
+import { country, countryName, needsAdapter, travelAdvice, visaWikipediaUrl } from './countries'
+import { t, tn } from '../i18n'
 import { tripadvisorSearch } from './links'
 import { camperNights, isCampsite, stayStretches } from './stays'
 
@@ -38,15 +39,15 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
   /* Documents */
   if (abroad) {
     const validUntil = formatDate(addDays(trip.endDate, 183), { day: 'numeric', month: 'short', year: 'numeric' })
-    for (const t of trip.travellers) {
+    for (const tr of trip.travellers) {
       add({
-        ruleId: `passport:${t.id}`,
-        title: euInternal ? `ID card or passport valid — ${t.name}` : `Passport valid until at least ${validUntil} — ${t.name}`,
+        ruleId: `passport:${tr.id}`,
+        title: euInternal ? t('ID card or passport valid — {name}', { name: tr.name }) : t('Passport valid until at least {date} — {name}', { date: validUntil, name: tr.name }),
         category: 'documents',
         dueDate: before(60),
         notes: euInternal
-          ? 'Within the EU a valid national ID card is usually enough.'
-          : 'Many countries require 6 months of validity after you leave, and blank pages. Renewals can take weeks.',
+          ? t('Within the EU a valid national ID card is usually enough.')
+          : t('Many countries require 6 months of validity after you leave, and blank pages. Renewals can take weeks.'),
       })
     }
   }
@@ -56,10 +57,10 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     if (homeC?.eu && d.eu) continue
     add({
       ruleId: `visa:${d.code}`,
-      title: `Check visa / entry requirements for ${d.name}`,
+      title: t('Check visa / entry requirements for {country}', { country: countryName(d.code) }),
       category: 'documents',
       dueDate: before(45),
-      notes: [d.entryNote, 'Confirm on the destination government site — rules change.'].filter(Boolean).join(' '),
+      notes: [d.entryNote && t(d.entryNote), t('Confirm on the destination government site — rules change.')].filter(Boolean).join(' '),
       link: (home && visaWikipediaUrl(home)) || `https://en.wikipedia.org/wiki/Visa_policy_of_${encodeURIComponent(d.name.replace(/ /g, '_'))}`,
     })
   }
@@ -68,45 +69,45 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     const advice = home ? travelAdvice(home) : undefined
     add({
       ruleId: 'advice',
-      title: 'Read official travel advice for your destinations',
+      title: t('Read official travel advice for your destinations'),
       category: 'documents',
       dueDate: before(14),
-      notes: advice ? advice.label : 'Use your own government’s foreign travel advice site (safety, entry rules, local laws).',
+      notes: advice ? advice.label : t('Use your own government’s foreign travel advice site (safety, entry rules, local laws).'),
       link: advice?.url,
     })
     add({
       ruleId: 'insurance',
-      title: 'Buy travel insurance covering everyone (medical + cancellation)',
+      title: t('Buy travel insurance covering everyone (medical + cancellation)'),
       category: 'documents',
       dueDate: before(30),
-      notes: 'Buy it soon after booking so cancellation cover starts early.',
+      notes: t('Buy it soon after booking so cancellation cover starts early.'),
     })
     if (euInternal) {
       add({
         ruleId: 'ehic',
-        title: 'European Health Insurance Card (EHIC) for each traveller',
+        title: t('European Health Insurance Card (EHIC) for each traveller'),
         category: 'health',
         dueDate: before(21),
-        notes: 'Free; gives access to state healthcare in the EU. Not a replacement for travel insurance.',
+        notes: t('Free; gives access to state healthcare in the EU. Not a replacement for travel insurance.'),
       })
     }
   }
 
   add({
     ruleId: 'doc-copies',
-    title: 'Add passport, insurance and booking copies to the Docs tab',
+    title: t('Add passport, insurance and booking copies to the Docs tab'),
     category: 'documents',
     dueDate: before(3),
-    notes: 'They are stored on this device and open without internet.',
+    notes: t('They are stored on this device and open without internet.'),
   })
 
   if (children.length && adults.length === 1) {
     add({
       ruleId: 'consent-letter',
-      title: 'Consent letter from the other parent (travelling with children alone)',
+      title: t('Consent letter from the other parent (travelling with children alone)'),
       category: 'kids',
       dueDate: before(14),
-      notes: 'Often asked for at borders, even in Europe. Bring birth certificates if surnames differ.',
+      notes: t('Often asked for at borders, even in Europe. Bring birth certificates if surnames differ.'),
     })
   }
 
@@ -115,21 +116,21 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
   if (riskier.length) {
     add({
       ruleId: 'vaccines',
-      title: `Check vaccines and malaria advice for ${riskier.map((d) => d.name).join(', ')}`,
+      title: t('Check vaccines and malaria advice for {countries}', { countries: riskier.map((d) => countryName(d.code)).join(', ') }),
       category: 'health',
       dueDate: before(56),
-      notes: 'Some vaccines need several doses — see a travel clinic 6–8 weeks before leaving.',
+      notes: t('Some vaccines need several doses — see a travel clinic 6–8 weeks before leaving.'),
       link: 'https://wwwnc.cdc.gov/travel/destinations/list',
     })
   }
-  add({ ruleId: 'meds', title: 'Prescription medicines (enough + spare) and a small first-aid kit', category: 'health', dueDate: before(7) })
+  add({ ruleId: 'meds', title: t('Prescription medicines (enough + spare) and a small first-aid kit'), category: 'health', dueDate: before(7) })
 
   /* Bookings, derived from the itinerary */
   for (const it of items) {
     if (['flight', 'train', 'ferry', 'car'].includes(it.kind) && (it.status === 'idea' || it.status === 'planned')) {
       add({
         ruleId: `book:${it.id}`,
-        title: `Book: ${it.title}`,
+        title: t('Book: {title}', { title: it.title }),
         category: 'bookings',
         dueDate: it.kind === 'flight' ? before(60) : before(21),
         notes: `${formatDate(it.date)}${it.from?.name && it.to?.name ? ` · ${it.from.name} → ${it.to.name}` : ''}`,
@@ -138,29 +139,29 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     if (it.kind === 'flight') {
       add({
         ruleId: `checkin:${it.id}`,
-        title: `Online check-in: ${it.title}`,
+        title: t('Online check-in: {title}', { title: it.title }),
         category: 'bookings',
         dueDate: addDays(it.date, -1),
-        notes: 'Usually opens 24–48 h before departure.',
+        notes: t('Usually opens 24–48 h before departure.'),
       })
     }
     if (it.kind === 'activity' && it.status === 'planned' && it.cost?.amount) {
       add({
         ruleId: `ticket:${it.id}`,
-        title: `Buy tickets: ${it.title}`,
+        title: t('Buy tickets: {title}', { title: it.title }),
         category: 'bookings',
         dueDate: addDays(it.date, -7),
-        notes: 'Popular sights sell out or have timed entry.',
+        notes: t('Popular sights sell out or have timed entry.'),
         altLink: tripadvisorSearch(it.location?.name ?? it.title, days.find((d) => d.date === it.date)?.city),
       })
     }
     if (it.kind === 'car' || it.kind === 'drive') {
       add({
         ruleId: 'driving',
-        title: items.some((i) => i.kind === 'car') ? 'Driving licence (+ international permit if required) and a credit card for the deposit' : 'Driving licence (+ international permit if required)',
+        title: items.some((i) => i.kind === 'car') ? t('Driving licence (+ international permit if required) and a credit card for the deposit') : t('Driving licence (+ international permit if required)'),
         category: 'documents',
         dueDate: before(21),
-        notes: dests.map((d) => `${d.name}: drive on the ${d.drive}`).join(' · '),
+        notes: dests.map((d) => t(d.drive === 'left' ? '{country}: drive on the left' : '{country}: drive on the right', { country: countryName(d.code) })).join(' · '),
       })
     }
   }
@@ -177,14 +178,14 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     const camp = isCampsite(st)
     add({
       ruleId: `book:${st.id}`,
-      title: `Book: ${st.title}`,
+      title: t('Book: {title}', { title: st.title }),
       category: 'bookings',
       dueDate: before(camp ? 21 : 45),
       notes: [
         city,
-        `${formatDate(st.date)} · ${nights} night${nights > 1 ? 's' : ''}`,
-        st.cost?.amount ? `budgeted ${st.cost.amount} ${st.cost.currency}` : '',
-        camp ? 'Popular campsites fill up in summer and school holidays; otherwise you can often just turn up' : '',
+        tn(nights, '{date} · {n} night', '{date} · {n} nights', { date: formatDate(st.date) }),
+        st.cost?.amount ? t('budgeted {amount} {currency}', { amount: st.cost.amount, currency: st.cost.currency }) : '',
+        camp ? t('Popular campsites fill up in summer and school holidays; otherwise you can often just turn up') : '',
       ]
         .filter(Boolean)
         .join(' · '),
@@ -204,10 +205,13 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     const city = cityOn(run[0])
     add({
       ruleId: `stay-gap:${run[0]}`,
-      title: `${inVan(run[0]) ? 'Find a campsite' : 'Find accommodation'}${city ? ` in ${city}` : ''}: ${formatDate(run[0])}${run.length > 1 ? ` → ${run.length} nights` : ' (1 night)'}`,
+      title: t('{what}: {when}', {
+        what: city ? t(inVan(run[0]) ? 'Find a campsite in {city}' : 'Find accommodation in {city}', { city }) : t(inVan(run[0]) ? 'Find a campsite' : 'Find accommodation'),
+        when: run.length > 1 ? t('{date} → {n} nights', { date: formatDate(run[0]), n: run.length }) : t('{date} (1 night)', { date: formatDate(run[0]) }),
+      }),
       category: 'bookings',
       dueDate: before(45),
-      notes: 'No accommodation in the plan for these nights yet. Add it on the Plan tab once booked.',
+      notes: t('No accommodation in the plan for these nights yet. Add it on the Plan tab once booked.'),
       link: city ? bookingSearch(city, run[0], addDays(run[run.length - 1], 1), groupAdults, childAges) : undefined,
       altLink: city ? tripadvisorSearch(`${city} hotels`) : undefined,
     })
@@ -228,18 +232,18 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
   /* Money */
   const foreignCurrencies = [...new Set(dests.map((d) => d.currency))].filter((c) => c !== settings.homeCurrency)
   if (foreignCurrencies.length) {
-    add({ ruleId: 'cards', title: 'Check card fees abroad; bring two different cards', category: 'money', dueDate: before(14) })
-    add({ ruleId: 'cash', title: `Some local cash: ${foreignCurrencies.join(', ')}`, category: 'money', dueDate: before(2) })
+    add({ ruleId: 'cards', title: t('Check card fees abroad; bring two different cards'), category: 'money', dueDate: before(14) })
+    add({ ruleId: 'cash', title: t('Some local cash: {currencies}', { currencies: foreignCurrencies.join(', ') }), category: 'money', dueDate: before(2) })
   }
   if (!Object.values(trip.budget).some(Boolean)) {
-    add({ ruleId: 'budget', title: 'Set a budget (Budget tab)', category: 'money' })
+    add({ ruleId: 'budget', title: t('Set a budget (Budget tab)'), category: 'money' })
   }
 
   /* Tech */
   if (abroad) {
     add({
       ruleId: 'data',
-      title: euInternal ? 'Check your phone plan covers EU roaming' : `eSIM or roaming plan for ${dests.map((d) => d.name).join(', ')}`,
+      title: euInternal ? t('Check your phone plan covers EU roaming') : t('eSIM or roaming plan for {countries}', { countries: dests.map((d) => countryName(d.code)).join(', ') }),
       category: 'tech',
       dueDate: before(7),
     })
@@ -248,47 +252,47 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
   for (const d of dests) {
     const a = home ? needsAdapter(home, d.code) : undefined
     if (!a || a.needed || a.voltageDiffers) {
-      adapters.add(`${d.name}: type ${d.plugs.join('/')} · ${d.voltage} V`)
+      adapters.add(t('{country}: type {plugs} · {voltage} V', { country: countryName(d.code), plugs: d.plugs.join('/'), voltage: d.voltage }))
     }
   }
   if (adapters.size) {
     add({
       ruleId: 'adapter',
-      title: 'Plug adapter(s)',
+      title: t('Plug adapter(s)'),
       category: 'tech',
       dueDate: before(7),
-      notes: [...adapters].join(' · ') + (home ? '' : ' (set your nationality in Settings to compare with home)'),
+      notes: [...adapters].join(' · ') + (home ? '' : ' ' + t('(set your nationality in Settings to compare with home)')),
     })
   }
   add({
     ruleId: 'offline',
-    title: 'Open each day and walk map once on your phone so they work offline',
+    title: t('Open each day and walk map once on your phone so they work offline'),
     category: 'tech',
     dueDate: before(1),
   })
   add({
     ruleId: 'offline-maps',
-    title: `Offline maps of ${trip.cities.length ? trip.cities.join(', ') : 'your destinations'}`,
+    title: t('Offline maps of {places}', { places: trip.cities.length ? trip.cities.join(', ') : t('your destinations') }),
     category: 'tech',
     dueDate: before(2),
-    notes: 'Organic Maps (free, open source, OpenStreetMap data) works fully offline.',
+    notes: t('Organic Maps (free, open source, OpenStreetMap data) works fully offline.'),
     link: 'https://organicmaps.app/',
   })
-  add({ ruleId: 'power', title: 'Chargers, cables and a power bank', category: 'packing', dueDate: before(1) })
+  add({ ruleId: 'power', title: t('Chargers, cables and a power bank'), category: 'packing', dueDate: before(1) })
 
   /* Kids & packing */
   if (children.length) {
     const ages = children.map((c) => c.age ?? 0)
-    add({ ruleId: 'kids-seats', title: 'Seats together on flights/trains for the family', category: 'kids', dueDate: before(30) })
-    add({ ruleId: 'kids-entertainment', title: 'Snacks and entertainment for travel days (downloaded, offline)', category: 'kids', dueDate: before(1) })
+    add({ ruleId: 'kids-seats', title: t('Seats together on flights/trains for the family'), category: 'kids', dueDate: before(30) })
+    add({ ruleId: 'kids-entertainment', title: t('Snacks and entertainment for travel days (downloaded, offline)'), category: 'kids', dueDate: before(1) })
     if (ages.some((a) => a < 4)) {
-      add({ ruleId: 'kids-baby', title: 'Stroller / carrier, nappies, wipes, baby food', category: 'kids', dueDate: before(2) })
+      add({ ruleId: 'kids-baby', title: t('Stroller / carrier, nappies, wipes, baby food'), category: 'kids', dueDate: before(2) })
     }
     if (items.some((i) => i.kind === 'car' || i.kind === 'drive' || i.kind === 'taxi')) {
-      add({ ruleId: 'kids-carseat', title: 'Child car seat / booster (reserve with the rental or bring)', category: 'kids', dueDate: before(14) })
+      add({ ruleId: 'kids-carseat', title: t('Child car seat / booster (reserve with the rental or bring)'), category: 'kids', dueDate: before(14) })
     }
   }
-  add({ ruleId: 'pack', title: 'Pack (check the weather on the Day by day tab a few days before)', category: 'packing', dueDate: before(1) })
+  add({ ruleId: 'pack', title: t('Pack (check the weather on the Day by day tab a few days before)'), category: 'packing', dueDate: before(1) })
 
   const seen = new Set<string>()
   return out.filter((d) => !seen.has(d.ruleId) && !!seen.add(d.ruleId))
@@ -350,12 +354,12 @@ export async function refreshChecklist(tripId: string, settings: Settings) {
 }
 
 export const CATEGORY_LABELS: Record<ChecklistCategory, { label: string; emoji: string }> = {
-  documents: { label: 'Documents & entry', emoji: '🛂' },
-  health: { label: 'Health', emoji: '💊' },
-  bookings: { label: 'Bookings', emoji: '🎫' },
-  money: { label: 'Money', emoji: '💳' },
-  tech: { label: 'Phone & tech', emoji: '📱' },
-  kids: { label: 'Kids', emoji: '🧸' },
-  packing: { label: 'Packing', emoji: '🧳' },
-  other: { label: 'Other', emoji: '📌' },
+  documents: { label: t('Documents & entry'), emoji: '🛂' },
+  health: { label: t('Health'), emoji: '💊' },
+  bookings: { label: t('Bookings'), emoji: '🎫' },
+  money: { label: t('Money'), emoji: '💳' },
+  tech: { label: t('Phone & tech'), emoji: '📱' },
+  kids: { label: t('Kids'), emoji: '🧸' },
+  packing: { label: t('Packing'), emoji: '🧳' },
+  other: { label: t('Other'), emoji: '📌' },
 }

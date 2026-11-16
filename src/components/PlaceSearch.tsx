@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { findPlace, type GeoResult } from '../lib/apis'
 import type { Place } from '../types'
+import { t } from '../i18n'
 
 interface Props {
   label: string
@@ -23,9 +24,9 @@ export function PlaceSearch({ label, value, onChange, placeholder, near }: Props
     try {
       const r = await findPlace(value.name, near)
       setResults(r)
-      if (!r.length) setError(navigator.onLine ? 'No match — try a different spelling, or the street.' : 'Search needs an internet connection.')
+      if (!r.length) setError(navigator.onLine ? t('No match — try a different spelling, or the street.') : t('Search needs an internet connection.'))
     } catch {
-      setError('Search needs an internet connection.')
+      setError(t('Search needs an internet connection.'))
     } finally {
       setBusy(false)
     }
@@ -48,7 +49,7 @@ export function PlaceSearch({ label, value, onChange, placeholder, near }: Props
             }}
           />
           <button type="button" className="btn-sm" onClick={find} disabled={busy || !value?.name}>
-            {busy ? '…' : value?.lat != null ? '📍 Found' : 'Find'}
+            {busy ? '…' : value?.lat != null ? t('📍 Found') : t('Find')}
           </button>
         </div>
       </label>

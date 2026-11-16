@@ -22,11 +22,11 @@ describe('language', () => {
 
   it('counts singular and plural: French has 0 and 1 as singular', () => {
     useLangForTests('fr')
-    expect(tn(0, '{n} night', '{n} nights')).toBe('0 night')
-    expect(tn(2, '{n} night', '{n} nights')).toBe('2 nights')
+    expect(tn(0, '{n} zzfoo', '{n} zzfoos')).toBe('0 zzfoo')
+    expect(tn(2, '{n} zzfoo', '{n} zzfoos')).toBe('2 zzfoos')
     useLangForTests('en')
-    expect(tn(0, '{n} night', '{n} nights')).toBe('0 nights')
-    expect(tn(1, '{n} night', '{n} nights')).toBe('1 night')
+    expect(tn(0, '{n} zzfoo', '{n} zzfoos')).toBe('0 zzfoos')
+    expect(tn(1, '{n} zzfoo', '{n} zzfoos')).toBe('1 zzfoo')
   })
 
   it('every French text keeps the {values} of its English text, and none is empty', () => {

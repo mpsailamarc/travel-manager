@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { STATUS_LABEL } from './kinds'
 import type { ItemStatus } from '../types'
+import { t } from '../i18n'
 
 export function Modal({ title, onClose, children, wide }: { title: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
@@ -17,7 +18,7 @@ export function Modal({ title, onClose, children, wide }: { title: ReactNode; on
       <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true">
         <div className="modal-head">
           <h2>{title}</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button className="icon-btn" onClick={onClose} aria-label={t('Close')}>
             ✕
           </button>
         </div>
@@ -62,11 +63,11 @@ export function Section({ title, summary, open, onToggle, children, className = 
 export function Counter({ value, onChange, min = 0, max = 20 }: { value: number; onChange: (n: number) => void; min?: number; max?: number }) {
   return (
     <div className="counter">
-      <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label="Less">
+      <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={t('Less')}>
         −
       </button>
       <b style={{ minWidth: 20, textAlign: 'center' }}>{value}</b>
-      <button type="button" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label="More">
+      <button type="button" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label={t('More')}>
         +
       </button>
     </div>
@@ -93,7 +94,7 @@ export function toast(message: string, action?: ToastDetail['action']) {
 }
 
 export function Toaster() {
-  const [t, setT] = useState<ToastDetail>()
+  const [msg, setT] = useState<ToastDetail>()
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
     const on = (e: Event) => {
@@ -105,20 +106,20 @@ export function Toaster() {
     window.addEventListener(EVT, on)
     return () => window.removeEventListener(EVT, on)
   }, [])
-  if (!t) return null
+  if (!msg) return null
   return (
     <div className="toast row" style={{ gap: 12 }}>
-      <span>{t.message}</span>
-      {t.action && (
+      <span>{msg.message}</span>
+      {msg.action && (
         <button
           className="btn-sm"
           style={{ color: '#fff', borderColor: 'rgb(255 255 255 / 0.5)', background: 'transparent' }}
           onClick={async () => {
             setT(undefined)
-            await t.action!.run()
+            await msg.action!.run()
           }}
         >
-          {t.action.label}
+          {msg.action.label}
         </button>
       )}
     </div>
@@ -128,7 +129,7 @@ export function Toaster() {
 export async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text)
-    toast('Copied to clipboard')
+    toast(t('Copied to clipboard'))
   } catch {
     // Clipboard API needs a secure context; fall back to a hidden textarea.
     const ta = document.createElement('textarea')
@@ -137,14 +138,14 @@ export async function copyText(text: string) {
     ta.select()
     document.execCommand('copy')
     ta.remove()
-    toast('Copied to clipboard')
+    toast(t('Copied to clipboard'))
   }
 }
 
 /** 1–5 stars in halves, drawn from one glyph row so a half star needs no extra image. */
 export function Stars({ value, title }: { value: number; title?: string }) {
   return (
-    <span className="stars" style={{ '--v': value } as CSSProperties} title={title} role="img" aria-label={`${value} out of 5`}>
+    <span className="stars" style={{ '--v': value } as CSSProperties} title={title} role="img" aria-label={t('{n} out of 5', { n: value })}>
       ★★★★★
     </span>
   )

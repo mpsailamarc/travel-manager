@@ -5,6 +5,7 @@ import { findWikipedia, placesFromTitle, wikiSummary } from '../lib/apis'
 import { tripadvisorSearch } from '../lib/links'
 import { useAsync, useOnline } from '../lib/hooks'
 import { isTransport } from './kinds'
+import { t } from '../i18n'
 
 const TRAIL = /hike|hiking|trail|trek|walk|mirador|lookout|viewpoint|summit|peak|glacier|valley|lagoon|laguna|lake|waterfall|canyon|gorge|volcano|ridge|pass\b|cerro|mount|mt\.?\s/i
 
@@ -12,15 +13,15 @@ const TRAIL = /hike|hiking|trail|trek|walk|mirador|lookout|viewpoint|summit|peak
 export function linkLabel(url: string) {
   try {
     const host = new URL(url).hostname.replace(/^www\./, '')
-    if (host.includes('alltrails.')) return '🥾 Open in AllTrails'
-    if (host.includes('wikiloc.')) return '🥾 Open in Wikiloc'
-    if (host.includes('tripadvisor.')) return '🦉 Open on Tripadvisor'
-    if (host.includes('booking.')) return '🛏️ Open on Booking.com'
-    if (host.includes('airbnb.')) return '🛏️ Open on Airbnb'
-    if (host.includes('google.') && url.includes('/maps')) return '🗺️ Open in Maps'
+    if (host.includes('alltrails.')) return t('🥾 Open in AllTrails')
+    if (host.includes('wikiloc.')) return t('🥾 Open in Wikiloc')
+    if (host.includes('tripadvisor.')) return t('🦉 Open on Tripadvisor')
+    if (host.includes('booking.')) return t('🛏️ Open on Booking.com')
+    if (host.includes('airbnb.')) return t('🛏️ Open on Airbnb')
+    if (host.includes('google.') && url.includes('/maps')) return t('🗺️ Open in Maps')
     return `🔗 ${host}`
   } catch {
-    return '🔗 Open link'
+    return t('🔗 Open link')
   }
 }
 
@@ -59,14 +60,14 @@ export function PlaceInfo({ item, city, area, lang, country }: { item: Item; cit
 
   return (
     <div className="stack" style={{ gap: 10 }}>
-      {lookUp && wiki.loading && <p className="small muted">Looking it up on Wikipedia…</p>}
+      {lookUp && wiki.loading && <p className="small muted">{t('Looking it up on Wikipedia…')}</p>}
       {wiki.data && <WikiCard key={wiki.data.title} title={wiki.data.title} extract={wiki.data.extract} image={wiki.data.image ?? wiki.data.thumbnail} thumbnail={wiki.data.thumbnail} url={wiki.data.url} />}
       {lookUp && !wiki.loading && !wiki.data && (
         <p className="small muted">
-          {online ? 'No matching Wikipedia article found.' : 'Wikipedia lookups need an internet connection.'}{' '}
+          {online ? t('No matching Wikipedia article found.') : t('Wikipedia lookups need an internet connection.')}{' '}
           {online && (
             <a href={`https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(q)}`} target="_blank" rel="noreferrer">
-              Search Wikipedia ↗
+              {t('Search Wikipedia ↗')}
             </a>
           )}
         </p>
@@ -74,7 +75,7 @@ export function PlaceInfo({ item, city, area, lang, country }: { item: Item; cit
 
       {item.walk && item.walk.stops.length > 0 && (
         <div className="stack" style={{ gap: 4 }}>
-          <b className="small">Stops</b>
+          <b className="small">{t('Stops')}</b>
           {item.walk.stops.map((s, i) => (
             <StopLink key={s.id} n={i + 1} name={s.name} wikipedia={s.wikipedia} wikidata={s.wikidata} city={city} near={{ lat: s.lat, lon: s.lon }} lang={lang} country={country} />
           ))}
@@ -88,26 +89,26 @@ export function PlaceInfo({ item, city, area, lang, country }: { item: Item; cit
           </a>
         )}
         <a className="btn btn-sm" href={mapUrl} target="_blank" rel="noreferrer">
-          🗺️ Map
+          {t('🗺️ Map')}
         </a>
         {taQuery && !item.url?.includes('tripadvisor.') && (
-          <a className="btn btn-sm" href={tripadvisorSearch(taQuery, city)} target="_blank" rel="noreferrer" title="Opens Tripadvisor's search for this place">
-            🦉 Find on Tripadvisor
+          <a className="btn btn-sm" href={tripadvisorSearch(taQuery, city)} target="_blank" rel="noreferrer" title={t("Opens Tripadvisor's search for this place")}>
+            {t('🦉 Find on Tripadvisor')}
           </a>
         )}
         {trail && !item.url?.includes('alltrails.') && (
-          <a className="btn btn-sm" href={allTrails} target="_blank" rel="noreferrer" title="Searches AllTrails for this trail">
-            🥾 Find on AllTrails
+          <a className="btn btn-sm" href={allTrails} target="_blank" rel="noreferrer" title={t('Searches AllTrails for this trail')}>
+            {t('🥾 Find on AllTrails')}
           </a>
         )}
         {city && (
           <a className="btn btn-sm" href={`https://en.wikivoyage.org/wiki/${encodeURIComponent(city.replace(/ /g, '_'))}`} target="_blank" rel="noreferrer">
-            📖 {city} travel guide
+            {t('📖 {city} travel guide', { city })}
           </a>
         )}
       </div>
       {trail && !item.url && (
-        <p className="tiny muted">Found the trail on AllTrails? Copy its link into this item's “Link” field (Edit) — it then opens straight in the AllTrails app.</p>
+        <p className="tiny muted">{t('Found the trail on AllTrails? Copy its link into this item\'s “Link” field (Edit) — it then opens straight in the AllTrails app.')}</p>
       )}
     </div>
   )
@@ -128,7 +129,7 @@ export function WikiCard({ title, extract, image, thumbnail, url }: { title: str
         <p style={{ lineHeight: 1.5 }}>{extract}</p>
         <div>
           <a className="btn btn-primary" href={url} target="_blank" rel="noreferrer">
-            📖 Read on Wikipedia ↗
+            {t('📖 Read on Wikipedia ↗')}
           </a>
         </div>
       </div>
@@ -148,7 +149,7 @@ function StopLink({ n, name, wikipedia, wikidata, city, near, lang, country }: {
       <span className="grow">{name}</span>
       {url ? (
         <a href={url} target="_blank" rel="noreferrer">
-          Wikipedia ↗
+          {t('Wikipedia ↗')}
         </a>
       ) : (
         <span className="tiny muted">—</span>

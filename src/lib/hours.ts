@@ -3,6 +3,7 @@
 // shows have no limit. It can't be exact, so it only steers the planner and warns; it never deletes anything.
 
 import type { ISODate } from '../types'
+import { t } from '../i18n'
 
 export interface OpenWindow {
   open: number // minutes from midnight
@@ -83,7 +84,7 @@ const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}
 
 /** "usually open 9:00–17:00" / "open 10:00–18:00 today" */
 export function hoursLabel(w: OpenWindow) {
-  return `${w.known ? 'open' : 'usually open'} ${hhmm(w.open)}–${hhmm(w.close)}`
+  return t(w.known ? 'open {from}–{to}' : 'usually open {from}–{to}', { from: hhmm(w.open), to: hhmm(w.close) })
 }
 
 /** A warning when the time planned falls outside the likely hours, else nothing. */
@@ -91,9 +92,9 @@ export function hoursWarning(x: { title: string; kind?: string; category?: strin
   if (!x.startTime) return undefined
   const w = openingWindow(x, date)
   if (!w) return undefined
-  if (w === 'closed') return 'closed that day (published hours)'
+  if (w === 'closed') return t('closed that day (published hours)')
   const s = toMin(x.startTime)
   const e = x.endTime ? toMin(x.endTime) : s + 60
-  if (s < w.open || e > w.close) return `may be closed then: ${hoursLabel(w)}`
+  if (s < w.open || e > w.close) return t('may be closed then: {hours}', { hours: hoursLabel(w) })
   return undefined
 }

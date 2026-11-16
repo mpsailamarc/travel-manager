@@ -4,6 +4,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { saveLocal } from './storage'
+import { t } from '../i18n'
 
 export interface AiConfig {
   mode: 'paste' | 'api'
@@ -77,11 +78,11 @@ async function failure(res: Response): Promise<AiError> {
   } catch {
     /* no JSON body */
   }
-  if (res.status === 401) return new AiError('OpenAI did not accept this key (401). Check that it was copied in full.')
-  if (res.status === 429 && /quota|billing|credit/i.test(detail)) return new AiError(`OpenAI says: ${detail} (429). Check your usage limits and billing at platform.openai.com.`)
-  if (res.status === 429) return new AiError(`OpenAI is busy (429): ${detail || 'too many requests'}`, true)
-  if (res.status === 404) return new AiError(`That model is not available to this key. Pick another model in Settings. ${detail}`.trim())
-  return new AiError(`OpenAI error ${res.status}: ${detail || res.statusText}`, res.status >= 500)
+  if (res.status === 401) return new AiError(t('OpenAI did not accept this key (401). Check that it was copied in full.'))
+  if (res.status === 429 && /quota|billing|credit/i.test(detail)) return new AiError(t('OpenAI says: {detail} (429). Check your usage limits and billing at platform.openai.com.', { detail }))
+  if (res.status === 429) return new AiError(t('OpenAI is busy (429): {detail}', { detail: detail || t('too many requests') }), true)
+  if (res.status === 404) return new AiError(`${t('That model is not available to this key. Pick another model in Settings.')} ${detail}`.trim())
+  return new AiError(t('OpenAI error {status}: {detail}', { status: res.status, detail: detail || res.statusText }), res.status >= 500)
 }
 
 async function call<T>(path: string, init: RequestInit, key: string, timeoutMs: number): Promise<T> {
@@ -91,7 +92,7 @@ async function call<T>(path: string, init: RequestInit, key: string, timeoutMs: 
   try {
     res = await fetch(API + path, { ...init, headers: { Authorization: `Bearer ${key.trim()}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) }, signal: ctrl.signal })
   } catch (e) {
-    throw new AiError((e as Error).name === 'AbortError' ? 'OpenAI took too long to answer. Try again.' : 'Could not reach OpenAI. Check your internet connection.', true)
+    throw new AiError((e as Error).name === 'AbortError' ? t('OpenAI took too long to answer. Try again.') : t('Could not reach OpenAI. Check your internet connection.'), true)
   } finally {
     clearTimeout(timer)
   }
@@ -129,10 +130,10 @@ async function streamOnce(messages: ChatMessage[], cfg: AiConfig, onProgress?: (
         signal: ctrl.signal,
       })
     } catch (e) {
-      throw new AiError((e as Error).name === 'AbortError' ? 'OpenAI took too long to start answering.' : 'Could not reach OpenAI. Check your internet connection.', true)
+      throw new AiError((e as Error).name === 'AbortError' ? t('OpenAI took too long to start answering.') : t('Could not reach OpenAI. Check your internet connection.'), true)
     }
     if (!res.ok) throw await failure(res)
-    if (!res.body) throw new AiError('OpenAI sent back an empty answer.', true)
+    if (!res.body) throw new AiError(t('OpenAI sent back an empty answer.'), true)
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
@@ -143,7 +144,7 @@ async function streamOnce(messages: ChatMessage[], cfg: AiConfig, onProgress?: (
       try {
         chunk = await reader.read()
       } catch (e) {
-        throw new AiError((e as Error).name === 'AbortError' ? 'OpenAI stopped answering part-way.' : 'The connection to OpenAI dropped part-way.', true)
+        throw new AiError((e as Error).name === 'AbortError' ? t('OpenAI stopped answering part-way.') : t('The connection to OpenAI dropped part-way.'), true)
       }
       if (chunk.done) break
       alive(BETWEEN_MS)
@@ -155,7 +156,7 @@ async function streamOnce(messages: ChatMessage[], cfg: AiConfig, onProgress?: (
         if (!data || data === '[DONE]') continue
         try {
           const j = JSON.parse(data) as { choices?: { delta?: { content?: string } }[]; usage?: { total_tokens?: number }; error?: { message?: string } }
-          if (j.error) throw new AiError(`OpenAI error: ${j.error.message ?? 'unknown'}`, true)
+          if (j.error) throw new AiError(t('OpenAI error: {detail}', { detail: j.error.message ?? t('unknown') }), true)
           const piece = j.choices?.[0]?.delta?.content
           if (piece) {
             text += piece
@@ -168,7 +169,7 @@ async function streamOnce(messages: ChatMessage[], cfg: AiConfig, onProgress?: (
         }
       }
     }
-    if (!text.trim()) throw new AiError('OpenAI sent back an empty answer.', true)
+    if (!text.trim()) throw new AiError(t('OpenAI sent back an empty answer.'), true)
     return { text, tokens }
   } finally {
     clearTimeout(timer)
@@ -181,7 +182,7 @@ async function streamOnce(messages: ChatMessage[], cfg: AiConfig, onProgress?: (
  */
 export async function askAI(messages: ChatMessage[], onProgress?: (chars: number) => void): Promise<string> {
   const cfg = getAiConfig()
-  if (!aiReady(cfg)) throw new Error('Add your OpenAI key in Settings first.')
+  if (!aiReady(cfg)) throw new Error(t('Add your OpenAI key in Settings first.'))
   let last: unknown
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt) await new Promise((r) => setTimeout(r, attempt * 3000))
@@ -194,7 +195,7 @@ export async function askAI(messages: ChatMessage[], onProgress?: (chars: number
       if (!(e instanceof AiError) || !e.retry) throw e
     }
   }
-  throw new Error(`${(last as Error).message} It was tried 3 times — check your connection and try again in a moment.`)
+  throw new Error(t('{message} It was tried 3 times — check your connection and try again in a moment.', { message: (last as Error).message }))
 }
 
 /** Chat models this key can use, smaller ("mini") ones first since they are cheap and plenty for planning. */

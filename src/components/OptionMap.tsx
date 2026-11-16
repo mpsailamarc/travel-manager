@@ -7,6 +7,7 @@ import { country } from '../lib/countries'
 import { isHome } from '../lib/home'
 import { useAsync } from '../lib/hooks'
 import LazyMap, { type MapMarker } from './LazyMap'
+import { t, tn } from '../i18n'
 
 /** Where an option's places are: the coordinates it came with, else the well-known cities, else a (cached, one-a-second) search. */
 async function locate(trip: Trip, stops: ReturnType<typeof optionStops>) {
@@ -41,9 +42,9 @@ export function OptionMap({ option, trip, tall }: { option: AiOption; trip: Trip
   const key = stops.map((s) => `${s.name}:${s.lat ?? ''}:${s.lon ?? ''}`).join('|')
   const found = useAsync(() => locate(trip, stops), [key, trip.id])
   const points = found.data ?? []
-  const markers: MapMarker[] = points.map((p, i) => ({ id: `${i}`, lat: p.lat, lon: p.lon, label: String(i + 1), variant: 'on', title: `${i + 1}. ${p.name}${p.nights ? ` · ${p.nights} day${p.nights > 1 ? 's' : ''}` : ''}` }))
+  const markers: MapMarker[] = points.map((p, i) => ({ id: `${i}`, lat: p.lat, lon: p.lon, label: String(i + 1), variant: 'on', title: `${i + 1}. ${p.name}${p.nights ? ` · ${tn(p.nights, '{n} day', '{n} days')}` : ''}` }))
   if (!stops.length) return null
-  if (!points.length) return <div className={`map ${tall ? 'tall' : 'short'}`} style={{ display: 'grid', placeItems: 'center' }}><span className="tiny muted">{found.loading ? 'Finding the places…' : 'No places to show'}</span></div>
+  if (!points.length) return <div className={`map ${tall ? 'tall' : 'short'}`} style={{ display: 'grid', placeItems: 'center' }}><span className="tiny muted">{found.loading ? t('Finding the places…') : t('No places to show')}</span></div>
   return (
     <div className="stack" style={{ gap: 4 }}>
       <LazyMap
@@ -53,7 +54,7 @@ export function OptionMap({ option, trip, tall }: { option: AiOption; trip: Trip
         fitKey={key + points.length}
         className={tall ? 'tall' : 'short'}
       />
-      {found.loading && <span className="tiny muted">Finding the other places…</span>}
+      {found.loading && <span className="tiny muted">{t('Finding the other places…')}</span>}
     </div>
   )
 }

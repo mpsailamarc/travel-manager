@@ -20,6 +20,7 @@ import { haversineM } from '../lib/geo'
 import { itemZones, offsetMin, transportSpan, tzAt, tzCity, tzLabel, zonedToUtc } from '../lib/tz'
 import { CITIES } from '../lib/cities'
 import { useSettings } from '../lib/hooks'
+import { t, tn } from '../i18n'
 
 
 /** Zone choices: "Automatic" (what the places say) or any zone a well-known city lives in, sorted west to east. */
@@ -32,7 +33,7 @@ function ZoneSelect({ label, auto, value, date, onChange }: { label: string; aut
     <label>
       {label}
       <select value={value ?? ''} onChange={(e) => onChange(e.target.value || undefined)}>
-        <option value="">Automatic{auto ? ` · ${tzLabel(auto, at)}` : ''}</option>
+        <option value="">{t('Automatic')}{auto ? ` · ${tzLabel(auto, at)}` : ''}</option>
         {zones.map(({ z }) => (
           <option key={z} value={z}>
             {tzLabel(z, at)}
@@ -43,12 +44,13 @@ function ZoneSelect({ label, auto, value, date, onChange }: { label: string; aut
   )
 }
 
-/** "3 h behind" / "2 h ahead of": how far one zone is from another at that moment. */
+/** "Lisbon is 3 h behind Paris" / "Tokyo is 2 h ahead of Paris": how far one zone is from another at that moment. */
 function tzOffsetDiff(a: string, b: string, utcMs: number) {
   const d = (offsetMin(a, utcMs) - offsetMin(b, utcMs)) / 60
   const h = Math.abs(d)
-  const label = Number.isInteger(h) ? `${h} h` : `${Math.floor(h)} h ${Math.round((h % 1) * 60)} min`
-  return d === 0 ? 'same time as' : `${label} ${d > 0 ? 'ahead of' : 'behind'}`
+  const hours = Number.isInteger(h) ? `${h} h` : `${Math.floor(h)} h ${Math.round((h % 1) * 60)} min`
+  const vars = { a: tzCity(a), b: tzCity(b), hours }
+  return d === 0 ? t('{a} is the same time as {b}', vars) : d > 0 ? t('{a} is {hours} ahead of {b}', vars) : t('{a} is {hours} behind {b}', vars)
 }
 
 interface Props {
@@ -94,7 +96,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
 
   async function save() {
     if (!it.title?.trim()) {
-      toast('Give it a title first')
+      toast(t('Give it a title first'))
       return
     }
     if (saving) return
@@ -156,18 +158,18 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
     // A journey's time changed: offer to re-fit the day around it (the airport taxi follows the flight, the rest follows).
     const journeyMoved = !isNew && ['flight', 'train', 'bus', 'ferry'].includes(full.kind) && (full.startTime !== item.startTime || full.endTime !== item.endTime)
     if (journeyMoved) {
-      toast(`Saved · re-fit ${formatDate(full.date)} around the new time?`, {
-        label: 'Re-fit the day',
+      toast(t('Saved · re-fit {date} around the new time?', { date: formatDate(full.date) }), {
+        label: t('Re-fit the day'),
         run: async () => {
           const p = await proposeDay(trip.id, full.date, settings)
           if (p?.changes.length) {
             await applyProposal(p)
-            toast(`${p.changes.length} item${p.changes.length > 1 ? 's' : ''} moved to fit around it`)
-          } else toast('Nothing needed to move')
+            toast(tn(p.changes.length, '{n} item moved to fit around it', '{n} items moved to fit around it'))
+          } else toast(t('Nothing needed to move'))
         },
       })
-    } else if (retimed) toast(`Saved · ${retimed.moved} later ${retimed.moved === 1 ? 'item' : 'items'} moved ${retimed.shiftMin < 0 ? 'earlier' : 'later'}`, { label: 'Undo', run: retimed.undo })
-    else toast(push && ripple.moves.length ? `Saved · pushed ${ripple.moves.length} later item${ripple.moves.length > 1 ? 's' : ''} back` : isNew ? 'Added' : 'Saved')
+    } else if (retimed) toast(retimed.shiftMin < 0 ? tn(retimed.moved, 'Saved · {n} later item moved earlier', 'Saved · {n} later items moved earlier') : tn(retimed.moved, 'Saved · {n} later item moved later', 'Saved · {n} later items moved later'), { label: t('Undo'), run: retimed.undo })
+    else toast(push && ripple.moves.length ? tn(ripple.moves.length, 'Saved · pushed {n} later item back', 'Saved · pushed {n} later items back') : isNew ? t('Added') : t('Saved'))
     onClose()
   }
 
@@ -175,14 +177,14 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
   const backupable = !isNew && ['activity', 'meal', 'walk'].includes(kind)
   async function toBackup() {
     const saved = item as Item
-    if ((saved.status === 'booked' || saved.locked) && !confirm(`"${saved.title}" is ${saved.status === 'booked' ? 'booked' : 'pinned 📌'}. Move it to the backup ideas anyway?`)) return
+    if ((saved.status === 'booked' || saved.locked) && !confirm(saved.status === 'booked' ? t('"{title}" is booked. Move it to the backup ideas anyway?', { title: saved.title }) : t('"{title}" is pinned 📌. Move it to the backup ideas anyway?', { title: saved.title }))) return
     const city = await sendToBackup(saved)
-    toast(city ? `🧺 ${saved.title} is now a backup idea for ${city}` : 'This day has no city yet: set one on the Plan tab first')
+    toast(city ? t('🧺 {title} is now a backup idea for {city}', { title: saved.title, city }) : t('This day has no city yet: set one on the Plan tab first'))
     if (city) onClose()
   }
 
   async function remove() {
-    if (!it.id || !confirm(`Delete "${it.title}"?`)) return
+    if (!it.id || !confirm(t('Delete "{title}"?', { title: it.title ?? '' }))) return
     await deleteItem(it.id) // a wishlist place goes back to the backup list
     await touchTrip(trip.id)
     onClose()
@@ -200,27 +202,27 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
         </div>
 
         <label>
-          Title
+          {t('Title')}
           <input autoFocus={isNew} value={it.title ?? ''} onChange={(e) => set('title', e.target.value)} placeholder={placeholderFor(kind)} />
         </label>
 
         <div className="form-grid">
           <label>
-            Day
+            {t('Day')}
             <select value={it.date} onChange={(e) => set('date', e.target.value)}>
               {dates.map((d, i) => (
                 <option key={d} value={d}>
-                  Day {i + 1} · {formatDate(d)}
+                  {t('Day {n} · {date}', { n: i + 1, date: formatDate(d) })}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            {isTransport(kind) ? `Departs${zones.from ? ` · ${tzCity(zones.from)} time` : ''}` : kind === 'stay' ? 'Check-in' : 'Starts'}
+            {isTransport(kind) ? (zones.from ? t('Departs · {city} time', { city: tzCity(zones.from) }) : t('Departs')) : kind === 'stay' ? t('Check-in') : t('Starts')}
             <input type="time" value={it.startTime ?? ''} onChange={(e) => setStart(e.target.value)} />
           </label>
           <label>
-            {isTransport(kind) ? `Arrives${zones.to ? ` · ${tzCity(zones.to)} time` : ''}` : 'Ends'}
+            {isTransport(kind) ? (zones.to ? t('Arrives · {city} time', { city: tzCity(zones.to) }) : t('Arrives')) : t('Ends')}
             <input type="time" value={it.endTime ?? ''} onChange={(e) => set('endTime', e.target.value)} />
           </label>
           {['activity', 'meal', 'walk', 'note'].includes(kind) && (
@@ -228,11 +230,11 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
               <input type="checkbox" checked={!!it.locked} onChange={(e) => {
                   setLockTouched(true)
                   set('locked', e.target.checked || undefined)
-                }} /> 📌 Keep this time
+                }} /> {t('📌 Keep this time')}
             </label>
           )}
           <label>
-            Status
+            {t('Status')}
             <select value={it.status} onChange={(e) => set('status', e.target.value as ItemStatus)}>
               {(Object.keys(STATUS_LABEL) as ItemStatus[]).map((s) => (
                 <option key={s} value={s}>
@@ -245,15 +247,15 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
 
         {isTransport(kind) && span && (span.zonesDiffer || span.arrDate !== it.date) && (
           <p className="small" style={{ margin: 0 }}>
-            🌏 Travel time <b>{formatDuration(span.durationMin * 60)}</b>
-            {span.arrDate > it.date ? ` · lands ${span.arrDate === addDays(it.date, 1) ? 'the next day' : `${daysBetween(it.date, span.arrDate)} days later`}` : span.arrDate < it.date ? ' · lands the day before (date line)' : ''}
-            {span.zonesDiffer && ` · ${tzCity(span.fromTz)} is ${tzOffsetDiff(span.fromTz, span.toTz, span.depUtc)} ${tzCity(span.toTz)}`}
+            {t('🌏 Travel time')} <b>{formatDuration(span.durationMin * 60)}</b>
+            {span.arrDate > it.date ? ` · ${span.arrDate === addDays(it.date, 1) ? t('lands the next day') : tn(daysBetween(it.date, span.arrDate), 'lands {n} day later', 'lands {n} days later')}` : span.arrDate < it.date ? ` · ${t('lands the day before (date line)')}` : ''}
+            {span.zonesDiffer && ` · ${tzOffsetDiff(span.fromTz, span.toTz, span.depUtc)}`}
           </p>
         )}
         {isTransport(kind) && (
           <div className="form-grid">
-            <ZoneSelect label="Departure time zone" auto={zones.auto.from} value={it.fromTz} date={it.date} onChange={(z) => set('fromTz', z)} />
-            <ZoneSelect label="Arrival time zone" auto={zones.auto.to} value={it.toTz} date={it.date} onChange={(z) => set('toTz', z)} />
+            <ZoneSelect label={t('Departure time zone')} auto={zones.auto.from} value={it.fromTz} date={it.date} onChange={(z) => set('fromTz', z)} />
+            <ZoneSelect label={t('Arrival time zone')} auto={zones.auto.to} value={it.toTz} date={it.date} onChange={(z) => set('toTz', z)} />
           </div>
         )}
 
@@ -264,7 +266,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
                 <label className="inline" style={{ alignItems: 'flex-start' }}>
                   <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} style={{ marginTop: 3 }} />
                   <span>
-                    <b>Push back the next {ripple.moves.length === 1 ? 'item' : `${ripple.moves.length} items`}</b> so they don't overlap
+                    <b>{ripple.moves.length === 1 ? t('Push back the next item') : t('Push back the next {n} items', { n: ripple.moves.length })}</b> {t("so they don't overlap")}
                   </span>
                 </label>
                 {ripple.moves.map((m) => (
@@ -278,7 +280,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
             )}
             {ripple.blockedBy && (
               <div className="small">
-                🔒 <b>{ripple.blockedBy.title}</b> is booked for {ripple.blockedBy.startTime}, so items can't be pushed past it. {ripple.moves.length ? 'The ones above fit before it; the rest stay' : 'Nothing is moved'} — check your day still works.
+                🔒 <b>{ripple.blockedBy.title}</b> {t("is booked for {time}, so items can't be pushed past it.", { time: ripple.blockedBy.startTime ?? '' })} {ripple.moves.length ? t('The ones above fit before it; the rest stay — check your day still works.') : t('Nothing is moved — check your day still works.')}
               </div>
             )}
           </div>
@@ -286,30 +288,30 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
 
         {isTransport(kind) ? (
           <div className="form-grid">
-            <PlaceSearch label="From" value={it.from} onChange={(p) => set('from', p)} placeholder="Station, airport…" />
-            <PlaceSearch label="To" value={it.to} onChange={(p) => set('to', p)} placeholder="Station, airport…" />
+            <PlaceSearch label={t('From')} value={it.from} onChange={(p) => set('from', p)} placeholder={t('Station, airport…')} />
+            <PlaceSearch label={t('To')} value={it.to} onChange={(p) => set('to', p)} placeholder={t('Station, airport…')} />
           </div>
         ) : (
           kind !== 'note' && (
-            <PlaceSearch label="Where" value={it.location} onChange={(p) => set('location', p)} placeholder="Name or address" near={city} />
+            <PlaceSearch label={t('Where')} value={it.location} onChange={(p) => set('location', p)} placeholder={t('Name or address')} near={city} />
           )
         )}
 
         <div className="form-grid">
           {kind === 'stay' && (
             <label>
-              Nights
+              {t('Nights')}
               <input type="number" min={1} value={it.nights ?? 1} onChange={(e) => set('nights', Number(e.target.value))} />
             </label>
           )}
           {kind !== 'note' && (
             <>
               <label>
-                Booking ref
+                {t('Booking ref')}
                 <input value={it.bookingRef ?? ''} onChange={(e) => set('bookingRef', e.target.value)} />
               </label>
               <label>
-                Cost (total for everyone)
+                {t('Cost (total for everyone)')}
                 <div className="row">
                   <input
                     type="number"
@@ -332,11 +334,11 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
             </>
           )}
           <label className="full">
-            Link
-            <input type="url" value={it.url ?? ''} onChange={(e) => set('url', e.target.value)} placeholder="https://… e.g. an AllTrails trail, booking or ticket page" />
+            {t('Link')}
+            <input type="url" value={it.url ?? ''} onChange={(e) => set('url', e.target.value)} placeholder={t('https://… e.g. an AllTrails trail, booking or ticket page')} />
           </label>
           <label className="full">
-            Notes
+            {t('Notes')}
             <textarea style={{ minHeight: 70 }} value={it.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
           </label>
         </div>
@@ -346,11 +348,11 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
           {!isNew ? (
             <div className="row">
               <button type="button" className="btn-danger btn-ghost" onClick={remove}>
-                Delete
+                {t('Delete')}
               </button>
               {backupable && (
                 <button type="button" className="btn-ghost" onClick={toBackup}>
-                  🧺 Back to backup
+                  {t('🧺 Back to backup')}
                 </button>
               )}
             </div>
@@ -359,10 +361,10 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
           )}
           <div className="row">
             <button type="button" onClick={onClose}>
-              Cancel
+              {t('Cancel')}
             </button>
             <button type="button" className="btn-primary" onClick={save}>
-              Save
+              {t('Save')}
             </button>
           </div>
         </div>
@@ -371,7 +373,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
 
   if (isNew) {
     return (
-      <Modal title="Add to the plan" onClose={onClose}>
+      <Modal title={t('Add to the plan')} onClose={onClose}>
         <div className="stack">{formAndActions}</div>
       </Modal>
     )
@@ -393,12 +395,12 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
           <div className="stack" style={{ gap: 4 }}>
             <p className="small" style={{ margin: 0 }}>
               {legText(saved.legIn, distance)}
-              {saved.legIn.fromName ? ` from ${saved.legIn.fromName}` : ''}
+              {saved.legIn.fromName ? ` ${t('from {name}', { name: saved.legIn.fromName })}` : ''}
             </p>
             <div className="row wrap">
               {[
-                { label: '🚇 Public transport (real times)', href: transitLink({ lat: saved.legIn.geometry[0][1], lon: saved.legIn.geometry[0][0] }, { lat: saved.location.lat, lon: saved.location.lon }) },
-                { label: '🚕 Uber / taxi', href: taxiLink({ lat: saved.legIn.geometry[0][1], lon: saved.legIn.geometry[0][0] }, { lat: saved.location.lat, lon: saved.location.lon }) },
+                { label: t('🚇 Public transport (real times)'), href: transitLink({ lat: saved.legIn.geometry[0][1], lon: saved.legIn.geometry[0][0] }, { lat: saved.location.lat, lon: saved.location.lon }) },
+                { label: t('🚕 Uber / taxi'), href: taxiLink({ lat: saved.legIn.geometry[0][1], lon: saved.legIn.geometry[0][0] }, { lat: saved.location.lat, lon: saved.location.lon }) },
               ].map((l) => (
                 <a key={l.label} className="btn btn-sm btn-ghost" href={l.href} target="_blank" rel="noreferrer">
                   {l.label}
@@ -418,7 +420,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
           />
         )}
         <details className="card tight edit-panel" open={editOpen} onToggle={(e) => setEditOpen(e.currentTarget.open)}>
-          <summary>✏️ Edit details</summary>
+          <summary>{t('✏️ Edit details')}</summary>
           <div className="stack" style={{ marginTop: 12 }}>
             {formAndActions}
           </div>
@@ -427,11 +429,11 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
           <div className="row" style={{ justifyContent: backupable ? 'space-between' : 'flex-end' }}>
             {backupable && (
               <button type="button" className="btn-ghost" onClick={toBackup}>
-                🧺 Back to backup
+                {t('🧺 Back to backup')}
               </button>
             )}
             <button type="button" onClick={onClose}>
-              Close
+              {t('Close')}
             </button>
           </div>
         )}
@@ -455,7 +457,7 @@ function ItemSummary({ item }: { item: Item }) {
         {(item.status !== 'planned' || needsBooking(item.kind)) && <StatusBadge status={item.status} />}
         {item.bookingRef && (
           <span className="small">
-            Ref <b style={{ fontFamily: 'ui-monospace, monospace', letterSpacing: '0.05em' }}>{item.bookingRef}</b>
+            {t('Ref')} <b style={{ fontFamily: 'ui-monospace, monospace', letterSpacing: '0.05em' }}>{item.bookingRef}</b>
           </span>
         )}
       </div>
@@ -468,16 +470,16 @@ function ItemSummary({ item }: { item: Item }) {
 function placeholderFor(kind: ItemKind) {
   switch (kind) {
     case 'flight':
-      return 'e.g. Flight to Rome (AZ 123)'
+      return t('e.g. Flight to Rome (AZ 123)')
     case 'train':
-      return 'e.g. Train Florence → Venice'
+      return t('e.g. Train Florence → Venice')
     case 'stay':
-      return 'e.g. Hotel near the Duomo'
+      return t('e.g. Hotel near the Duomo')
     case 'meal':
-      return 'e.g. Lunch at the market'
+      return t('e.g. Lunch at the market')
     case 'walk':
-      return 'e.g. Old town walk'
+      return t('e.g. Old town walk')
     default:
-      return 'e.g. Visit the cathedral'
+      return t('e.g. Visit the cathedral')
   }
 }

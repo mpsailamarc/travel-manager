@@ -11,7 +11,7 @@ import { isHome } from '../lib/home'
 import { ItemEditor } from '../components/ItemEditor'
 import { applyCityPlan, linkWishlistToPlan, sendToBackup, CATEGORY_META, categoryMeta, cityDates, dayCapacity, favMinutes, fillUntimed, isIndoor, planDays, sameCity } from '../lib/favorites'
 import { addDays, dateRange, daysBetween, formatDate, formatDuration, hhmmToMin, today } from '../lib/dates'
-import { distance, plural } from '../lib/format'
+import { distance } from '../lib/format'
 import { haversineM, type LatLon } from '../lib/geo'
 import { useAsync, useMapSize, useOnline } from '../lib/hooks'
 import { uid } from '../lib/ids'
@@ -26,6 +26,7 @@ import LazyMap, { type MapMarker, type MapViewState } from '../components/LazyMa
 import { tripadvisorSearch } from '../lib/links'
 import { AnswerBox, PromptBox, useAiWords } from './IdeasPage'
 import { useTripCtx } from './TripLayout'
+import { t, tn } from '../i18n'
 
 /** One thing on a day: a plan item (the itinerary's, yours, or one the City planner made from the wishlist), a wishlist place, or both. */
 interface Entry {
@@ -105,7 +106,7 @@ export default function FavoritesPage() {
       addedAt: Date.now(),
       ...(match ? { date: match.date, itemId: match.id, pinned: true } : {}),
     })
-    toast(match ? `🎯 ${f.name} is already in your plan on day ${daysBetween(trip.startDate, match.date) + 1}: linked` : `🧺 ${f.name} added to the backup ideas · “Plan my days” puts it on a day`)
+    toast(match ? t('🎯 {name} is already in your plan on day {n}: linked', { name: f.name, n: daysBetween(trip.startDate, match.date) + 1 }) : t('🧺 {name} added to the backup ideas · “Plan my days” puts it on a day', { name: f.name }))
   }
 
   async function removeFav(f: Favorite) {
@@ -173,7 +174,7 @@ export default function FavoritesPage() {
   /** Anything on a day goes to the backup ideas: a wishlist place loses its day; a plan item becomes a backup idea. */
   async function entryToBackup(e: Entry) {
     const it = e.item
-    if (booked(it) && !confirm(`“${it!.title}” is ${it!.status === 'booked' ? 'booked' : 'pinned 📌'} on this day. Move it to the backup ideas anyway?`)) return
+    if (booked(it) && !confirm(it!.status === 'booked' ? t('“{title}” is booked on this day. Move it to the backup ideas anyway?', { title: it!.title }) : t('“{title}” is pinned 📌 on this day. Move it to the backup ideas anyway?', { title: it!.title }))) return
     if (e.fav) {
       if (it) await db.items.delete(it.id)
       await db.favorites.update(e.fav.id, {
@@ -183,7 +184,7 @@ export default function FavoritesPage() {
       })
     } else if (it) await sendToBackup(it)
     await rebuild([it?.date ?? e.fav?.date])
-    toast(`🧺 ${entryName(e)} is now a backup idea`)
+    toast(t('🧺 {name} is now a backup idea', { name: entryName(e) }))
   }
 
   /** To another day: it gets a time there around what's already planned (a booked or 📌 item keeps its time). */
@@ -205,12 +206,12 @@ export default function FavoritesPage() {
     )
     await rebuild([it.date, date])
     if (!booked(it)) await fillUntimed(trip.id, date, settings)
-    toast(`${entryName(e)} moved to day ${dayNo(date)}`)
+    toast(t('{name} moved to day {n}', { name: entryName(e), n: dayNo(date) }))
   }
 
   async function entryRemove(e: Entry) {
     const it = e.item
-    if (!confirm(`Remove “${entryName(e)}” from the trip?${booked(it) ? ' It is booked or pinned.' : ''}`)) return
+    if (!confirm(t('Remove “{name}” from the trip?', { name: entryName(e) }) + (booked(it) ? ` ${t('It is booked or pinned.')}` : ''))) return
     if (e.fav) await db.favorites.delete(e.fav.id)
     if (it) await db.items.delete(it.id)
     await rebuild([it?.date ?? e.fav?.date])
@@ -233,7 +234,7 @@ export default function FavoritesPage() {
       await applyCityPlan(trip, city, plannable, settings)
       const backups = [...assign.values()].filter((d) => !d).length
       const used = new Set([...assign.values()].filter(Boolean)).size
-      toast(`Spread over ${plural(used, 'day')}${backups ? ` · ${backups} kept as backup ideas (days are full)` : ''}`)
+      toast(t('Spread over {days}', { days: tn(used, '{n} day', '{n} days') }) + (backups ? ` · ${tn(backups, '{n} kept as backup idea (days are full)', '{n} kept as backup ideas (days are full)')}` : ''))
     } finally {
       setBusy(false)
     }
@@ -245,9 +246,9 @@ export default function FavoritesPage() {
   /** "Day 3" when this place is already on one of the city's days (as a wishlist place or a plan item), else nothing. */
   const inPlan = (p: { name: string; lat?: number; lon?: number; wikidata?: string }) => {
     const fav = findFav(p.name, p.wikidata)
-    if (fav?.date && dates.includes(fav.date)) return `Day ${dayNo(fav.date)}`
+    if (fav?.date && dates.includes(fav.date)) return t('Day {n}', { n: dayNo(fav.date) })
     const it = placesIn(dates).find((i) => matchesPlace(i, p))
-    return it ? `Day ${dayNo(it.date)}` : undefined
+    return it ? t('Day {n}', { n: dayNo(it.date) }) : undefined
   }
   // Days of the trip with no city (for instance after stretching the trip): offered to this city.
   const unassigned = dateRange(trip.startDate, trip.endDate).filter((d) => !days.find((x) => x.date === d)?.city)
@@ -262,7 +263,7 @@ export default function FavoritesPage() {
         lon: cityInfo?.lon,
       })
     }
-    toast(`${plural(unassigned.length, 'day')} added to ${city}`)
+    toast(t('{days} added to {city}', { days: tn(unassigned.length, '{n} day', '{n} days'), city }))
   }
   /** Everything on a day, in time order: plan items (with their wishlist place, when they have one) and wishlist places not yet planned. */
   const entriesOn = (d: string): Entry[] => {
@@ -430,11 +431,11 @@ export default function FavoritesPage() {
           lon: focusStart.lon,
           label: 'S',
           variant: 'start',
-          title: focusStart.name ?? 'Start',
+          title: focusStart.name ?? t('Start'),
         })
       // Tonight's hotel, when it isn't where the day started (a moving day).
       const end = focusRoute?.end
-      if (end && !(focusStart && Math.abs(focusStart.lat - end.lat) < 1e-3 && Math.abs(focusStart.lon - end.lon) < 1e-3)) m.push({ id: 'end', lat: end.lat, lon: end.lon, label: '🏨', variant: 'start', title: `Tonight: ${end.name}` })
+      if (end && !(focusStart && Math.abs(focusStart.lat - end.lat) < 1e-3 && Math.abs(focusStart.lon - end.lon) < 1e-3)) m.push({ id: 'end', lat: end.lat, lon: end.lon, label: '🏨', variant: 'start', title: t('Tonight: {name}', { name: end.name }) })
       focusRoute?.stops.forEach(({ item: it, at }, n) => {
         const f = cityFavs.find((x) => x.id === it.favId || x.itemId === it.id)
         m.push({
@@ -493,7 +494,7 @@ export default function FavoritesPage() {
       <div className="row wrap" style={{ gap: 6 }}>
         <div className="chips grow">
           {cities.map((c) => (
-            <button key={c.name} className={`chip ${sameCity(c.name, city) ? 'on' : ''}`} onClick={() => setParams({ city: c.name })} title={`${plural(activityCount(c.name), 'activity', 'activities')} planned`}>
+            <button key={c.name} className={`chip ${sameCity(c.name, city) ? 'on' : ''}`} onClick={() => setParams({ city: c.name })} title={t('{activities} planned', { activities: tn(activityCount(c.name), '{n} activity', '{n} activities') })}>
               {c.name}
               {activityCount(c.name) > 0 && ` · ${activityCount(c.name)}`}
             </button>
@@ -501,12 +502,12 @@ export default function FavoritesPage() {
           {city && !cities.some((c) => sameCity(c.name, city)) && <button className="chip on">{city}</button>}
         </div>
         <button className="btn-sm" onClick={() => setCityOpen((o) => !o)}>
-          {cityOpen ? 'Hide' : '＋ Another city'}
+          {cityOpen ? t('Hide') : t('＋ Another city')}
         </button>
       </div>
       {cityOpen && (
         <PlaceSearch
-          label="Search for a city"
+          label={t('Search for a city')}
           value={other}
           onChange={(p) => {
             setOther(p)
@@ -515,7 +516,7 @@ export default function FavoritesPage() {
               setCityOpen(false)
             }
           }}
-          placeholder="e.g. Sintra"
+          placeholder={t('e.g. Sintra')}
         />
       )}
     </div>
@@ -528,18 +529,20 @@ export default function FavoritesPage() {
       {city && unassigned.length > 0 && (
         <div className="notice info row wrap between">
           <span>
-            {unassigned.length === 1 ? 'Day' : 'Days'} {unassigned.map((d) => dayNo(d)).join(', ')} {unassigned.length === 1 ? 'has' : 'have'} no city yet, so {unassigned.length === 1 ? 'it is' : 'they are'} not listed below.
+            {unassigned.length === 1
+              ? t('Day {days} has no city yet, so it is not listed below.', { days: unassigned.map((d) => dayNo(d)).join(', ') })
+              : t('Days {days} have no city yet, so they are not listed below.', { days: unassigned.map((d) => dayNo(d)).join(', ') })}
           </span>
           <button className="btn-sm" onClick={assignDays}>
-            Spend {unassigned.length === 1 ? 'it' : 'them'} in {city}
+            {unassigned.length === 1 ? t('Spend it in {city}', { city }) : t('Spend them in {city}', { city })}
           </button>
         </div>
       )}
 
       {!city && (
         <div className="card">
-          <Empty emoji="🏙️" title="Pick a city">
-            Set cities on your days (Plan tab), or search for one above.
+          <Empty emoji="🏙️" title={t('Pick a city')}>
+            {t('Set cities on your days (Plan tab), or search for one above.')}
           </Empty>
         </div>
       )}
@@ -550,35 +553,37 @@ export default function FavoritesPage() {
           <div className="stack">
             <div className="card stack">
               <div className="row between wrap">
-                <h3>🗺️ {city}: your days</h3>
+                <h3>{t('🗺️ {city}: your days', { city })}</h3>
                 <span className="small muted">
-                  {plural(
-                    dates.reduce((n, d) => n + entriesOn(d).length, 0),
-                    'activity',
-                    'activities',
-                  )}{' '}
-                  over {plural(dates.length, 'day')} · {plural(backups.length, 'backup idea')}
+                  {t('{activities} over {days} · {backups}', {
+                    activities: tn(
+                      dates.reduce((n, d) => n + entriesOn(d).length, 0),
+                      '{n} activity',
+                      '{n} activities',
+                    ),
+                    days: tn(dates.length, '{n} day', '{n} days'),
+                    backups: tn(backups.length, '{n} backup idea', '{n} backup ideas'),
+                  })}
                 </span>
               </div>
               {dates.length > 0 ? (
                 <>
                   <p className="small muted">
-                    Each day lists everything planned there. Move anything to another day or to the backup ideas with its menu. “Plan my days” spreads the backup ideas and new places over the days, by
-                    area and your pace, and gives everything a time; days you pick yourself are kept.
+                    {t('Each day lists everything planned there. Move anything to another day or to the backup ideas with its menu. “Plan my days” spreads the backup ideas and new places over the days, by area and your pace, and gives everything a time; days you pick yourself are kept.')}
                   </p>
                   <div className="row wrap">
                     <button className="btn-primary" disabled={busy || !plannable.length} onClick={planMyDays}>
-                      {busy ? 'Planning…' : '✨ Plan my days'}
+                      {busy ? t('Planning…') : t('✨ Plan my days')}
                     </button>
                     <Link className="btn btn-ghost" to="../plan">
-                      See the plan →
+                      {t('See the plan →')}
                     </Link>
                   </div>
                 </>
               ) : (
-                <div className="notice info">No day of the trip is in {city} yet. Set the city on a day (Plan tab) to plan your backup ideas over it.</div>
+                <div className="notice info">{t('No day of the trip is in {city} yet. Set the city on a day (Plan tab) to plan your backup ideas over it.', { city })}</div>
               )}
-              {cityFavs.length === 0 && <p className="small muted">Tap ＋ on things to do (below) to keep them as backup ideas, or tap one to read about it first.</p>}
+              {cityFavs.length === 0 && <p className="small muted">{t('Tap ＋ on things to do (below) to keep them as backup ideas, or tap one to read about it first.')}</p>}
             </div>
 
             {dates.map((d) => {
@@ -586,20 +591,20 @@ export default function FavoritesPage() {
               const pace = dayCapacity(trip, [], d)
               const used = list.reduce((sum, e) => sum + entryMinutes(e), 0)
               const open = openDays[d] ?? (d >= today() && dates.length <= 3) // past days start folded
-              const status = d < today() ? 'past' : used >= pace ? `${formatDuration(used * 60)} planned · full` : `${formatDuration(used * 60)} of ${formatDuration(pace * 60)} planned`
+              const status = d < today() ? t('past') : used >= pace ? t('{time} planned · full', { time: formatDuration(used * 60) }) : t('{time} of {total} planned', { time: formatDuration(used * 60), total: formatDuration(pace * 60) })
               return (
                 <Section
                   key={d}
                   open={open}
                   onToggle={() => setOpenDays((o) => ({ ...o, [d]: !open }))}
-                  title={`Day ${dayNo(d)} · ${formatDate(d)}`}
-                  summary={`· ${plural(list.length, 'activity', 'activities')} · ${status}`}
+                  title={`${t('Day {n}', { n: dayNo(d) })} · ${formatDate(d)}`}
+                  summary={`· ${tn(list.length, '{n} activity', '{n} activities')} · ${status}`}
                 >
                   <Progress value={used} max={pace || 1} over={used > pace} />
                   {list.some((e) => (e.item?.location?.lat ?? e.fav?.lat) != null) && (
                     <div className="row wrap">
                       <button className="btn-sm" onClick={() => showOnMap(d)}>
-                        🗺️ Show this day on the map
+                        {t('🗺️ Show this day on the map')}
                       </button>
                       <OptimiseDayButton tripId={trip.id} date={d} settings={settings} />
                     </div>
@@ -618,7 +623,7 @@ export default function FavoritesPage() {
                       }}
                     />
                   )}
-                  {list.length === 0 && <span className="small muted">Nothing planned yet: add backup ideas or new places, then “Plan my days”.</span>}
+                  {list.length === 0 && <span className="small muted">{t('Nothing planned yet: add backup ideas or new places, then “Plan my days”.')}</span>}
                   {list.map((e) => (
                     <EntryRow
                       key={e.key}
@@ -637,7 +642,7 @@ export default function FavoritesPage() {
             })}
 
             {backups.length > 0 && (
-              <Section open={backupsOpen} onToggle={() => setBackupsOpen((o) => !o)} title="🧺 Backup ideas" summary={`· ${backups.length} · not on a day, shown on Today when plans change`}>
+              <Section open={backupsOpen} onToggle={() => setBackupsOpen((o) => !o)} title={t('🧺 Backup ideas')} summary={t('· {n} · not on a day, shown on Today when plans change', { n: backups.length })}>
                 {[...backups].sort((a, b) => (b.interest?.stars ?? 0) - (a.interest?.stars ?? 0)).map((f) => (
                   <FavRow key={f.id} fav={f} dates={dates} dayNo={dayNo} onOpen={() => openFav(f)} onMove={(dt) => move(f, dt)} onRemove={() => removeFav(f)} />
                 ))}
@@ -649,11 +654,11 @@ export default function FavoritesPage() {
             {center && (
               <div ref={mapBox} className="card stack" style={{ gap: 8 }}>
                 <div className="row between">
-                  <b>🗺️ Map</b>
+                  <b>{t('🗺️ Map')}</b>
                   <div className="chips">
                     {(['small', 'large', 'hidden'] as const).map((v) => (
                       <button key={v} className={`chip ${mapSize === v ? 'on' : ''}`} onClick={() => setMapSize(v)}>
-                        {v === 'small' ? 'Small' : v === 'large' ? 'Large' : 'Hide'}
+                        {v === 'small' ? t('Small') : v === 'large' ? t('Large') : t('Hide')}
                       </button>
                     ))}
                   </div>
@@ -661,11 +666,11 @@ export default function FavoritesPage() {
                 {dates.length > 0 && (
                   <div className="chips">
                     <button className={`chip ${!focus ? 'on' : ''}`} onClick={() => setFocus(undefined)}>
-                      All
+                      {t('All')}
                     </button>
                     {dates.map((d) => (
                       <button key={d} className={`chip ${focus === d ? 'on' : ''}`} onClick={() => showOnMap(d)}>
-                        Day {dayNo(d)}
+                        {t('Day {n}', { n: dayNo(d) })}
                       </button>
                     ))}
                   </div>
@@ -673,12 +678,12 @@ export default function FavoritesPage() {
                 {focus && (
                   <div className="small stack" style={{ gap: 2 }}>
                     <b>
-                      Day {dayNo(focus)} · {formatDate(focus)}
+                      {t('Day {n}', { n: dayNo(focus) })} · {formatDate(focus)}
                     </b>
                     {focusRoute?.stops.length ? (
                       <>
                         <span className="muted">
-                          {focusRoute.stops.length} {focusRoute.stops.length === 1 ? 'place' : 'places'} · {GET_AROUND_LABEL[days.find((x) => x.date === focus)?.getAround ?? settings.getAround ?? 'transit']}
+                          {tn(focusRoute.stops.length, '{n} place', '{n} places')} · {GET_AROUND_LABEL[days.find((x) => x.date === focus)?.getAround ?? settings.getAround ?? 'transit']}
                         </span>
                         <ol style={{ margin: 0, paddingLeft: 20 }}>
                           {focusRoute.stops.map(({ item: it, leg }) => (
@@ -704,31 +709,31 @@ export default function FavoritesPage() {
                                   it.title
                                 )
                               })()}
-                              {!it.planner && !it.favId && <span className="tiny muted"> · from your plan</span>}
+                              {!it.planner && !it.favId && <span className="tiny muted">{t(' · from your plan')}</span>}
                               {leg && (
                                 <div className="tiny muted">
                                   {legText(leg, distance)}
-                                  {leg.fromName ? ` from ${leg.fromName}` : ''}
+                                  {leg.fromName ? t(' from {name}', { name: leg.fromName }) : ''}
                                 </div>
                               )}
                             </li>
                           ))}
                         </ol>
                         <Link to={`../today?date=${focus}`} className="small">
-                          Open this day in Day by day →
+                          {t('Open this day in Day by day →')}
                         </Link>
                       </>
                     ) : (
-                      <span className="muted">Nothing with a location on this day yet. Add backup ideas, then “Plan my days”.</span>
+                      <span className="muted">{t('Nothing with a location on this day yet. Add backup ideas, then “Plan my days”.')}</span>
                     )}
                   </div>
                 )}
                 {mapSize !== 'hidden' && !focus && (
                   <div className="row wrap" style={{ gap: 6 }}>
-                    <span className="tiny muted">{searched ? 'Things to do follow the map: they are from the area on screen.' : 'Move or zoom the map and things to do follow what’s on screen.'}</span>
+                    <span className="tiny muted">{searched ? t('Things to do follow the map: they are from the area on screen.') : t('Move or zoom the map and things to do follow what’s on screen.')}</span>
                     {searched && (
                       <button className="btn-sm" onClick={() => setSearched(undefined)}>
-                        ↩ Back to the city centre
+                        {t('↩ Back to the city centre')}
                       </button>
                     )}
                   </div>
@@ -737,7 +742,7 @@ export default function FavoritesPage() {
               </div>
             )}
 
-            <Section open={findIsOpen} onToggle={() => setFindOpen(!findIsOpen)} title="🔎 Things to do" summary={findIsOpen ? undefined : '· sights and ChatGPT ideas · add your own'}>
+            <Section open={findIsOpen} onToggle={() => setFindOpen(!findIsOpen)} title={t('🔎 Things to do')} summary={findIsOpen ? undefined : t('· sights and ChatGPT ideas · add your own')}>
               <IdeasStatus
                 city={city}
                 api={api}
@@ -752,14 +757,14 @@ export default function FavoritesPage() {
                   placesIn(dates).map((i) => i.title),
                 )}
                 text={ideasText}
-                onText={(t) => setCityIdeasText(trip.id, city, t)}
+                onText={(x) => setCityIdeasText(trip.id, city, x)}
               />
               <ThingsToDo
                 city={city}
                 pois={sights.data}
                 ideas={ideasRead.ideas}
                 loading={sights.loading}
-                error={sights.error ? (online ? 'The free sights services are busy — try again in a minute.' : 'You are offline — sights load when you are back online.') : undefined}
+                error={sights.error ? (online ? t('The free sights services are busy — try again in a minute.') : t('You are offline — sights load when you are back online.')) : undefined}
                 noCenter={!center}
                 isFav={(name, wikidata) => !!findFav(name, wikidata)}
                 inPlan={inPlan}
@@ -773,7 +778,7 @@ export default function FavoritesPage() {
               />
               <details className="card tight">
                 <summary className="small strong" style={{ cursor: 'pointer' }}>
-                  ✏️ Add your own
+                  {t('✏️ Add your own')}
                 </summary>
                 <div style={{ marginTop: 8 }}>
                   <OwnIdea city={city} onAdd={addFav} />
@@ -814,11 +819,11 @@ export default function FavoritesPage() {
           dayPicker={
             shown &&
             dates.length > 0 && (
-              <select className="btn-sm" style={{ width: 'auto', minHeight: 36 }} value={shown.date && dates.includes(shown.date) ? shown.date : ''} onChange={(e) => move(shown, e.target.value || undefined)} aria-label="Day">
-                <option value="">Backup (no day)</option>
+              <select className="btn-sm" style={{ width: 'auto', minHeight: 36 }} value={shown.date && dates.includes(shown.date) ? shown.date : ''} onChange={(e) => move(shown, e.target.value || undefined)} aria-label={t('Day')}>
+                <option value="">{t('Backup (no day)')}</option>
                 {dates.map((d) => (
                   <option key={d} value={d}>
-                    Day {dayNo(d)} · {formatDate(d)}
+                    {t('Day {n}', { n: dayNo(d) })} · {formatDate(d)}
                   </option>
                 ))}
               </select>
@@ -833,21 +838,21 @@ export default function FavoritesPage() {
 /** How the day's walking tour is built: where and when it starts, and whether it ends back at the start. Changing one rebuilds the walk. */
 function WalkSettings({ day, stay, defaultAround, onSave }: { day?: Day; stay?: string; defaultAround: GetAround; onSave: (changes: Partial<Day>) => void }) {
   const [place, setPlace] = useState<Place | undefined>(day?.walkStart)
-  const from = day?.walkStart?.name ?? stay ?? `${day?.city ?? 'city'} centre`
+  const from = day?.walkStart?.name ?? stay ?? (day?.city ? t('{city} centre', { city: day.city }) : t('city centre'))
   return (
     <details className="card tight">
       <summary className="small strong" style={{ cursor: 'pointer' }}>
-        🧭 The day's route · {day?.walkStartTime ? `starts ${day.walkStartTime}` : 'starts after what is already planned'} · from {from}
-        {day?.walkRoundTrip === false ? ' · no way back counted' : ' · ends at the hotel'} · {GET_AROUND_LABEL[day?.getAround ?? defaultAround].slice(0, 2)}
+        {t("🧭 The day's route")} · {day?.walkStartTime ? t('starts {time}', { time: day.walkStartTime }) : t('starts after what is already planned')} · {t('from {name}', { name: from })}
+        {day?.walkRoundTrip === false ? t(' · no way back counted') : t(' · ends at the hotel')} · {GET_AROUND_LABEL[day?.getAround ?? defaultAround].slice(0, 2)}
       </summary>
       <div className="stack" style={{ marginTop: 8, gap: 8 }}>
         <div className="form-grid">
           <label>
-            Start time
+            {t('Start time')}
             <input type="time" defaultValue={day?.walkStartTime ?? ''} onBlur={(e) => e.target.value !== (day?.walkStartTime ?? '') && onSave({ walkStartTime: e.target.value || undefined })} />
           </label>
           <label className="full">
-            Between places
+            {t('Between places')}
             <select
               value={day?.getAround ?? ''}
               onChange={(e) =>
@@ -856,7 +861,7 @@ function WalkSettings({ day, stay, defaultAround, onSave }: { day?: Day; stay?: 
                 })
               }
             >
-              <option value="">Default ({GET_AROUND_LABEL[defaultAround]})</option>
+              <option value="">{t('Default ({label})', { label: GET_AROUND_LABEL[defaultAround] })}</option>
               {(Object.keys(GET_AROUND_LABEL) as GetAround[]).map((k) => (
                 <option key={k} value={k}>
                   {GET_AROUND_LABEL[k]}
@@ -865,17 +870,17 @@ function WalkSettings({ day, stay, defaultAround, onSave }: { day?: Day; stay?: 
             </select>
           </label>
           <label className="inline" style={{ alignSelf: 'end' }}>
-            <input type="checkbox" checked={day?.walkRoundTrip !== false} onChange={(e) => onSave({ walkRoundTrip: e.target.checked ? undefined : false })} /> End the day at the hotel
+            <input type="checkbox" checked={day?.walkRoundTrip !== false} onChange={(e) => onSave({ walkRoundTrip: e.target.checked ? undefined : false })} /> {t('End the day at the hotel')}
           </label>
         </div>
         <PlaceSearch
-          label="Start from"
+          label={t('Start from')}
           value={place}
           onChange={(p) => {
             setPlace(p)
             if (p?.lat != null) onSave({ walkStart: p })
           }}
-          placeholder={`Default: ${stay ?? 'the city centre'}. Type a hotel or station, then Find`}
+          placeholder={t('Default: {place}. Type a hotel or station, then Find', { place: stay ?? t('the city centre') })}
         />
         <div className="row wrap">
           {day?.walkStart && (
@@ -886,12 +891,12 @@ function WalkSettings({ day, stay, defaultAround, onSave }: { day?: Day; stay?: 
                 onSave({ walkStart: undefined })
               }}
             >
-              ↩ Start from {stay ?? 'the city centre'}
+              {t('↩ Start from {place}', { place: stay ?? t('the city centre') })}
             </button>
           )}
           {day?.walkStartTime && (
             <button className="btn-sm" onClick={() => onSave({ walkStartTime: undefined })}>
-              ↩ Start time automatic
+              {t('↩ Start time automatic')}
             </button>
           )}
         </div>
@@ -909,8 +914,8 @@ function TripadvisorLink({ name, city }: { name: string; city: string }) {
       href={tripadvisorSearch(name, city)}
       target="_blank"
       rel="noreferrer"
-      title="Find on Tripadvisor"
-      aria-label={`Find ${name} on Tripadvisor`}
+      title={t('Find on Tripadvisor')}
+      aria-label={t('Find {name} on Tripadvisor', { name })}
       onClick={(e) => e.stopPropagation()}
     >
       🦉
@@ -929,23 +934,23 @@ function FavRow({ fav: f, dates, dayNo, onOpen, onMove, onRemove }: { fav: Favor
         </div>
         <div className="tiny muted">
           ~{formatDuration(f.visitMin * 60)}
-          {isIndoor(f) && ' · indoor'}
-          {f.lat == null && ' · no location'}
-          {f.pinned && ' · 📌 your choice'}
-          {f.itemId && ` · in your plan${f.date && !dates.includes(f.date) ? ` (day ${dayNo(f.date)})` : ''}`}
+          {isIndoor(f) && t(' · indoor')}
+          {f.lat == null && t(' · no location')}
+          {f.pinned && t(' · 📌 your choice')}
+          {f.itemId && (f.date && !dates.includes(f.date) ? t(' · in your plan (day {n})', { n: dayNo(f.date) }) : t(' · in your plan'))}
           {f.notes && ` · ${f.notes}`}
         </div>
       </div>
       <TripadvisorLink name={f.name} city={f.city} />
-      <select className="btn-sm" style={{ width: 'auto', minHeight: 30, padding: '2px 6px' }} value={f.date && dates.includes(f.date) ? f.date : ''} onChange={(e) => onMove(e.target.value || undefined)} aria-label="Day">
-        <option value="">Backup</option>
+      <select className="btn-sm" style={{ width: 'auto', minHeight: 30, padding: '2px 6px' }} value={f.date && dates.includes(f.date) ? f.date : ''} onChange={(e) => onMove(e.target.value || undefined)} aria-label={t('Day')}>
+        <option value="">{t('Backup')}</option>
         {dates.map((d) => (
           <option key={d} value={d}>
-            Day {dayNo(d)}
+            {t('Day {n}', { n: dayNo(d) })}
           </option>
         ))}
       </select>
-      <button className="icon-btn" onClick={onRemove} aria-label="Remove">
+      <button className="icon-btn" onClick={onRemove} aria-label={t('Remove')}>
         ✕
       </button>
     </div>
@@ -974,7 +979,7 @@ function EntryRow({
   const f = e.fav
   const emoji = f ? categoryMeta(f.category).emoji : KIND_META[it!.kind].emoji
   const name = f?.name ?? it!.title
-  const from = it?.status === 'booked' ? '✅ booked' : f ? (f.source === 'ai' ? '✨ ChatGPT idea' : f.source === 'sight' ? '🏛️ sight' : '✏️ yours') : '📋 from your plan'
+  const from = it?.status === 'booked' ? t('✅ booked') : f ? (f.source === 'ai' ? t('✨ ChatGPT idea') : f.source === 'sight' ? t('🏛️ sight') : t('✏️ yours')) : t('📋 from your plan')
   return (
     <div className="row" style={{ alignItems: 'center' }}>
       <span style={{ fontSize: '1.2rem' }}>{emoji}</span>
@@ -986,20 +991,20 @@ function EntryRow({
         </div>
         <div className="tiny muted">
           ~{formatDuration(entryMinutes(e) * 60)} · {from}
-          {!it && ' · not timed yet'}
+          {!it && t(' · not timed yet')}
           {(it?.notes ?? f?.notes) && ` · ${it?.notes ?? f?.notes}`}
         </div>
       </div>
       <TripadvisorLink name={name} city={f?.city ?? ''} />
-      <select className="btn-sm" style={{ width: 'auto', minHeight: 30, padding: '2px 6px' }} value={date} onChange={(ev) => onMove(ev.target.value || undefined)} aria-label="Day">
-        <option value="">🧺 Backup</option>
+      <select className="btn-sm" style={{ width: 'auto', minHeight: 30, padding: '2px 6px' }} value={date} onChange={(ev) => onMove(ev.target.value || undefined)} aria-label={t('Day')}>
+        <option value="">{t('🧺 Backup')}</option>
         {dates.map((d) => (
           <option key={d} value={d}>
-            Day {dayNo(d)}
+            {t('Day {n}', { n: dayNo(d) })}
           </option>
         ))}
       </select>
-      <button className="icon-btn" onClick={onRemove} aria-label="Remove">
+      <button className="icon-btn" onClick={onRemove} aria-label={t('Remove')}>
         ✕
       </button>
     </div>
@@ -1019,19 +1024,19 @@ function IdeasStatus(p: {
   onText: (t: string) => void
 }) {
   if (p.api) {
-    if (p.status === 'asking') return <p className="small muted">✨ Asking ChatGPT for ideas in {p.city}… they'll join the list below.</p>
+    if (p.status === 'asking') return <p className="small muted">{t("✨ Asking ChatGPT for ideas in {city}… they'll join the list below.", { city: p.city })}</p>
     const err = typeof p.status === 'object' ? p.status.error : p.error
     return (
       <div className="row wrap" style={{ gap: 6 }}>
         {err ? (
           <span className="small" style={{ color: 'var(--danger, #b91c1c)' }}>
-            ChatGPT ideas: {err}
+            {t('ChatGPT ideas: {error}', { error: err })}
           </span>
         ) : (
-          p.count > 0 && <span className="tiny muted">✨ {p.count} ideas from ChatGPT are in the list.</span>
+          p.count > 0 && <span className="tiny muted">{tn(p.count, '✨ {n} idea from ChatGPT is in the list.', '✨ {n} ideas from ChatGPT are in the list.')}</span>
         )}
         <button className="btn-sm btn-ghost" onClick={p.onAsk}>
-          {err || !p.count ? '✨ Ask ChatGPT for ideas' : '↻ New ideas'}
+          {err || !p.count ? t('✨ Ask ChatGPT for ideas') : t('↻ New ideas')}
         </button>
       </div>
     )
@@ -1039,12 +1044,12 @@ function IdeasStatus(p: {
   return (
     <details className="card tight">
       <summary className="small strong" style={{ cursor: 'pointer' }}>
-        ✨ {p.count ? `${p.count} ChatGPT ideas in the list · change them` : 'Add ChatGPT ideas'}
+        ✨ {p.count ? tn(p.count, '{n} ChatGPT idea in the list · change them', '{n} ChatGPT ideas in the list · change them') : t('Add ChatGPT ideas')}
       </summary>
       <div className="stack" style={{ gap: 8, marginTop: 8 }}>
-        <p className="tiny muted">Restaurants, experiences and day trips that map data misses. Copy the prompt into a free chatbot and paste its answer: the ideas join the list.</p>
+        <p className="tiny muted">{t('Restaurants, experiences and day trips that map data misses. Copy the prompt into a free chatbot and paste its answer: the ideas join the list.')}</p>
         <PromptBox prompt={p.prompt} onAnswer={p.onText} />
-        <AnswerBox label="Paste the chatbot's answer" minHeight={80} value={p.text} placeholder='{"ideas": [ … ]}' onChange={p.onText} />
+        <AnswerBox label={t("Paste the chatbot's answer")} minHeight={80} value={p.text} placeholder='{"ideas": [ … ]}' onChange={p.onText} />
         {p.error && <div className="notice error">{p.error}</div>}
       </div>
     </details>
@@ -1125,19 +1130,19 @@ function ThingsToDo(p: {
   const cats = [...new Set(things.map((t) => t.category))]
   return (
     <div className="stack" style={{ gap: 8 }}>
-      {p.noCenter && <p className="small muted">This city has no coordinates yet, so sights can't be found on the map — tap “Find” on the day's city (Plan tab) or search above.</p>}
+      {p.noCenter && <p className="small muted">{t("This city has no coordinates yet, so sights can't be found on the map — tap “Find” on the day's city (Plan tab) or search above.")}</p>}
       <div className="chips">
         <button className={`chip ${sort === 'interest' ? 'on' : ''}`} onClick={() => setSort('interest')}>
-          ★ Most interesting first
+          {t('★ Most interesting first')}
         </button>
         <button className={`chip ${sort === 'near' ? 'on' : ''}`} onClick={() => setSort('near')}>
-          📍 Nearest first
+          {t('📍 Nearest first')}
         </button>
       </div>
       {cats.length > 1 && (
         <div className="chips">
           <button className={`chip ${!cat ? 'on' : ''}`} onClick={() => setCat(undefined)}>
-            All
+            {t('All')}
           </button>
           {cats.map((c) => (
             <button key={c} className={`chip ${cat === c ? 'on' : ''}`} onClick={() => setCat(c)}>
@@ -1146,47 +1151,47 @@ function ThingsToDo(p: {
           ))}
         </div>
       )}
-      {p.loading && <p className="small muted">Loading sights…</p>}
-      {!p.loading && p.rating && <p className="tiny muted">Rating how well known each place is…</p>}
-      {!p.loading && !p.rating && p.interest.size > 0 && <p className="tiny muted">Stars show how widely a place is written about on Wikipedia, not visitor reviews. ✨ marks ChatGPT's ideas.</p>}
+      {p.loading && <p className="small muted">{t('Loading sights…')}</p>}
+      {!p.loading && p.rating && <p className="tiny muted">{t('Rating how well known each place is…')}</p>}
+      {!p.loading && !p.rating && p.interest.size > 0 && <p className="tiny muted">{t("Stars show how widely a place is written about on Wikipedia, not visitor reviews. ✨ marks ChatGPT's ideas.")}</p>}
       {p.error && <div className="notice error">{p.error}</div>}
       <div className="poi-list">
-        {list.map((t) => {
-          const fav = p.isFav(t.name, t.poi?.wikidata)
+        {list.map((th) => {
+          const fav = p.isFav(th.name, th.poi?.wikidata)
           const planned = p.inPlan({
-            name: t.name,
-            lat: t.lat,
-            lon: t.lon,
-            wikidata: t.poi?.wikidata,
+            name: th.name,
+            lat: th.lat,
+            lon: th.lon,
+            wikidata: th.poi?.wikidata,
           })
           return (
-            <div key={t.key} className={`poi ${fav || planned ? 'on' : ''}`} onClick={() => (t.poi ? p.onOpenSight(t.poi) : p.onOpenIdea(t.idea!))}>
-              <span style={{ fontSize: '1.3rem' }}>{categoryMeta(t.category).emoji}</span>
+            <div key={th.key} className={`poi ${fav || planned ? 'on' : ''}`} onClick={() => (th.poi ? p.onOpenSight(th.poi) : p.onOpenIdea(th.idea!))}>
+              <span style={{ fontSize: '1.3rem' }}>{categoryMeta(th.category).emoji}</span>
               <div className="grow">
                 <div className="strong small">
-                  {t.name} {t.stars != null && <Stars value={t.stars} title={interestTier(t.stars)} />}
-                  {(t.idea || t.both) && <span title="Suggested by ChatGPT"> ✨</span>}
+                  {th.name} {th.stars != null && <Stars value={th.stars} title={interestTier(th.stars)} />}
+                  {(th.idea || th.both) && <span title={t('Suggested by ChatGPT')}> ✨</span>}
                 </div>
                 <div className="tiny muted">
-                  {categoryMeta(t.category).label}
-                  {p.center && t.lat != null && t.lon != null && ` · ${distance(far(t))} from centre`}
-                  {t.visitMin ? ` · ~${formatDuration(t.visitMin * 60)}` : ''}
-                  {t.notes && ` · ${t.notes}`}
+                  {categoryMeta(th.category).label}
+                  {p.center && th.lat != null && th.lon != null && t(' · {distance} from centre', { distance: distance(far(th)) })}
+                  {th.visitMin ? ` · ~${formatDuration(th.visitMin * 60)}` : ''}
+                  {th.notes && ` · ${th.notes}`}
                 </div>
               </div>
-              <TripadvisorLink name={t.name} city={p.city} />
+              <TripadvisorLink name={th.name} city={p.city} />
               {planned ? (
-                <span className="badge done" title="Already on one of your days">
+                <span className="badge done" title={t('Already on one of your days')}>
                   📅 {planned}
                 </span>
               ) : (
                 <button
                   className={`btn-sm ${fav ? 'btn-primary' : ''}`}
-                  aria-label="Add to the backup ideas"
+                  aria-label={t('Add to the backup ideas')}
                   onClick={(ev) => {
                     ev.stopPropagation()
-                    if (t.poi) p.onToggleSight(t.poi)
-                    else p.onToggleIdea(t.idea!)
+                    if (th.poi) p.onToggleSight(th.poi)
+                    else p.onToggleIdea(th.idea!)
                   }}
                 >
                   {fav ? '✓' : '＋'}
@@ -1223,10 +1228,10 @@ function OwnIdea({ city, onAdd }: { city: string; onAdd: (f: Omit<Favorite, 'id'
   }
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <PlaceSearch label="Place or idea" value={place} onChange={setPlace} near={city} placeholder="e.g. the bakery my friend recommended" />
+      <PlaceSearch label={t('Place or idea')} value={place} onChange={setPlace} near={city} placeholder={t('e.g. the bakery my friend recommended')} />
       <div className="form-grid">
         <label>
-          Type
+          {t('Type')}
           <select value={category} onChange={(e) => setCategory(e.target.value)}>
             {Object.entries(CATEGORY_META).map(([k, c]) => (
               <option key={k} value={k}>
@@ -1236,7 +1241,7 @@ function OwnIdea({ city, onAdd }: { city: string; onAdd: (f: Omit<Favorite, 'id'
           </select>
         </label>
         <label>
-          Time there
+          {t('Time there')}
           <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
             {[15, 30, 45, 60, 90, 120, 180, 240, 420].map((m) => (
               <option key={m} value={m}>
@@ -1246,17 +1251,17 @@ function OwnIdea({ city, onAdd }: { city: string; onAdd: (f: Omit<Favorite, 'id'
           </select>
         </label>
         <label className="inline" style={{ alignSelf: 'end' }}>
-          <input type="checkbox" checked={indoor} onChange={(e) => setIndoor(e.target.checked)} /> Indoor
+          <input type="checkbox" checked={indoor} onChange={(e) => setIndoor(e.target.checked)} /> {t('Indoor')}
         </label>
         <label className="full">
-          Notes
+          {t('Notes')}
           <input value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
       </div>
-      <p className="tiny muted">Tap “Find” to attach a location so it can join a walking tour.</p>
+      <p className="tiny muted">{t('Tap “Find” to attach a location so it can join a walking tour.')}</p>
       <div>
         <button className="btn-primary" disabled={!place?.name} onClick={add}>
-          🧺 Add to backup ideas
+          {t('🧺 Add to backup ideas')}
         </button>
       </div>
     </div>

@@ -10,7 +10,7 @@ import { toast } from '../components/ui'
 import { SyncCard } from '../components/SyncCard'
 import { AiCard } from '../components/AiCard'
 import { getConfig } from '../lib/sync'
-import { lang, LANGS, setLang, t } from '../i18n'
+import { lang, LANGS, setLang, t, tn } from '../i18n'
 
 /** Drops the saved copy of the app (not your data) and reloads, so the newest version is fetched. */
 async function forceUpdate() {
@@ -21,7 +21,7 @@ async function forceUpdate() {
   } catch {
     /* reload anyway */
   }
-  toast('Updating…')
+  toast(t('Updating…'))
   setTimeout(() => location.reload(), 400)
 }
 
@@ -56,16 +56,16 @@ export default function SettingsPage() {
         </p>
       </div>
       <div className="card stack">
-        <h3>About you</h3>
+        <h3>{t('About you')}</h3>
         <div className="form-grid">
           <label>
-            Your name
+            {t('Your name')}
             <input defaultValue={s.name} key={s.name} onBlur={(e) => set({ name: e.target.value })} />
           </label>
           <label>
-            Nationality (passport)
+            {t('Nationality (passport)')}
             <select value={s.nationality} onChange={(e) => set({ nationality: e.target.value })}>
-              <option value="">Choose…</option>
+              <option value="">{t('Choose…')}</option>
               {COUNTRIES.map((c) => (
                 <option key={c.code} value={c.code}>
                   {flag(c.code)} {c.name}
@@ -74,7 +74,7 @@ export default function SettingsPage() {
             </select>
           </label>
           <label>
-            Home currency
+            {t('Home currency')}
             <select value={s.homeCurrency} onChange={(e) => set({ homeCurrency: e.target.value })}>
               {CURRENCIES.map((c) => (
                 <option key={c}>{c}</option>
@@ -82,39 +82,39 @@ export default function SettingsPage() {
             </select>
           </label>
           <label>
-            Home city or usual airport
-            <input defaultValue={s.homeAirport ?? ''} key={s.homeAirport} placeholder="e.g. Paris, or Paris CDG" onBlur={(e) => set({ homeAirport: e.target.value || undefined })} />
-            <span className="tiny muted">New trips (and trips with no start set) start and end here.</span>
+            {t('Home city or usual airport')}
+            <input defaultValue={s.homeAirport ?? ''} key={s.homeAirport} placeholder={t('e.g. Paris, or Paris CDG')} onBlur={(e) => set({ homeAirport: e.target.value || undefined })} />
+            <span className="tiny muted">{t('New trips (and trips with no start set) start and end here.')}</span>
           </label>
           <label>
-            Walking speed
+            {t('Walking speed')}
             <select value={s.walkSpeedKmh} onChange={(e) => set({ walkSpeedKmh: Number(e.target.value) })}>
-              <option value={3}>Slow — small kids (3 km/h)</option>
-              <option value={4}>Relaxed (4 km/h)</option>
-              <option value={4.5}>Normal (4.5 km/h)</option>
-              <option value={5.5}>Brisk (5.5 km/h)</option>
+              <option value={3}>{t('Slow — small kids (3 km/h)')}</option>
+              <option value={4}>{t('Relaxed (4 km/h)')}</option>
+              <option value={4.5}>{t('Normal (4.5 km/h)')}</option>
+              <option value={5.5}>{t('Brisk (5.5 km/h)')}</option>
             </select>
           </label>
           <label>
-            Short hop = walk up to
+            {t('Short hop = walk up to')}
             <select value={s.walkMaxMin ?? DEFAULT_WALK_MAX_MIN} onChange={(e) => set({ walkMaxMin: Number(e.target.value) })}>
               {[5, 10, 15, 20, 30].map((m) => (
                 <option key={m} value={m}>
-                  {m} min
+                  {t('{n} min', { n: m })}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Maps (Plan, Day by day, City planner)
+            {t('Maps (Plan, Day by day, City planner)')}
             <select value={s.mapSize ?? 'small'} onChange={(e) => set({ mapSize: e.target.value as 'small' | 'large' | 'hidden' })}>
-              <option value="small">Small</option>
-              <option value="large">Large</option>
-              <option value="hidden">Hidden (tap to show)</option>
+              <option value="small">{t('Small')}</option>
+              <option value="large">{t('Large')}</option>
+              <option value="hidden">{t('Hidden (tap to show)')}</option>
             </select>
           </label>
           <label className="full">
-            Between places in the City planner
+            {t('Between places in the City planner')}
             <select value={s.getAround ?? 'transit'} onChange={(e) => set({ getAround: e.target.value as GetAround })}>
               {(Object.keys(GET_AROUND_LABEL) as GetAround[]).map((k) => (
                 <option key={k} value={k}>
@@ -124,7 +124,7 @@ export default function SettingsPage() {
             </select>
           </label>
         </div>
-        <p className="tiny muted">Used for visa links, plug adapters, roaming advice, budget estimates and walking times. Synced between your devices if sync is on.</p>
+        <p className="tiny muted">{t('Used for visa links, plug adapters, roaming advice, budget estimates and walking times. Synced between your devices if sync is on.')}</p>
       </div>
 
       <SyncCard />
@@ -132,21 +132,21 @@ export default function SettingsPage() {
       <AiCard />
 
       <div className="card stack">
-        <h3>Your data</h3>
+        <h3>{t('Your data')}</h3>
         <p className="small">
-          Everything is stored in this browser on this device
-          {usage?.usage != null && ` (${bytes(usage.usage)} used)`}.{' '}
-          {getConfig() ? 'With sync on, a copy is also kept on your sync server, encrypted with your code.' : 'Nothing is sent to a server.'} Storage is{' '}
-          <b>{persisted ? 'persistent' : 'not yet persistent'}</b>.
+          {t('Everything is stored in this browser on this device')}
+          {usage?.usage != null && ` ${t('({size} used)', { size: bytes(usage.usage) })}`}.{' '}
+          {getConfig() ? t('With sync on, a copy is also kept on your sync server, encrypted with your code.') : t('Nothing is sent to a server.')} {t('Storage is')}{' '}
+          <b>{persisted ? t('persistent') : t('not yet persistent')}</b>.
         </p>
         <div className="row wrap">
           {!persisted && (
-            <button onClick={async () => toast((await requestPersistentStorage()) ? 'Storage is now persistent' : 'Declined — try installing the app first')}>
-              🔒 Keep my data
+            <button onClick={async () => toast((await requestPersistentStorage()) ? t('Storage is now persistent') : t('Declined — try installing the app first'))}>
+              {t('🔒 Keep my data')}
             </button>
           )}
-          <button onClick={async () => download(await exportEverything())}>💾 Back up all trips</button>
-          <button onClick={() => fileRef.current?.click()}>📥 Restore / import</button>
+          <button onClick={async () => download(await exportEverything())}>{t('💾 Back up all trips')}</button>
+          <button onClick={() => fileRef.current?.click()}>{t('📥 Restore / import')}</button>
           <input
             ref={fileRef}
             type="file"
@@ -157,7 +157,7 @@ export default function SettingsPage() {
               if (!f) return
               try {
                 const ids = await importAny(await f.text())
-                toast(`Imported ${ids.length} trip(s)`)
+                toast(tn(ids.length, 'Imported {n} trip', 'Imported {n} trips'))
               } catch (err) {
                 toast((err as Error).message)
               }
@@ -167,39 +167,38 @@ export default function SettingsPage() {
       </div>
 
       <div className="card stack">
-        <h3>App version</h3>
+        <h3>{t('App version')}</h3>
         <p className="small">
           <b>{__APP_VERSION__}</b>
         </p>
         <p className="small muted">
-          Installed apps keep a saved copy and can take a couple of opens to update. If this device behaves differently from another one, compare the version numbers —
-          and tap below to load the latest copy. Your trips and settings are not affected.
+          {t('Installed apps keep a saved copy and can take a couple of opens to update. If this device behaves differently from another one, compare the version numbers — and tap below to load the latest copy. Your trips and settings are not affected.')}
         </p>
         <div>
-          <button onClick={forceUpdate}>🔄 Force update</button>
+          <button onClick={forceUpdate}>{t('🔄 Force update')}</button>
         </div>
       </div>
 
       <div className="card stack">
-        <h3>Install on your phone</h3>
+        <h3>{t('Install on your phone')}</h3>
         <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
           <li>
-            <b>Android (Chrome):</b> menu ⋮ → <i>Install app</i> (or <i>Add to Home screen</i>).
+            <b>{t('Android (Chrome):')}</b> {t('menu ⋮ →')} <i>{t('Install app')}</i> ({t('or')} <i>{t('Add to Home screen')}</i>).
           </li>
           <li>
-            <b>iPhone (Safari):</b> Share button → <i>Add to Home Screen</i>.
+            <b>{t('iPhone (Safari):')}</b> {t('Share button →')} <i>{t('Add to Home Screen')}</i>.
           </li>
-          <li>Once installed, open each day once while online so maps and weather are cached for offline use.</li>
+          <li>{t('Once installed, open each day once while online so maps and weather are cached for offline use.')}</li>
         </ul>
       </div>
 
       <div className="card stack">
-        <h3>Free services used</h3>
+        <h3>{t('Free services used')}</h3>
         <p className="small muted">
-          Maps © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, tiles by <a href="https://openfreemap.org">OpenFreeMap</a> · Sights via
-          the Overpass API · Walking routes by <a href="https://routing.openstreetmap.de">FOSSGIS OSRM</a> · Place search by Nominatim · Descriptions & photos from
-          Wikipedia/Wikidata (CC BY-SA) · Weather by <a href="https://open-meteo.com">Open-Meteo</a> · Exchange rates by <a href="https://frankfurter.dev">Frankfurter</a>{' '}
-          (ECB) and <a href="https://www.exchangerate-api.com">Rates By Exchange Rate API</a>. All free for personal use, no accounts or keys.
+          {t('Maps ©')} <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, {t('tiles by')} <a href="https://openfreemap.org">OpenFreeMap</a> · {t('Sights via the Overpass API')} ·{' '}
+          {t('Walking routes by')} <a href="https://routing.openstreetmap.de">FOSSGIS OSRM</a> · {t('Place search by Nominatim')} · {t('Descriptions & photos from Wikipedia/Wikidata (CC BY-SA)')} ·{' '}
+          {t('Weather by')} <a href="https://open-meteo.com">Open-Meteo</a> · {t('Exchange rates by')} <a href="https://frankfurter.dev">Frankfurter</a>{' '}
+          (ECB) {t('and')} <a href="https://www.exchangerate-api.com">Rates By Exchange Rate API</a>. {t('All free for personal use, no accounts or keys.')}
         </p>
       </div>
     </div>

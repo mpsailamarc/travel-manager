@@ -1,0 +1,16 @@
+export default {
+  Flight: 'Vol',
+  Train: 'Train',
+  'Bus / tram': 'Bus / tram',
+  'Car rental (pick-up / return)': 'Location de voiture (prise / retour)',
+  'Self-drive (nothing to book)': 'Trajet en voiture (rien à réserver)',
+  'Ferry / boat': 'Ferry / bateau',
+  'Taxi / transfer': 'Taxi / transfert',
+  'Activity / sight': 'Activité / visite',
+  Meal: 'Repas',
+  'Walking tour': 'Balade à pied',
+  Idea: 'Idée',
+  'To book': 'À réserver',
+  Booked: 'Réservé',
+  Skipped: 'Ignoré',
+} as Record<string, string>

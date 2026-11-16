@@ -10,6 +10,7 @@ import { aiReady, askAI, getAiConfig } from './openai'
 import { sameCity } from './favorites'
 import { saveLocal } from './storage'
 import { isHome } from './home'
+import { t } from '../i18n'
 
 const key = (tripId: string, city: string) => `tm-cityideas:${tripId}:${city.trim().toLowerCase()}`
 const EVENT = 'tm-cityideas'
@@ -54,7 +55,7 @@ export async function askCityIdeas(tripId: string, city: string, settings: Setti
   changed()
   try {
     const trip = await db.trips.get(tripId)
-    if (!trip) throw new Error('The trip is gone.')
+    if (!trip) throw new Error(t('The trip is gone.'))
     const [days, items] = await Promise.all([db.days.where('tripId').equals(tripId).toArray(), db.items.where('tripId').equals(tripId).toArray()])
     const dates = new Set(days.filter((d) => sameCity(d.city, city)).map((d) => d.date))
     const planned = items.filter((i) => dates.has(i.date) && ['activity', 'meal', 'walk'].includes(i.kind) && i.status !== 'skipped').map((i) => i.title)

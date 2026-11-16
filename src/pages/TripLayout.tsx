@@ -9,7 +9,7 @@ import { forPace } from '../lib/legs'
 import type { Day, Item, Settings, Trip } from '../types'
 import { useDays, useItems, useSettings, useTrip } from '../lib/hooks'
 import { daysBetween, formatRange, today } from '../lib/dates'
-import { plural } from '../lib/format'
+import { t, tn } from '../i18n'
 import { Empty, toast } from '../components/ui'
 import { TripDetailsModal } from './TripDetailsModal'
 
@@ -30,17 +30,17 @@ export function tripPhase(trip: Trip, on = today()) {
 
 // `mobile` is the tab's place in the scrolling bottom bar (every tab is in it); the top tabs on a big screen use the list order.
 const TABS = [
-  { to: 'plan', label: 'Plan', emoji: '🗓️', mobile: 1 },
-  { to: 'today', label: 'Day by day', emoji: '📍', mobile: 2 },
-  { to: 'ideas', label: 'Ideas (AI)', emoji: '✨', mobile: 6 },
-  { to: 'favorites', label: 'City planner', emoji: '🗺️', mobile: 3 },
-  { to: 'checklist', label: 'Checklist', emoji: '✅', mobile: 4 },
-  { to: 'budget', label: 'Budget', emoji: '💶', mobile: 5 },
-  { to: 'essentials', label: 'Essentials', emoji: '🧭', mobile: 7 },
-  { to: 'docs', label: 'Docs', emoji: '📄', mobile: 8 },
-  { to: 'share', label: 'Share', emoji: '📤', mobile: 9 },
+  { to: 'plan', label: t('Plan'), emoji: '🗓️', mobile: 1 },
+  { to: 'today', label: t('Day by day'), emoji: '📍', mobile: 2 },
+  { to: 'ideas', label: t('Ideas (AI)'), emoji: '✨', mobile: 6 },
+  { to: 'favorites', label: t('City planner'), emoji: '🗺️', mobile: 3 },
+  { to: 'checklist', label: t('Checklist'), emoji: '✅', mobile: 4 },
+  { to: 'budget', label: t('Budget'), emoji: '💶', mobile: 5 },
+  { to: 'essentials', label: t('Essentials'), emoji: '🧭', mobile: 7 },
+  { to: 'docs', label: t('Docs'), emoji: '📄', mobile: 8 },
+  { to: 'share', label: t('Share'), emoji: '📤', mobile: 9 },
 ]
-const MORE_TAB = { to: 'more', label: 'More', emoji: '⋯', mobile: 10 }
+const MORE_TAB = { to: 'more', label: t('More'), emoji: '⋯', mobile: 10 }
 
 /**
  * The trip's sections. Once there's an itinerary, Ideas (AI) — mostly used to get it — moves into More (it stays a tab
@@ -48,7 +48,7 @@ const MORE_TAB = { to: 'more', label: 'More', emoji: '⋯', mobile: 10 }
  */
 function tabsFor(hasPlan: boolean, pathname: string) {
   if (!hasPlan || /\/ideas$/.test(pathname)) return TABS
-  return [...TABS.filter((t) => t.to !== 'ideas'), MORE_TAB]
+  return [...TABS.filter((x) => x.to !== 'ideas'), MORE_TAB]
 }
 
 /** The phone's bottom bar: all sections, scrolling sideways. The next tab peeks in and an arrow fades in while there is more. */
@@ -79,24 +79,24 @@ function BottomNav({ tabs }: { tabs: typeof TABS }) {
 
   const by = (dir: -1 | 1) => ref.current?.scrollBy({ left: dir * ref.current.clientWidth * 0.7, behavior: 'smooth' })
   return (
-    <nav className="bottom-nav" aria-label="Sections">
+    <nav className="bottom-nav" aria-label={t('Sections')}>
       <div className="bottom-nav-scroll" ref={ref}>
         {[...tabs]
           .sort((a, b) => a.mobile - b.mobile)
-          .map((t) => (
-            <NavLink key={t.to} to={t.to} className={({ isActive }) => (isActive ? 'active' : '')}>
-              <span>{t.emoji}</span>
-              {t.label}
+          .map((x) => (
+            <NavLink key={x.to} to={x.to} className={({ isActive }) => (isActive ? 'active' : '')}>
+              <span>{x.emoji}</span>
+              {x.label}
             </NavLink>
           ))}
       </div>
       {more.left && (
-        <button className="nav-arrow left" aria-label="Scroll the menu left" onClick={() => by(-1)}>
+        <button className="nav-arrow left" aria-label={t('Scroll the menu left')} onClick={() => by(-1)}>
           ‹
         </button>
       )}
       {more.right && (
-        <button className="nav-arrow right" aria-label="More sections: scroll the menu right" onClick={() => by(1)}>
+        <button className="nav-arrow right" aria-label={t('More sections: scroll the menu right')} onClick={() => by(1)}>
           ›
         </button>
       )}
@@ -134,20 +134,20 @@ export default function TripLayout() {
   useEffect(() => {
     if (!sig || !tripId) return
     const now = Date.now()
-    runs.current = [...runs.current.filter((t) => now - t < 20_000), now]
+    runs.current = [...runs.current.filter((x) => now - x < 20_000), now]
     if (runs.current.length > 8) {
       console.warn('Trip tidy-up paused: it kept changing the plan')
       return
     }
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const released = await reconcileTrip(tripId)
       if (released.length)
-        toast(`${released.length === 1 ? released[0] : `${released.length} places`} went back to the backup ideas: ${released.length === 1 ? 'its day' : 'their days'} changed city or left the trip.`, {
-          label: 'City planner',
+        toast(released.length === 1 ? t('{name} went back to the backup ideas: its day changed city or left the trip.', { name: released[0] }) : t('{n} places went back to the backup ideas: their days changed city or left the trip.', { n: released.length }), {
+          label: t('City planner'),
           run: () => navigate(`/trip/${tripId}/favorites`),
         })
     }, 500)
-    return () => clearTimeout(t)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig])
 
@@ -155,7 +155,7 @@ export default function TripLayout() {
     // Still loading or deleted: Dexie returns undefined for both, so show a neutral state.
     return (
       <div className="page">
-        <Empty emoji="🧭" title="Loading trip…" />
+        <Empty emoji="🧭" title={t('Loading trip…')} />
       </div>
     )
   }
@@ -173,21 +173,21 @@ export default function TripLayout() {
             <div className="grow">
               <h1 style={{ fontSize: '1.25rem' }}>{trip.name}</h1>
               <div className="small muted">
-                {formatRange(trip.startDate, trip.endDate)} · {plural(nights + 1, 'day')} ·{' '}
-                {ph.phase === 'before' && <b style={{ color: 'var(--accent)' }}>{ph.daysToGo === 1 ? 'tomorrow!' : `in ${ph.daysToGo} days`}</b>}
-                {ph.phase === 'during' && <b style={{ color: 'var(--primary)' }}>day {ph.dayNo} — on the road</b>}
-                {ph.phase === 'after' && 'finished'}
+                {formatRange(trip.startDate, trip.endDate)} · {tn(nights + 1, '{n} day', '{n} days')} ·{' '}
+                {ph.phase === 'before' && <b style={{ color: 'var(--accent)' }}>{ph.daysToGo === 1 ? t('tomorrow!') : t('in {n} days', { n: ph.daysToGo })}</b>}
+                {ph.phase === 'during' && <b style={{ color: 'var(--primary)' }}>{t('day {n} — on the road', { n: ph.dayNo })}</b>}
+                {ph.phase === 'after' && t('finished')}
               </div>
             </div>
           </div>
           <button className="btn-sm" onClick={() => setEditing(true)}>
-            ✏️ <span className="hide-mobile">Trip details</span>
+            ✏️ <span className="hide-mobile">{t('Trip details')}</span>
           </button>
         </div>
         <nav className="tabs top">
-          {tabs.map((t) => (
-            <NavLink key={t.to} to={t.to} className={({ isActive }) => (isActive ? 'active' : '')}>
-              {t.label}
+          {tabs.map((x) => (
+            <NavLink key={x.to} to={x.to} className={({ isActive }) => (isActive ? 'active' : '')}>
+              {x.label}
             </NavLink>
           ))}
         </nav>

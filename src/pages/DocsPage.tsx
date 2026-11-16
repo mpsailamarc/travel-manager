@@ -8,6 +8,7 @@ import { useAsync } from '../lib/hooks'
 import { Empty, Modal, toast } from '../components/ui'
 import { useTripCtx } from './TripLayout'
 import { Link } from 'react-router-dom'
+import { locale, t, tn } from '../i18n'
 
 export default function DocsPage() {
   const { trip } = useTripCtx()
@@ -20,7 +21,7 @@ export default function DocsPage() {
     for (const f of Array.from(files)) {
       await db.documents.add({ id: uid(), tripId: trip.id, name: f.name, mime: f.type, size: f.size, blob: f, addedAt: Date.now() })
     }
-    toast(`Saved ${files.length} file${files.length > 1 ? 's' : ''} on this device`)
+    toast(tn(files.length, 'Saved {n} file on this device', 'Saved {n} files on this device'))
     if (!persisted) await requestPersistentStorage()
   }
 
@@ -29,23 +30,23 @@ export default function DocsPage() {
       <div className="card stack">
         <div className="row between wrap">
           <div>
-            <h2>Travel documents</h2>
-            <p className="small muted">Passport scans, tickets, insurance, booking PDFs. Stored only on this device and available offline.</p>
+            <h2>{t('Travel documents')}</h2>
+            <p className="small muted">{t('Passport scans, tickets, insurance, booking PDFs. Stored only on this device and available offline.')}</p>
             <p className="small" style={{ margin: 0 }}>
-              <Link to="../ideas?tab=bookings">📧 Import a booking email</Link>
-              <span className="muted"> — paste a confirmation and the flight, hotel or ticket goes into the plan.</span>
+              <Link to="../ideas?tab=bookings">{t('📧 Import a booking email')}</Link>
+              <span className="muted"> {t('— paste a confirmation and the flight, hotel or ticket goes into the plan.')}</span>
             </p>
           </div>
           <button className="btn-primary" onClick={() => fileRef.current?.click()}>
-            + Add files
+            {t('+ Add files')}
           </button>
           <input ref={fileRef} type="file" multiple accept="image/*,application/pdf" hidden onChange={(e) => e.target.files?.length && add(e.target.files)} />
         </div>
         {persisted === false && (
           <div className="notice row wrap between">
-            <span>Your browser may clear stored files when space runs low. Allow persistent storage to keep them safe.</span>
-            <button className="btn-sm" onClick={async () => toast((await requestPersistentStorage()) ? 'Storage is now persistent' : 'The browser declined — installing the app usually helps')}>
-              Keep my files
+            <span>{t('Your browser may clear stored files when space runs low. Allow persistent storage to keep them safe.')}</span>
+            <button className="btn-sm" onClick={async () => toast((await requestPersistentStorage()) ? t('Storage is now persistent') : t('The browser declined — installing the app usually helps'))}>
+              {t('Keep my files')}
             </button>
           </div>
         )}
@@ -53,8 +54,8 @@ export default function DocsPage() {
 
       {docs && docs.length === 0 && (
         <div className="card">
-          <Empty emoji="📄" title="No documents yet">
-            Add photos of passports (photo page), insurance policy, e-tickets and hotel confirmations.
+          <Empty emoji="📄" title={t('No documents yet')}>
+            {t('Add photos of passports (photo page), insurance policy, e-tickets and hotel confirmations.')}
           </Empty>
         </div>
       )}
@@ -68,7 +69,7 @@ export default function DocsPage() {
                 {d.name}
               </div>
               <div className="tiny muted">
-                {bytes(d.size)} · {new Date(d.addedAt).toLocaleDateString()}
+                {bytes(d.size)} · {new Date(d.addedAt).toLocaleDateString(locale())}
               </div>
             </div>
           </div>
@@ -87,7 +88,7 @@ function DocViewer({ doc, onClose }: { doc: TripDocument; onClose: () => void })
     onClose()
   }
   async function remove() {
-    if (!confirm(`Delete ${doc.name} from this device?`)) return
+    if (!confirm(t('Delete {name} from this device?', { name: doc.name }))) return
     await db.documents.delete(doc.id)
     close()
   }
@@ -99,14 +100,14 @@ function DocViewer({ doc, onClose }: { doc: TripDocument; onClose: () => void })
         ) : doc.mime === 'application/pdf' ? (
           <iframe src={url} title={doc.name} style={{ width: '100%', height: '65dvh', border: 'none', borderRadius: 12 }} />
         ) : (
-          <p className="muted">Preview not available.</p>
+          <p className="muted">{t('Preview not available.')}</p>
         )}
         <div className="row between">
           <button className="btn-ghost btn-danger" onClick={remove}>
-            Delete
+            {t('Delete')}
           </button>
           <a className="btn" href={url} download={doc.name}>
-            Open / save
+            {t('Open / save')}
           </a>
         </div>
       </div>

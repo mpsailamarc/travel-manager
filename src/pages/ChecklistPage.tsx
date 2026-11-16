@@ -4,6 +4,7 @@ import { db } from '../db'
 import type { ChecklistCategory, ChecklistItem, Item } from '../types'
 import { CHECKLIST_CATEGORIES } from '../types'
 import { CATEGORY_LABELS, refreshChecklist } from '../lib/checklist'
+import { t, tn } from '../i18n'
 import { daysBetween, formatDate, today } from '../lib/dates'
 import { uid } from '../lib/ids'
 import { KIND_META, isTransport } from '../components/kinds'
@@ -24,7 +25,7 @@ export default function ChecklistPage() {
     if (refreshed.current === trip.id) return
     refreshed.current = trip.id
     refreshChecklist(trip.id, settings).then(({ added, removed }) => {
-      if (added || removed) toast(`Checklist updated from your plan: ${added} added${removed ? `, ${removed} no longer needed` : ''}`)
+      if (added || removed) toast(removed ? t('Checklist updated from your plan: {added} added, {removed} no longer needed', { added, removed }) : t('Checklist updated from your plan: {added} added', { added }))
     })
   }, [trip.id, settings])
 
@@ -46,7 +47,7 @@ export default function ChecklistPage() {
     if (!it) return
     if (!c.done && (it.status === 'idea' || it.status === 'planned')) {
       await db.items.update(it.id, { status: 'booked' })
-      toast(`${it.title} is now marked as booked in your plan`)
+      toast(t('{title} is now marked as booked in your plan', { title: it.title }))
     } else if (c.done && it.status === 'booked') {
       await db.items.update(it.id, { status: 'planned' })
     }
@@ -57,7 +58,7 @@ export default function ChecklistPage() {
 
   async function generate() {
     const { added, removed } = await refreshChecklist(trip.id, settings)
-    toast(added || removed ? `${added} added${removed ? `, ${removed} no longer needed` : ''}` : 'Checklist is up to date')
+    toast(added || removed ? (removed ? t('{added} added, {removed} no longer needed', { added, removed }) : t('{added} added', { added })) : t('Checklist is up to date'))
   }
 
   const itemsById = new Map(items.map((i) => [i.id, i]))
@@ -73,37 +74,37 @@ export default function ChecklistPage() {
       <div className="card stack">
         <div className="row between wrap">
           <div>
-            <h2>Before you go</h2>
+            <h2>{t('Before you go')}</h2>
             <p className="small muted">
-              {done} of {list.length} done
-              {trip.startDate > now && ` · ${daysBetween(now, trip.startDate)} days to go`}
+              {t('{done} of {total} done', { done, total: list.length })}
+              {trip.startDate > now && ` · ${tn(daysBetween(now, trip.startDate), '{n} day to go', '{n} days to go')}`}
             </p>
           </div>
           <div className="row wrap">
-            <button onClick={generate}>🔄 Suggest items</button>
+            <button onClick={generate}>{t('🔄 Suggest items')}</button>
             <button className="btn-primary" onClick={() => setEditing({ category: 'other' })}>
-              + Add
+              {t('+ Add')}
             </button>
           </div>
         </div>
         <Progress value={done} max={list.length} />
         <div className="row between wrap">
           <label className="inline small">
-            <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> Hide done
+            <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} /> {t('Hide done')}
           </label>
           <button className="btn-sm" onClick={() => setOpenCats(openCats.size ? new Set() : new Set(byCat.map((g) => g.cat)))}>
-            {openCats.size ? 'Collapse all' : 'Expand all'}
+            {openCats.size ? t('Collapse all') : t('Expand all')}
           </button>
         </div>
-        {!settings.nationality && <div className="notice">Set your nationality in Settings to get visa, plug and roaming advice that fits you.</div>}
+        {!settings.nationality && <div className="notice">{t('Set your nationality in Settings to get visa, plug and roaming advice that fits you.')}</div>}
       </div>
 
       {list.length === 0 && (
         <div className="card">
-          <Empty emoji="✅" title="No checklist yet">
-            <p style={{ marginBottom: 12 }}>Generate one from your destinations, travellers and itinerary — it updates as your plan changes.</p>
+          <Empty emoji="✅" title={t('No checklist yet')}>
+            <p style={{ marginBottom: 12 }}>{t('Generate one from your destinations, travellers and itinerary — it updates as your plan changes.')}</p>
             <button className="btn-primary" onClick={generate}>
-              Generate my checklist
+              {t('Generate my checklist')}
             </button>
           </Empty>
         </div>
@@ -125,7 +126,7 @@ export default function ChecklistPage() {
               })
             }
             title={`${CATEGORY_LABELS[cat].emoji} ${CATEGORY_LABELS[cat].label}`}
-            summary={`· ${rows.filter((r) => r.done).length}/${rows.length}${overdue ? ` · ${overdue} overdue` : ''}`}
+            summary={`· ${rows.filter((r) => r.done).length}/${rows.length}${overdue ? ` · ${t('{n} overdue', { n: overdue })}` : ''}`}
           >
             <div>
               {cat === 'bookings'
@@ -155,10 +156,10 @@ export default function ChecklistPage() {
 }
 
 const BOOKING_GROUPS = [
-  { key: 'stays', label: '🛏️ Accommodation' },
-  { key: 'transport', label: '✈️ Transport' },
-  { key: 'tickets', label: '🎟️ Tickets & activities' },
-  { key: 'other', label: '📌 Other bookings' },
+  { key: 'stays', label: t('🛏️ Accommodation') },
+  { key: 'transport', label: t('✈️ Transport') },
+  { key: 'tickets', label: t('🎟️ Tickets & activities') },
+  { key: 'other', label: t('📌 Other bookings') },
 ] as const
 
 /** Which plan item a booking entry is about (from its rule id), to show the right icon and group. */
@@ -195,13 +196,12 @@ function CheckRow({ c, icon, now, onToggle, onEdit }: { c: ChecklistItem; icon?:
         <div className="row wrap" style={{ gap: 6, marginTop: 2 }}>
           {c.dueDate && (
             <span className={`badge ${overdue ? 'danger' : ''}`}>
-              {overdue ? 'Overdue · ' : 'By '}
-              {formatDate(c.dueDate)}
+              {overdue ? t('Overdue · {date}', { date: formatDate(c.dueDate) }) : t('By {date}', { date: formatDate(c.dueDate) })}
             </span>
           )}
           {c.link && (
             <a className="small" href={c.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-              {c.link.includes('booking.com/searchresults') ? '🔎 Find a place on Booking.com ↗' : `${linkLabel(c.link)} ↗`}
+              {c.link.includes('booking.com/searchresults') ? t('🔎 Find a place on Booking.com ↗') : `${linkLabel(c.link)} ↗`}
             </a>
           )}
           {c.altLink && (
@@ -245,15 +245,15 @@ function ChecklistEditor({ tripId, item, onClose }: { tripId: string; item: Part
     onClose()
   }
   return (
-    <Modal title={c.id ? 'Edit item' : 'New checklist item'} onClose={onClose}>
+    <Modal title={c.id ? t('Edit item') : t('New checklist item')} onClose={onClose}>
       <div className="stack">
         <label>
-          What needs doing?
+          {t('What needs doing?')}
           <input autoFocus value={c.title ?? ''} onChange={(e) => setC({ ...c, title: e.target.value })} />
         </label>
         <div className="form-grid">
           <label>
-            Category
+            {t('Category')}
             <select value={c.category} onChange={(e) => setC({ ...c, category: e.target.value as ChecklistCategory })}>
               {CHECKLIST_CATEGORIES.map((k) => (
                 <option key={k} value={k}>
@@ -263,31 +263,31 @@ function ChecklistEditor({ tripId, item, onClose }: { tripId: string; item: Part
             </select>
           </label>
           <label>
-            Do by
+            {t('Do by')}
             <input type="date" value={c.dueDate ?? ''} onChange={(e) => setC({ ...c, dueDate: e.target.value })} />
           </label>
           <label className="full">
-            Link
+            {t('Link')}
             <input value={c.link ?? ''} onChange={(e) => setC({ ...c, link: e.target.value })} />
           </label>
           <label className="full">
-            Notes
+            {t('Notes')}
             <textarea style={{ minHeight: 70 }} value={c.notes ?? ''} onChange={(e) => setC({ ...c, notes: e.target.value })} />
           </label>
         </div>
-        {c.ruleId && <p className="tiny muted">Suggested automatically from your plan. If you delete it, it won't come back.</p>}
+        {c.ruleId && <p className="tiny muted">{t("Suggested automatically from your plan. If you delete it, it won't come back.")}</p>}
         <div className="row between">
           {c.id ? (
             <button className="btn-ghost btn-danger" onClick={remove}>
-              Delete
+              {t('Delete')}
             </button>
           ) : (
             <span />
           )}
           <div className="row">
-            <button onClick={onClose}>Cancel</button>
+            <button onClick={onClose}>{t('Cancel')}</button>
             <button className="btn-primary" onClick={save}>
-              Save
+              {t('Save')}
             </button>
           </div>
         </div>

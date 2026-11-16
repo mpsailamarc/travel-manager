@@ -8,6 +8,7 @@ import { formatRange } from '../lib/dates'
 import { countryLabel } from '../lib/countries'
 import { useSettings } from '../lib/hooks'
 import { Empty, toast } from '../components/ui'
+import { t, tn } from '../i18n'
 import { tripPhase } from './TripLayout'
 import type { Trip } from '../types'
 
@@ -19,80 +20,80 @@ export default function HomePage() {
 
   if (!trips) return <div className="page" />
 
-  const current = trips.filter((t) => tripPhase(t).phase === 'during')
-  const upcoming = trips.filter((t) => tripPhase(t).phase === 'before')
-  const past = trips.filter((t) => tripPhase(t).phase === 'after').reverse()
+  const current = trips.filter((x) => tripPhase(x).phase === 'during')
+  const upcoming = trips.filter((x) => tripPhase(x).phase === 'before')
+  const past = trips.filter((x) => tripPhase(x).phase === 'after').reverse()
 
   async function demo() {
     const id = await createDemoTrip()
-    toast('Demo trip created')
+    toast(t('Demo trip created'))
     navigate(`/trip/${id}/today`)
   }
 
   async function onImport(file: File) {
     try {
       const ids = await importAny(await file.text())
-      toast(`Imported ${ids.length} trip${ids.length > 1 ? 's' : ''}`)
+      toast(tn(ids.length, 'Imported {n} trip', 'Imported {n} trips'))
       if (ids.length === 1) navigate(`/trip/${ids[0]}`)
     } catch (e) {
-      toast((e as Error).message || 'Could not read that file')
+      toast((e as Error).message || t('Could not read that file'))
     }
   }
 
   return (
     <div className="page stack-lg">
-      {current.map((t) => (
-        <Link key={t.id} to={`/trip/${t.id}/today`} className="card hero trip-card">
+      {current.map((c) => (
+        <Link key={c.id} to={`/trip/${c.id}/today`} className="card hero trip-card">
           <div className="row">
-            <span className="trip-emoji">{t.coverEmoji}</span>
+            <span className="trip-emoji">{c.coverEmoji}</span>
             <div className="grow">
-              <div className="small muted">You're travelling · day {tripPhase(t).dayNo}</div>
-              <h2>{t.name}</h2>
+              <div className="small muted">{t("You're travelling · day {n}", { n: tripPhase(c).dayNo ?? '' })}</div>
+              <h2>{c.name}</h2>
             </div>
-            <span className="btn">Open day by day →</span>
+            <span className="btn">{t('Open day by day →')}</span>
           </div>
         </Link>
       ))}
 
       {!settings.nationality && (
         <div className="notice info row wrap between">
-          <span>Set your nationality and home currency so checklists (visas, plugs, roaming) and budgets fit you.</span>
+          <span>{t('Set your nationality and home currency so checklists (visas, plugs, roaming) and budgets fit you.')}</span>
           <Link to="/settings" className="btn btn-sm">
-            Settings
+            {t('Settings')}
           </Link>
         </div>
       )}
 
       <div className="row wrap between">
-        <h1>Your trips</h1>
+        <h1>{t('Your trips')}</h1>
         <div className="row wrap">
-          <button onClick={() => fileRef.current?.click()}>📥 Import</button>
+          <button onClick={() => fileRef.current?.click()}>{t('📥 Import')}</button>
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && onImport(e.target.files[0])} />
-          <button onClick={demo}>🇵🇹 Demo trip</button>
+          <button onClick={demo}>{t('🇵🇹 Demo trip')}</button>
           <Link to="/new" className="btn btn-primary">
-            + Plan a new trip
+            {t('+ Plan a new trip')}
           </Link>
         </div>
       </div>
 
       {trips.length === 0 && (
         <div className="card">
-          <Empty emoji="🧭" title="No trips yet">
+          <Empty emoji="🧭" title={t('No trips yet')}>
             <p style={{ maxWidth: 460, margin: '0 auto 14px' }}>
-              Answer a few questions to get itinerary ideas, a budget and a checklist — or load the demo trip to see what the app does while you travel.
+              {t('Answer a few questions to get itinerary ideas, a budget and a checklist — or load the demo trip to see what the app does while you travel.')}
             </p>
             <div className="row" style={{ justifyContent: 'center' }}>
-              <button onClick={demo}>Load the demo trip</button>
+              <button onClick={demo}>{t('Load the demo trip')}</button>
               <Link to="/new" className="btn btn-primary">
-                Plan a trip
+                {t('Plan a trip')}
               </Link>
             </div>
           </Empty>
         </div>
       )}
 
-      <TripGroup title="Coming up" trips={upcoming} />
-      <TripGroup title="Past trips" trips={past} />
+      <TripGroup title={t('Coming up')} trips={upcoming} />
+      <TripGroup title={t('Past trips')} trips={past} />
     </div>
   )
 }
@@ -100,17 +101,17 @@ export default function HomePage() {
 function TripGroup({ title, trips }: { title: string; trips: Trip[] }) {
   const navigate = useNavigate()
   // A copy to try things on (other dates, cities, pace), the original untouched — the same as in Trip details.
-  async function duplicate(t: Trip) {
-    const name = prompt('Name of the copy', `${t.name} (copy)`)
+  async function duplicate(tp: Trip) {
+    const name = prompt(t('Name of the copy'), t('{name} (copy)', { name: tp.name }))
     if (!name?.trim()) return
-    const id = await duplicateTrip(t.id, name.trim())
-    toast(`📄 “${name.trim()}” created: a copy to try things on, the original is unchanged`)
+    const id = await duplicateTrip(tp.id, name.trim())
+    toast(t('📄 “{name}” created: a copy to try things on, the original is unchanged', { name: name.trim() }))
     navigate(`/trip/${id}/plan`)
   }
-  async function remove(t: Trip) {
-    if (!confirm(`Remove "${t.name}" and everything in it (plan, checklist, expenses, documents)? This can't be undone.`)) return
-    await deleteTrip(t.id)
-    toast(`🗑️ “${t.name}” removed`)
+  async function remove(tp: Trip) {
+    if (!confirm(t('Remove "{name}" and everything in it (plan, checklist, expenses, documents)? This can\'t be undone.', { name: tp.name }))) return
+    await deleteTrip(tp.id)
+    toast(t('🗑️ “{name}” removed', { name: tp.name }))
   }
   if (!trips.length) return null
   return (
@@ -119,41 +120,41 @@ function TripGroup({ title, trips }: { title: string; trips: Trip[] }) {
         {title}
       </h2>
       <div className="grid-3">
-        {trips.map((t) => {
-          const ph = tripPhase(t)
+        {trips.map((tp) => {
+          const ph = tripPhase(tp)
           return (
-            <Link key={t.id} to={`/trip/${t.id}`} className="card trip-card stack" style={{ gap: 6 }}>
+            <Link key={tp.id} to={`/trip/${tp.id}`} className="card trip-card stack" style={{ gap: 6 }}>
               <div className="row between">
-                <span className="trip-emoji">{t.coverEmoji}</span>
-                {ph.phase === 'before' && <span className="badge planned">in {ph.daysToGo} days</span>}
+                <span className="trip-emoji">{tp.coverEmoji}</span>
+                {ph.phase === 'before' && <span className="badge planned">{tn(ph.daysToGo, 'in {n} day', 'in {n} days')}</span>}
               </div>
-              <h3>{t.name}</h3>
-              <div className="small muted">{formatRange(t.startDate, t.endDate)}</div>
-              <div className="small">{t.countryCodes.map(countryLabel).join(' · ') || t.cities.join(' · ')}</div>
+              <h3>{tp.name}</h3>
+              <div className="small muted">{formatRange(tp.startDate, tp.endDate)}</div>
+              <div className="small">{tp.countryCodes.map(countryLabel).join(' · ') || tp.cities.join(' · ')}</div>
               <div>
                 <button
                   type="button"
                   className="btn-sm btn-ghost"
-                  title="A copy of this trip to try other dates, cities or pace"
+                  title={t('A copy of this trip to try other dates, cities or pace')}
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    void duplicate(t)
+                    void duplicate(tp)
                   }}
                 >
-                  📄 Duplicate
+                  {t('📄 Duplicate')}
                 </button>{' '}
                 <button
                   type="button"
                   className="btn-sm btn-ghost"
-                  title="Delete this trip and everything in it"
+                  title={t('Delete this trip and everything in it')}
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    void remove(t)
+                    void remove(tp)
                   }}
                 >
-                  🗑️ Remove
+                  {t('🗑️ Remove')}
                 </button>
               </div>
             </Link>

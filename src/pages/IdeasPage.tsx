@@ -5,7 +5,7 @@ import { OptionMap } from '../components/OptionMap'
 import { refreshChecklist } from '../lib/checklist'
 import { BUDGET_LABELS } from '../lib/budget'
 import { addDays, daysBetween, formatDate } from '../lib/dates'
-import { money, plural } from '../lib/format'
+import { money } from '../lib/format'
 import { countryLabel } from '../lib/countries'
 import { KIND_META } from '../components/kinds'
 import { copyText, toast } from '../components/ui'
@@ -16,6 +16,7 @@ import { BUDGET_LEVELS, STYLES } from './TripFields'
 import { useTripCtx } from './TripLayout'
 import { saveLocal } from '../lib/storage'
 import type { Trip } from '../types'
+import { t, tn } from '../i18n'
 
 type Tab = 'ideas' | 'bookings' | 'template'
 
@@ -27,13 +28,13 @@ export default function IdeasPage() {
     <div className="stack-lg">
       <div className="chips">
         <button className={`chip ${tab === 'ideas' ? 'on' : ''}`} onClick={() => setTab('ideas')}>
-          ✨ Itinerary ideas
+          {t('✨ Itinerary ideas')}
         </button>
         <button className={`chip ${tab === 'bookings' ? 'on' : ''}`} onClick={() => setTab('bookings')}>
-          📧 Import booking emails
+          {t('📧 Import booking emails')}
         </button>
         <button className={`chip ${tab === 'template' ? 'on' : ''}`} onClick={() => setTab('template')}>
-          🧱 Quick template (no AI)
+          {t('🧱 Quick template (no AI)')}
         </button>
       </div>
       {tab === 'ideas' && <ItineraryIdeas />}
@@ -45,12 +46,12 @@ export default function IdeasPage() {
 
 function Steps() {
   const api = aiReady(useAiConfig())
-  const steps = api ? ['Press “Ask ChatGPT”', 'It fills in the answer for you', 'Check it and use it'] : ['Copy the prompt', 'Paste it in a free chatbot', 'Paste its answer back here']
+  const steps = api ? [t('Press “Ask ChatGPT”'), t('It fills in the answer for you'), t('Check it and use it')] : [t('Copy the prompt'), t('Paste it in a free chatbot'), t('Paste its answer back here')]
   return (
     <div className="info-grid">
       {steps.map((v, i) => (
         <div key={i} className="info-tile">
-          <div className="k">Step {i + 1}</div>
+          <div className="k">{t('Step {n}', { n: i + 1 })}</div>
           <div className="v">{v}</div>
         </div>
       ))}
@@ -101,11 +102,11 @@ export function PromptBox({
   const copyRow = (
     <div className="row wrap">
       <button className={api ? '' : 'btn-primary'} onClick={() => copyText(prompt)}>
-        📋 Copy the prompt
+        {t('📋 Copy the prompt')}
       </button>
       {CHATBOTS.map((c) => (
         <a key={c.name} className="btn" href={c.url} target="_blank" rel="noreferrer">
-          Open {c.name} ↗
+          {t('Open {name} ↗', { name: c.name })}
         </a>
       ))}
     </div>
@@ -116,13 +117,13 @@ export function PromptBox({
       <div className="stack" style={{ gap: 8 }}>
         <div className="row wrap">
           <button className="btn-primary" disabled={busy} onClick={ask}>
-            {busy ? (chars ? `⏳ ChatGPT is writing… ${chars.toLocaleString()} characters` : '⏳ ChatGPT is thinking…') : '✨ Ask ChatGPT'}
+            {busy ? (chars ? t('⏳ ChatGPT is writing… {chars} characters', { chars: chars.toLocaleString() }) : t('⏳ ChatGPT is thinking…')) : t('✨ Ask ChatGPT')}
           </button>
-          <span className="tiny muted">uses your API key · {cfg.model}</span>
+          <span className="tiny muted">{t('uses your API key · {model}', { model: cfg.model })}</span>
         </div>
         {error && <div className="notice error">{error}</div>}
         <details>
-          <summary className="small muted">What is sent</summary>
+          <summary className="small muted">{t('What is sent')}</summary>
           <pre className="prompt">{prompt}</pre>
         </details>
       </div>
@@ -131,7 +132,7 @@ export function PromptBox({
     <div className="stack" style={{ gap: 8 }}>
       {copyRow}
       <details>
-        <summary className="small muted">See the prompt</summary>
+        <summary className="small muted">{t('See the prompt')}</summary>
         <pre className="prompt">{prompt}</pre>
       </details>
     </div>
@@ -155,7 +156,7 @@ export function AnswerBox({ label, value, onChange, placeholder, minHeight }: { 
   if (!value.trim()) return null
   return (
     <details>
-      <summary className="small muted">Show ChatGPT's answer (you can edit it)</summary>
+      <summary className="small muted">{t("Show ChatGPT's answer (you can edit it)")}</summary>
       {box}
     </details>
   )
@@ -168,7 +169,7 @@ export function useAiWords() {
 
 /** Keeps the pasted answers on this device; if even that doesn't fit, they still work until you leave the page. */
 function keep(key: string, replies: unknown[]) {
-  if (!saveLocal(key, JSON.stringify(replies))) toast("This device's storage is full: the answer works now but won't be kept if you leave the page")
+  if (!saveLocal(key, JSON.stringify(replies))) toast(t("This device's storage is full: the answer works now but won't be kept if you leave the page"))
 }
 
 function ItineraryIdeas() {
@@ -224,7 +225,7 @@ function ItineraryIdeas() {
   }
 
   function startOver() {
-    if (!confirm('Clear the pasted answers and start again?')) return
+    if (!confirm(t('Clear the pasted answers and start again?'))) return
     setReplies([])
     localStorage.removeItem(storeKey)
     saveRevisions([])
@@ -248,17 +249,17 @@ function ItineraryIdeas() {
   }, [params])
 
   async function use(o: AiOption) {
-    if (items.length && replace && !confirm(`Replace the ${items.length} items currently in your plan with "${o.title}"?`)) return
+    if (items.length && replace && !confirm(tn(items.length, 'Replace the {n} item currently in your plan with "{title}"?', 'Replace the {n} items currently in your plan with "{title}"?', { title: o.title }))) return
     await applyPlan(trip, o, settings.homeCurrency, replace)
     // Refresh rule-based checklist suggestions now that the itinerary exists.
     await refreshChecklist(trip.id, settings)
     // Activities the chatbot gave no time get one, around the times it did give, so every day reads as a schedule.
     const timed = await fillUntimedTrip(trip.id, settings)
-    toast(`"${o.title}" is now your plan${timed ? ` · ${timed} item${timed > 1 ? 's' : ''} given a time` : ''}`)
+    toast(t('"{title}" is now your plan', { title: o.title }) + (timed ? ` · ${tn(timed, '{n} item given a time', '{n} items given a time')}` : ''))
     // With ChatGPT set up, ideas for each city on the route are asked for in the background, ready in the City planner.
     if (aiReady(getAiConfig()))
       void askAllCityIdeas(trip.id, settings).then(({ done, failed }) => {
-        if (done || failed) toast(`✨ Ideas ready for ${plural(done, 'city', 'cities')} in the City planner${failed ? ` · ${failed} couldn't be asked, try again there` : ''}`)
+        if (done || failed) toast(tn(done, '✨ Ideas ready for {n} city in the City planner', '✨ Ideas ready for {n} cities in the City planner') + (failed ? ` · ${t("{n} couldn't be asked, try again there", { n: failed })}` : ''))
       })
     navigate('../plan')
   }
@@ -266,10 +267,10 @@ function ItineraryIdeas() {
   const replaceChoice = items.length > 0 && (
     <div className="row">
       <label className="inline small">
-        <input type="radio" checked={replace} onChange={() => setReplace(true)} /> Replace my plan
+        <input type="radio" checked={replace} onChange={() => setReplace(true)} /> {t('Replace my plan')}
       </label>
       <label className="inline small">
-        <input type="radio" checked={!replace} onChange={() => setReplace(false)} /> Add to it
+        <input type="radio" checked={!replace} onChange={() => setReplace(false)} /> {t('Add to it')}
       </label>
     </div>
   )
@@ -280,52 +281,55 @@ function ItineraryIdeas() {
     <div className="stack-lg">
       <div className="card stack">
         <div className="row between wrap">
-          <h2>Get 3 itinerary options</h2>
-          <span className="small muted">Free · uses any chatbot you like</span>
+          <h2>{t('Get 3 itinerary options')}</h2>
+          <span className="small muted">{t('Free · uses any chatbot you like')}</span>
         </div>
         <div className="small">
-          <b>Your brief:</b> {trip.countryCodes.map(countryLabel).join(', ') || 'open destination'}
-          {trip.cities.length > 0 && ` (${trip.cities.join(', ')})`} · {formatDate(trip.startDate)} → {formatDate(trip.endDate)} · {trip.travellers.length} traveller(s)
-          {trip.travellers.some((t) => t.type === 'child') && ` incl. kids aged ${trip.travellers.filter((t) => t.type === 'child').map((t) => t.age).join(', ')}`} ·{' '}
+          <b>{t('Your brief:')}</b> {trip.countryCodes.map(countryLabel).join(', ') || t('open destination')}
+          {trip.cities.length > 0 && ` (${trip.cities.join(', ')})`} · {formatDate(trip.startDate)} → {formatDate(trip.endDate)} · {tn(trip.travellers.length, '{n} traveller', '{n} travellers')}
+          {trip.travellers.some((x) => x.type === 'child') && t(' incl. kids aged {ages}', { ages: trip.travellers.filter((x) => x.type === 'child').map((x) => x.age).join(', ') })} ·{' '}
           {STYLES[trip.style].label} · {BUDGET_LEVELS[trip.budgetLevel].label}
           {trip.interests.length > 0 && ` · ${trip.interests.join(', ')}`}
-          <span className="muted"> — change it with “Trip details” above.</span>
+          <span className="muted"> {t('— change it with “Trip details” above.')}</span>
         </div>
         <Steps />
         <p className="small muted">
-          All 3 options come in one {api ? 'answer' : 'reply'}, with how they differ. If {api ? 'it' : 'the chatbot'} cuts the answer off, the complete options are kept
-          and a short follow-up asks for the rest. Then the app asks for the full detail of the option you pick.
+          {api
+            ? t('All 3 options come in one answer, with how they differ. If it cuts the answer off, the complete options are kept and a short follow-up asks for the rest. Then the app asks for the full detail of the option you pick.')
+            : t('All 3 options come in one reply, with how they differ. If the chatbot cuts the answer off, the complete options are kept and a short follow-up asks for the rest. Then the app asks for the full detail of the option you pick.')}
         </p>
         {rounds.map((r, i) => (
           <div key={i} className="stack" style={{ gap: 8 }}>
             {i === 0 ? (
               <p className="small">
-                <b>3 options ·</b> {api ? 'ask ChatGPT for all three.' : 'copy this prompt into a new chat, then paste the answer below.'}
+                <b>{t('3 options ·')}</b> {api ? t('ask ChatGPT for all three.') : t('copy this prompt into a new chat, then paste the answer below.')}
               </p>
             ) : rounds[i - 1].truncated ? (
               <div className="notice">
-                The answer was cut off{r.n > 1 ? ` after option ${r.n - 1}` : ''} — what came complete is kept below. {api ? 'Ask for the rest:' : 'To get the rest, paste this follow-up into the same chat:'}
+                {r.n > 1 ? t('The answer was cut off after option {n} — what came complete is kept below.', { n: r.n - 1 }) : t('The answer was cut off — what came complete is kept below.')}{' '}
+                {api ? t('Ask for the rest:') : t('To get the rest, paste this follow-up into the same chat:')}
               </div>
             ) : (
               <div className="notice info">
-                <b>{r.n < 3 ? `Options ${r.n}–3` : 'Option 3'} ·</b> only {r.n - 1} came back. {api ? 'Ask for the rest' : <>Copy this follow-up into the <b>same chat</b> and paste the answer below</>} — or pick from the options you have.
+                <b>{r.n < 3 ? t('Options {n}–3 ·', { n: r.n }) : t('Option 3 ·')}</b> {t('only {n} came back.', { n: r.n - 1 })}{' '}
+                {api ? t('Ask for the rest — or pick from the options you have.') : t('Copy this follow-up into the same chat and paste the answer below — or pick from the options you have.')}
               </div>
             )}
             <PromptBox
               prompt={r.prompt}
               history={rounds.slice(0, i).map((x) => ({ prompt: x.prompt, reply: x.text }))}
-              onAnswer={(t) => setReply(i, t)}
+              onAnswer={(x) => setReply(i, x)}
               autoAsk={i === 0 && freshAsk && !r.text}
             />
-            <AnswerBox label={i === 0 ? "Paste the chatbot's answer" : `Answer for ${r.n < 3 ? `options ${r.n}–3` : 'option 3'}`} value={r.text} onChange={(t) => setReply(i, t)} minHeight={90} placeholder={'```json\n{ "compare": …, "options": [ … ] }\n```'} />
+            <AnswerBox label={i === 0 ? t("Paste the chatbot's answer") : r.n < 3 ? t('Answer for options {n}–3', { n: r.n }) : t('Answer for option 3')} value={r.text} onChange={(x) => setReply(i, x)} minHeight={90} placeholder={'```json\n{ "compare": …, "options": [ … ] }\n```'} />
             {r.error && <div className="notice error">{r.error}</div>}
           </div>
         ))}
-        {done && <p className="small muted">✓ All 3 options received.</p>}
+        {done && <p className="small muted">{t('✓ All 3 options received.')}</p>}
         {replies.length > 0 && (
           <div>
             <button className="btn-sm btn-ghost" onClick={startOver}>
-              Start over
+              {t('Start over')}
             </button>
           </div>
         )}
@@ -334,17 +338,17 @@ function ItineraryIdeas() {
       {options.length > 0 && (
         <>
           <div className="row wrap between">
-            <h2>Pick an option</h2>
+            <h2>{t('Pick an option')}</h2>
             {replaceChoice}
           </div>
           <Comparison options={options.map((o) => o.option)} compare={compare} currency={settings.homeCurrency} />
           {all.length > 1 && (
             <div className="chips">
               <button className={`chip ${!fold.open && !fold.except.length ? 'on' : ''}`} onClick={() => setFold({ open: false, except: [] })}>
-                ▸ Collapse all
+                {t('▸ Collapse all')}
               </button>
               <button className={`chip ${fold.open && !fold.except.length ? 'on' : ''}`} onClick={() => setFold({ open: true, except: [] })}>
-                ▾ Expand all
+                {t('▾ Expand all')}
               </button>
             </div>
           )}
@@ -399,18 +403,18 @@ function Comparison({ options, compare, currency }: { options: AiOption[]; compa
   if (options.length < 2 && !compare) return null
   return (
     <div className="card stack" style={{ gap: 8 }}>
-      <b>How they differ</b>
+      <b>{t('How they differ')}</b>
       {compare && <p className="small" style={{ margin: 0, lineHeight: 1.5 }}>{compare}</p>}
       {options.length > 1 && (
         <div style={{ overflowX: 'auto' }}>
           <table className="small">
             <thead>
               <tr>
-                <th>Option</th>
-                <th>Best for</th>
-                <th className="num">Places</th>
-                <th className="num">Moves</th>
-                <th className="num">Budget</th>
+                <th>{t('Option')}</th>
+                <th>{t('Best for')}</th>
+                <th className="num">{t('Places')}</th>
+                <th className="num">{t('Moves')}</th>
+                <th className="num">{t('Budget')}</th>
               </tr>
             </thead>
             <tbody>
@@ -433,7 +437,7 @@ function Comparison({ options, compare, currency }: { options: AiOption[]; compa
           </table>
         </div>
       )}
-      <p className="tiny muted" style={{ margin: 0 }}>Places: where you sleep along the way. Moves: days you change place.</p>
+      <p className="tiny muted" style={{ margin: 0 }}>{t('Places: where you sleep along the way. Moves: days you change place.')}</p>
     </div>
   )
 }
@@ -469,24 +473,24 @@ function OptionCard({
     <div className="card stack option-card">
       <div>
         <div className="row" style={{ alignItems: 'flex-start', gap: 6 }}>
-          <button className="btn-sm btn-ghost" style={{ fontSize: '1.1rem', lineHeight: 1, padding: '4px 8px' }} aria-expanded={open} aria-label={`${open ? 'Collapse' : 'Expand'} plan ${n}`} title={open ? 'Hide the detail of this plan' : 'Show the detail of this plan'} onClick={onToggle}>
+          <button className="btn-sm btn-ghost" style={{ fontSize: '1.1rem', lineHeight: 1, padding: '4px 8px' }} aria-expanded={open} aria-label={open ? t('Collapse plan {n}', { n }) : t('Expand plan {n}', { n })} title={open ? t('Hide the detail of this plan') : t('Show the detail of this plan')} onClick={onToggle}>
             {open ? '▾' : '▸'}
           </button>
           <h3 className="grow" style={{ cursor: 'pointer' }} onClick={onToggle}>
-            <span className="muted">Plan {n} · </span>
+            <span className="muted">{t('Plan {n} · ', { n })}</span>
             {o.title}
           </h3>
         </div>
         {revised && (
           <div className="tiny muted">
-            ✏️ Revised from plan {revised.from + 1}: {revised.changes}
+            {t('✏️ Revised from plan {n}: {changes}', { n: revised.from + 1, changes: revised.changes })}
           </div>
         )}
         {o.bestFor && <div className="small">🎯 {o.bestFor}</div>}
         {o.route.length > 0 && <div className="small muted">{o.route.join(' → ')}</div>}
         {incomplete && (
           <span className="badge planned" style={{ marginTop: 4 }}>
-            Cut off · {o.days.length} of {tripDays} days
+            {t('Cut off · {n} of {total} days', { n: o.days.length, total: tripDays })}
           </span>
         )}
       </div>
@@ -495,7 +499,7 @@ function OptionCard({
       <div className="chips">
         {(['small', 'large', 'hidden'] as const).map((v) => (
           <button key={v} className={`chip ${mapSize === v ? 'on' : ''}`} onClick={() => setMapSize(v)}>
-            {v === 'small' ? 'Small map' : v === 'large' ? 'Large map' : 'Hide map'}
+            {v === 'small' ? t('Small map') : v === 'large' ? t('Large map') : t('Hide map')}
           </button>
         ))}
       </div>
@@ -505,7 +509,7 @@ function OptionCard({
         {o.days.map((d) => (
           <li key={d.day}>
             <b>
-              Day {d.day} · {formatDate(addDays(start, d.day - 1), { weekday: 'short', day: 'numeric' })}
+              {t('Day {n}', { n: d.day })} · {formatDate(addDays(start, d.day - 1), { weekday: 'short', day: 'numeric' })}
             </b>{' '}
             {d.city && <span className="muted">{d.city}</span>}
             <div className="muted">{d.items.length ? d.items.map((it) => `${KIND_META[it.kind].emoji} ${it.title}`).join(' · ') : [d.title, ...d.highlights].filter(Boolean).join(' · ')}</div>
@@ -514,14 +518,14 @@ function OptionCard({
       </ul>
       {o.days.length > 5 && (
         <button className="btn-sm btn-ghost" onClick={() => setAllDays(!allDays)}>
-          {allDays ? '⇡ Fewer lines' : `⇣ Show all ${o.days.length} days`}
+          {allDays ? t('⇡ Fewer lines') : t('⇣ Show all {n} days', { n: o.days.length })}
         </button>
       )}
         </>
       )}
       {total > 0 && (
         <div className="small">
-          <b>Budget ≈ {money(total, currency)}</b>
+          <b>{t('Budget ≈ {amount}', { amount: money(total, currency) })}</b>
           <div className="muted tiny">
             {Object.entries(o.budget)
               .filter(([, v]) => v)
@@ -532,10 +536,10 @@ function OptionCard({
       )}
       {o.tips.length > 0 && (
         <details>
-          <summary className="small">Tips ({o.tips.length})</summary>
+          <summary className="small">{t('Tips ({n})', { n: o.tips.length })}</summary>
           <ul className="small" style={{ paddingLeft: 18 }}>
-            {o.tips.map((t, i) => (
-              <li key={i}>{t}</li>
+            {o.tips.map((tip, i) => (
+              <li key={i}>{tip}</li>
             ))}
           </ul>
         </details>
@@ -551,13 +555,13 @@ function Revision({ base, n, changes, onCancel, onDone }: { base: AiOption; n: n
   const [text, setText] = useState('')
   const [error, setError] = useState<string>()
   const prompt = useMemo(() => revisePrompt(trip, settings, base, changes), [trip, settings, base, changes])
-  function answer(t: string) {
-    setText(t)
-    if (!t.trim()) return setError(undefined)
+  function answer(reply: string) {
+    setText(reply)
+    if (!reply.trim()) return setError(undefined)
     try {
-      parseRevision(t)
+      parseRevision(reply)
       setError(undefined)
-      onDone(t)
+      onDone(reply)
     } catch (e) {
       setError((e as Error).message)
     }
@@ -565,17 +569,17 @@ function Revision({ base, n, changes, onCancel, onDone }: { base: AiOption; n: n
   return (
     <div className="card stack">
       <div className="row between wrap">
-        <h3>✏️ Revising plan {n}</h3>
+        <h3>{t('✏️ Revising plan {n}', { n })}</h3>
         <button className="btn-sm btn-ghost" onClick={onCancel}>
-          Cancel
+          {t('Cancel')}
         </button>
       </div>
       <div className="notice info">
-        <b>Your changes:</b> {changes}
+        <b>{t('Your changes:')}</b> {changes}
       </div>
-      <p className="small">{api ? 'Ask ChatGPT for the revised outline. It appears above as a new plan, with its map.' : 'Copy this prompt into the same chat, then paste the revised outline below. It appears above as a new plan, with its map.'}</p>
+      <p className="small">{api ? t('Ask ChatGPT for the revised outline. It appears above as a new plan, with its map.') : t('Copy this prompt into the same chat, then paste the revised outline below. It appears above as a new plan, with its map.')}</p>
       <PromptBox prompt={prompt} onAnswer={answer} />
-      <AnswerBox label="Paste the revised outline" value={text} onChange={answer} minHeight={90} placeholder={'```json\n{ "options": [ … ] }\n```'} />
+      <AnswerBox label={t('Paste the revised outline')} value={text} onChange={answer} minHeight={90} placeholder={'```json\n{ "options": [ … ] }\n```'} />
       {error && <div className="notice error">{error}</div>}
     </div>
   )
@@ -605,30 +609,30 @@ function PlanPicker({
   const wanted = changes.trim()
   return (
     <div className="card stack">
-      <h3>Choose your plan</h3>
+      <h3>{t('Choose your plan')}</h3>
       <div className="form-grid">
         <label>
-          Plan
+          {t('Plan')}
           <select value={pick} onChange={(e) => onPick(Number(e.target.value))}>
             {options.map((x, i) => (
               <option key={i} value={i}>
-                Use plan {i + 1}: {x.title}
+                {t('Use plan {n}: {title}', { n: i + 1, title: x.title })}
               </option>
             ))}
           </select>
         </label>
         <label className="full">
-          Anything to change? (optional)
+          {t('Anything to change? (optional)')}
           <textarea
             rows={3}
             value={changes}
             onChange={(e) => setChanges(e.target.value)}
-            placeholder="e.g. 4 nights in Rome instead of 2 · add Florence for 2 nights between Rome and Venice · drop Naples"
+            placeholder={t('e.g. 4 nights in Rome instead of 2 · add Florence for 2 nights between Rome and Venice · drop Naples')}
           />
         </label>
       </div>
       <p className="tiny muted" style={{ margin: 0 }}>
-        {wanted ? 'With changes, you get another outline to look at (it is added above as a new plan). Change again as often as you like; the detailed plan comes once you are happy.' : 'Happy with it? Carry on. Or say what to change first.'}
+        {wanted ? t('With changes, you get another outline to look at (it is added above as a new plan). Change again as often as you like; the detailed plan comes once you are happy.') : t('Happy with it? Carry on. Or say what to change first.')}
       </p>
       <div className="row wrap">
         {wanted ? (
@@ -640,19 +644,19 @@ function PlanPicker({
               setChanges('')
             }}
           >
-            ✏️ Revise plan {pick + 1} with my changes →
+            {t('✏️ Revise plan {n} with my changes →', { n: pick + 1 })}
           </button>
         ) : detailed ? (
           <button className="btn-primary" disabled={disabled} onClick={() => onUse(o)}>
-            Use plan {pick + 1}
+            {t('Use plan {n}', { n: pick + 1 })}
           </button>
         ) : (
           <>
             <button className="btn-primary" disabled={disabled} onClick={() => onDetail(o)}>
-              Use plan {pick + 1}: get the detailed plan →
+              {t('Use plan {n}: get the detailed plan →', { n: pick + 1 })}
             </button>
             <button className="btn-sm btn-ghost" disabled={disabled} onClick={() => onUse(o)}>
-              Use the outline as it is
+              {t('Use the outline as it is')}
             </button>
           </>
         )}
@@ -735,7 +739,7 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
         const text = await askAI([{ role: 'user', content: next.prompt }], (chars) => setAsking({ days, chars }))
         const after = detailRounds([...reps, text])
         if (!after.rounds[reps.length]?.result || after.missing.length >= r.missing.length) {
-          if (retried) throw new Error(`ChatGPT's answer for day ${days.join(', ')} couldn't be used twice in a row. Try again, or pick another model in Settings.`)
+          if (retried) throw new Error(t("ChatGPT's answer for day {days} couldn't be used twice in a row. Try again, or pick another model in Settings.", { days: days.join(', ') }))
           retried = true
           continue
         }
@@ -755,28 +759,30 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
     <div className="stack-lg" style={{ maxWidth: 900 }}>
       <div className="row wrap between">
         <button className="btn-ghost" onClick={onBack}>
-          ← Back to the options
+          {t('← Back to the options')}
         </button>
         {replaceChoice}
       </div>
       <div className="card stack">
-        <h2>Detailed plan: {option.title}</h2>
-        <p className="small muted">{option.route.join(' → ')} · {expected.length} days</p>
+        <h2>{t('Detailed plan: {title}', { title: option.title })}</h2>
+        <p className="small muted">{option.route.join(' → ')} · {tn(expected.length, '{n} day', '{n} days')}</p>
         {api && (
           <div className="stack" style={{ gap: 8 }}>
             <div className="row wrap">
               <button className="btn-primary" disabled={!!asking || !missing.length} onClick={askAll}>
                 {asking
-                  ? `⏳ Days ${asking.days[0]}${asking.days.length > 1 ? `–${asking.days[asking.days.length - 1]}` : ''} of ${expected.length}${asking.chars ? ` · ${asking.chars.toLocaleString()} characters` : ' · ChatGPT is thinking'}…`
+                  ? t('⏳ Days {range} of {total}', { range: asking.days.length > 1 ? `${asking.days[0]}–${asking.days[asking.days.length - 1]}` : asking.days[0], total: expected.length }) +
+                    (asking.chars ? t(' · {chars} characters', { chars: asking.chars.toLocaleString() }) : t(' · ChatGPT is thinking')) +
+                    '…'
                   : !missing.length
-                    ? '✓ Every day has its detail'
+                    ? t('✓ Every day has its detail')
                     : detailedCount
-                      ? `✨ Ask ChatGPT for the other ${missing.length} days`
-                      : `✨ Ask ChatGPT for all ${expected.length} days`}
+                      ? t('✨ Ask ChatGPT for the other {n} days', { n: missing.length })
+                      : t('✨ Ask ChatGPT for all {n} days', { n: expected.length })}
               </button>
             </div>
             <p className="tiny muted" style={{ margin: 0 }}>
-              It asks for {DAYS_PER_ASK} days at a time, so each answer is quick, and carries on by itself. If the connection drops, it tries again; what came back is kept.
+              {t('It asks for {n} days at a time, so each answer is quick, and carries on by itself. If the connection drops, it tries again; what came back is kept.', { n: DAYS_PER_ASK })}
             </p>
             {askError && <div className="notice error">{askError}</div>}
           </div>
@@ -785,21 +791,21 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
           <div key={i} className="stack" style={{ gap: 8 }}>
             {i === 0 ? (
               <p className="small">
-                <b>1 ·</b> {api ? 'Ask ChatGPT for the day-by-day detail.' : 'Copy this prompt into the chatbot (the same chat is fine), then paste its answer below.'}
+                <b>{t('1 ·')}</b> {api ? t('Ask ChatGPT for the day-by-day detail.') : t('Copy this prompt into the chatbot (the same chat is fine), then paste its answer below.')}
               </p>
             ) : (
               <div className="notice info">
-                {i === 1 ? 'The answer stopped early' : 'Still some days missing'}: days {r.missingBefore.join(', ')} have no detail yet.{' '}
-                {api ? 'Ask again for the rest.' : <>Copy this follow-up prompt into the <b>same chat</b> and paste the answer below.</>}
+                {t('{reason}: days {days} have no detail yet.', { reason: i === 1 ? t('The answer stopped early') : t('Still some days missing'), days: r.missingBefore.join(', ') })}{' '}
+                {api ? t('Ask again for the rest.') : t('Copy this follow-up prompt into the same chat and paste the answer below.')}
               </div>
             )}
-            <PromptBox prompt={r.prompt} history={rounds.slice(0, i).map((x) => ({ prompt: x.prompt, reply: x.text }))} onAnswer={(t) => setReply(i, t)} />
-            <AnswerBox label={i === 0 ? "Paste the chatbot's answer" : `Answer ${i + 1}`} value={r.text} onChange={(t) => setReply(i, t)} placeholder='{"days": [ … ]}' />
+            <PromptBox prompt={r.prompt} history={rounds.slice(0, i).map((x) => ({ prompt: x.prompt, reply: x.text }))} onAnswer={(x) => setReply(i, x)} />
+            <AnswerBox label={i === 0 ? t("Paste the chatbot's answer") : t('Answer {n}', { n: i + 1 })} value={r.text} onChange={(x) => setReply(i, x)} placeholder='{"days": [ … ]}' />
             {r.error && <div className="notice error">{r.error}</div>}
             {r.result && (
               <p className="small muted">
-                ✓ Got {r.result.days.filter((d) => d.items.length).length} day(s)
-                {r.result.truncated && ' — the answer was cut off, so the last unfinished day was left out'}.
+                {tn(r.result.days.filter((d) => d.items.length).length, '✓ Got {n} day', '✓ Got {n} days')}
+                {r.result.truncated && t(' — the answer was cut off, so the last unfinished day was left out')}.
               </p>
             )}
           </div>
@@ -810,26 +816,26 @@ function DetailStep({ option, onBack, onUse, replaceChoice }: { option: AiOption
         <div className="card stack">
           <div className="row between wrap">
             <h3>
-              {detailedCount} of {expected.length} days detailed
+              {t('{n} of {total} days detailed', { n: detailedCount, total: expected.length })}
             </h3>
             <button className="btn-primary" onClick={() => onUse(merged)}>
-              Use this plan
+              {t('Use this plan')}
             </button>
           </div>
           {missing.length > 0 && (
             <p className="small muted">
-              Days without detail ({missing.join(', ')}) will use the outline's highlights as ideas — you can still fill them in later.
+              {t("Days without detail ({days}) will use the outline's highlights as ideas — you can still fill them in later.", { days: missing.join(', ') })}
             </p>
           )}
           <ul className="option-days" style={{ paddingLeft: 18, margin: 0, maxHeight: 360 }}>
             {merged.days.map((d) => (
               <li key={d.day}>
                 <b>
-                  Day {d.day} · {formatDate(addDays(trip.startDate, d.day - 1), { weekday: 'short', day: 'numeric' })}
+                  {t('Day {n}', { n: d.day })} · {formatDate(addDays(trip.startDate, d.day - 1), { weekday: 'short', day: 'numeric' })}
                 </b>{' '}
                 <span className="muted">{d.city}</span>
                 <div className="muted">
-                  {d.items.length ? d.items.map((it) => `${it.time ? it.time + ' ' : ''}${KIND_META[it.kind].emoji} ${it.title}`).join(' · ') : `(outline) ${d.highlights.join(' · ')}`}
+                  {d.items.length ? d.items.map((it) => `${it.time ? it.time + ' ' : ''}${KIND_META[it.kind].emoji} ${it.title}`).join(' · ') : t('(outline) {highlights}', { highlights: d.highlights.join(' · ') })}
                 </div>
               </li>
             ))}
@@ -858,23 +864,22 @@ function BookingImport() {
   async function add() {
     if (!parsed.items) return
     await applyBookings(trip, parsed.items, settings.homeCurrency)
-    toast(`Added ${parsed.items.length} booking(s) to the plan`)
+    toast(tn(parsed.items.length, 'Added {n} booking to the plan', 'Added {n} bookings to the plan'))
     navigate('../plan')
   }
 
   return (
     <div className="card stack" style={{ maxWidth: 820 }}>
-      <h2>Turn confirmation emails into plan items</h2>
+      <h2>{t('Turn confirmation emails into plan items')}</h2>
       <p className="small muted">
-        Paste the text of flight, train, hotel or ticket confirmations. Remove anything you don't want to send to the chatbot (e.g. card details, passport numbers) — only
-        dates, times, places and booking references are needed.
+        {t("Paste the text of flight, train, hotel or ticket confirmations. Remove anything you don't want to send to the chatbot (e.g. card details, passport numbers) — only dates, times, places and booking references are needed.")}
       </p>
       <label>
-        1 · Confirmation text
-        <textarea value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Paste one or more confirmation emails…" />
+        {t('1 · Confirmation text')}
+        <textarea value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('Paste one or more confirmation emails…')} />
       </label>
       {email.trim() && <PromptBox prompt={bookingPrompt(trip, settings, email)} onAnswer={setAnswer} />}
-      <AnswerBox label="2 · Paste the chatbot's answer" value={answer} onChange={setAnswer} placeholder='{"items": [ … ]}' />
+      <AnswerBox label={t("2 · Paste the chatbot's answer")} value={answer} onChange={setAnswer} placeholder='{"items": [ … ]}' />
       {parsed.error && <div className="notice error">{parsed.error}</div>}
       {parsed.items && (
         <div className="stack" style={{ gap: 6 }}>
@@ -888,11 +893,11 @@ function BookingImport() {
             </div>
           ))}
           {parsed.items.some((it) => it.date < trip.startDate || it.date > trip.endDate) && (
-            <div className="notice">Some bookings fall outside the trip dates — they'll appear at the bottom of the Plan until you adjust the dates.</div>
+            <div className="notice">{t("Some bookings fall outside the trip dates — they'll appear at the bottom of the Plan until you adjust the dates.")}</div>
           )}
           <div>
             <button className="btn-primary" onClick={add}>
-              Add {parsed.items.length} booking(s) as “Booked”
+              {tn(parsed.items.length, 'Add {n} booking as “Booked”', 'Add {n} bookings as “Booked”')}
             </button>
           </div>
         </div>
@@ -905,22 +910,21 @@ function Template() {
   const { trip, items } = useTripCtx()
   const navigate = useNavigate()
   async function go() {
-    if (items.length && !confirm('Add template items to your existing plan?')) return
+    if (items.length && !confirm(t('Add template items to your existing plan?'))) return
     await applyTemplate(trip)
-    toast('Skeleton plan created')
+    toast(t('Skeleton plan created'))
     navigate('../plan')
   }
   return (
     <div className="card stack" style={{ maxWidth: 720 }}>
-      <h2>Start from a simple skeleton</h2>
+      <h2>{t('Start from a simple skeleton')}</h2>
       <p className="small">
-        Spreads your days evenly across {trip.cities.length ? trip.cities.join(', ') : 'your destinations'}, with travel between places and one accommodation per stop.
-        Everything is marked as an <i>idea</i> so you can fill in the details yourself. Works completely offline.
+        {t('Spreads your days evenly across {places}, with travel between places and one accommodation per stop. Everything is marked as an idea so you can fill in the details yourself. Works completely offline.', { places: trip.cities.length ? trip.cities.join(', ') : t('your destinations') })}
       </p>
-      {!trip.cities.length && <div className="notice info">Tip: add the cities you want to visit (in order) in “Trip details” first.</div>}
+      {!trip.cities.length && <div className="notice info">{t('Tip: add the cities you want to visit (in order) in “Trip details” first.')}</div>}
       <div>
         <button className="btn-primary" onClick={go}>
-          Create the skeleton
+          {t('Create the skeleton')}
         </button>
       </div>
     </div>

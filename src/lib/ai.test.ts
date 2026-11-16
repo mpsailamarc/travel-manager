@@ -243,3 +243,24 @@ describe('options on a map, and changes to an option', () => {
   })
 })
 
+describe('asking ChatGPT in French', () => {
+  it('adds one line to the prompts in French, and nothing in English', async () => {
+    const { outlinePrompt, detailPrompt, revisePrompt, cityIdeasPrompt } = await import('./ai')
+    const { useLangForTests } = await import('../i18n')
+    const { makeTrip, SETTINGS } = await import('../test/fixtures')
+    const trip = await makeTrip()
+    const o = { title: 'A', bestFor: '', summary: '', route: ['Rome'], budget: {}, checklist: [], tips: [], days: [{ day: 1, city: 'Rome', highlights: [], items: [] }] }
+    const all = () => [outlinePrompt(trip, SETTINGS), detailPrompt(trip, SETTINGS, o as never, [1], false), revisePrompt(trip, SETTINGS, o as never, 'more Rome'), cityIdeasPrompt(trip, SETTINGS, 'Rome')]
+    expect(all().every((p) => !p.includes('in French'))).toBe(true)
+    useLangForTests('fr')
+    try {
+      for (const p of all()) {
+        expect(p).toContain('in French')
+        expect(p).toContain('field names, "kind" values and checklist categories stay in English')
+      }
+    } finally {
+      useLangForTests('en')
+    }
+  })
+})
+

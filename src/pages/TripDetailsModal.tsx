@@ -7,6 +7,7 @@ import { locatePlace } from '../lib/apis'
 import { syncBudgetToTrip } from '../lib/budget'
 import { TripFields } from './TripFields'
 import { duplicateTrip } from '../lib/share'
+import { t } from '../i18n'
 
 export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const [draft, setDraft] = useState<Trip>(trip)
@@ -15,7 +16,7 @@ export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () =>
 
   async function save() {
     if (draft.endDate < draft.startDate) {
-      toast('The end date is before the start date')
+      toast(t('The end date is before the start date'))
       return
     }
     if (saving) return
@@ -28,42 +29,42 @@ export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () =>
     await extendTripDays(trip.id, trip, draft)
     // Other dates, budget level or destination: the budget follows (who is travelling is changed in the Budget tab).
     const synced = await syncBudgetToTrip(trip, { ...draft, startPlace, endPlace })
-    toast(synced.lines || synced.prices ? 'Trip saved · budget updated' : 'Trip saved')
+    toast(synced.lines || synced.prices ? t('Trip saved · budget updated') : t('Trip saved'))
     onClose()
   }
 
   // A copy to try things on: change the dates, cities or pace there and compare, the original stays as it is.
   async function duplicate() {
-    const name = prompt('Name of the copy', `${trip.name} (copy)`)
+    const name = prompt(t('Name of the copy'), t('{name} (copy)', { name: trip.name }))
     if (!name?.trim()) return
     const id = await duplicateTrip(trip.id, name.trim())
-    toast(`📄 “${name.trim()}” created: a copy to try things on, the original is unchanged`)
+    toast(t('📄 “{name}” created: a copy to try things on, the original is unchanged', { name: name.trim() }))
     navigate(`/trip/${id}/plan`)
   }
 
   async function remove() {
-    if (!confirm(`Delete "${trip.name}" and everything in it (plan, checklist, expenses, documents)? This can't be undone.`)) return
+    if (!confirm(t('Delete "{name}" and everything in it (plan, checklist, expenses, documents)? This can\'t be undone.', { name: trip.name }))) return
     await deleteTrip(trip.id)
     navigate('/')
   }
 
   return (
-    <Modal title="Trip details" onClose={onClose} wide>
+    <Modal title={t('Trip details')} onClose={onClose} wide>
       <div className="stack">
         <TripFields value={draft} onChange={setDraft} />
         <div className="row between">
           <div className="row">
             <button className="btn-ghost btn-danger" onClick={remove}>
-              Delete trip
+              {t('Delete trip')}
             </button>
-            <button className="btn-ghost" onClick={duplicate} title="A copy of this trip to try other dates, cities or pace">
-              📄 Duplicate
+            <button className="btn-ghost" onClick={duplicate} title={t('A copy of this trip to try other dates, cities or pace')}>
+              {t('📄 Duplicate')}
             </button>
           </div>
           <div className="row">
-            <button onClick={onClose}>Cancel</button>
+            <button onClick={onClose}>{t('Cancel')}</button>
             <button className="btn-primary" onClick={save} disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('Saving…') : t('Save')}
             </button>
           </div>
         </div>

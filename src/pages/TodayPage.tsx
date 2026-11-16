@@ -26,6 +26,7 @@ import { tripPhase, useTripCtx } from './TripLayout'
 import { AnswerBox, PromptBox } from './IdeasPage'
 import { saveLocal } from '../lib/storage'
 import { StayEditor } from '../components/StaysCard'
+import { t, tn } from '../i18n'
 
 export default function TodayPage() {
   const { trip, items, days, settings } = useTripCtx()
@@ -94,7 +95,12 @@ export default function TodayPage() {
     const r = await retimeAfter({ ...it, status: next }, settings, it.date === today() ? hhmmToMin(nowHHMM()) : undefined)
     if (r) {
       const by = formatDuration(Math.abs(r.shiftMin) * 60)
-      toast(`${r.moved} later ${r.moved === 1 ? 'item' : 'items'} moved ${r.shiftMin < 0 ? 'earlier' : 'later'}${r.shiftMin ? ` by ${by}` : ''}`, { label: 'Undo', run: r.undo })
+      const msg = !r.shiftMin
+        ? tn(r.moved, '{n} later item moved later', '{n} later items moved later')
+        : r.shiftMin < 0
+          ? tn(r.moved, '{n} later item moved earlier by {by}', '{n} later items moved earlier by {by}', { by })
+          : tn(r.moved, '{n} later item moved later by {by}', '{n} later items moved later by {by}', { by })
+      toast(msg, { label: t('Undo'), run: r.undo })
     }
   }
 
@@ -112,10 +118,10 @@ export default function TodayPage() {
 
   async function postpone(it: Item) {
     const tomorrow = addDays(it.date, 1)
-    if (tomorrow > trip.endDate) return toast('That’s the last day of the trip')
+    if (tomorrow > trip.endDate) return toast(t('That’s the last day of the trip'))
     await db.items.update(it.id, { date: tomorrow, startTime: undefined, autoTime: undefined, locked: undefined })
     await adoptPlannerItems([it.id])
-    toast(`Moved to ${formatDate(tomorrow)}`)
+    toast(t('Moved to {date}', { date: formatDate(tomorrow) }))
   }
 
   /** Dragged on the calendar: save the new times, and offer to undo or to push overlapping items back. */
@@ -128,8 +134,8 @@ export default function TodayPage() {
     await touchTrip(trip.id)
     const ripple = planRipple(await db.items.where({ tripId: trip.id, date: it.date }).toArray(), { id: it.id, startTime: times.startTime, endTime: times.endTime }, before)
     if (ripple.moves.length && !ripple.blockedBy) {
-      toast(`${it.title} now overlaps ${ripple.moves.length} item${ripple.moves.length > 1 ? 's' : ''}`, {
-        label: 'Push them back',
+      toast(tn(ripple.moves.length, '{title} now overlaps {n} item', '{title} now overlaps {n} items', { title: it.title }), {
+        label: t('Push them back'),
         run: async () => {
           await db.items.bulkUpdate(ripple.moves.map((m) => ({ key: m.item.id, changes: { startTime: m.start, endTime: m.end, autoTime: undefined } })))
           await adoptPlannerItems(ripple.moves.map((m) => m.item.id))
@@ -156,15 +162,15 @@ export default function TodayPage() {
       {ph.phase !== 'during' && !params.get('date') && (
         <div className="notice info">
           {ph.phase === 'before'
-            ? `Your trip starts in ${ph.daysToGo} day${ph.daysToGo === 1 ? '' : 's'}. This is a preview of how each day will look while you travel.`
-            : 'This trip is over — here is how each day looked.'}
+            ? tn(ph.daysToGo, 'Your trip starts in {n} day. This is a preview of how each day will look while you travel.', 'Your trip starts in {n} days. This is a preview of how each day will look while you travel.')
+            : t('This trip is over — here is how each day looked.')}
         </div>
       )}
 
       <div className="weather-strip day-strip" ref={chipsRef}>
         {dates.map((d, i) => (
           <button key={d} className={`chip ${d === date ? 'on' : ''}`} onClick={() => goto(d)} style={{ flex: 'none' }}>
-            {d === realToday ? 'Today' : `Day ${i + 1}`} · {formatDate(d, { weekday: 'short', day: 'numeric' })}
+            {d === realToday ? t('Today') : t('Day {n}', { n: i + 1 })} · {formatDate(d, { weekday: 'short', day: 'numeric' })}
           </button>
         ))}
       </div>
@@ -175,9 +181,9 @@ export default function TodayPage() {
             <div className="row between">
               <div>
                 <div className="small muted">
-                  Day {dayNo} of {dates.length} · {formatDate(date, { weekday: 'long', day: 'numeric', month: 'long' })}
+                  {t('Day {n} of {total} · {date}', { n: dayNo, total: dates.length, date: formatDate(date, { weekday: 'long', day: 'numeric', month: 'long' }) })}
                 </div>
-                <h2 style={{ fontSize: '1.4rem', marginTop: 2 }}>{[day?.city, day?.title].filter(Boolean).join(' — ') || 'Your day'}</h2>
+                <h2 style={{ fontSize: '1.4rem', marginTop: 2 }}>{[day?.city, day?.title].filter(Boolean).join(' — ') || t('Your day')}</h2>
               </div>
               <Weather lat={day?.lat} lon={day?.lon} date={date} />
             </div>
@@ -185,7 +191,7 @@ export default function TodayPage() {
               <div className="next-up">
                 <div className="big-icon">{KIND_META[next.kind].emoji}</div>
                 <div className="grow">
-                  <div className="small muted">{current ? `Now · until ${current.endTime}` : isToday ? 'Next up' : 'First up'}</div>
+                  <div className="small muted">{current ? t('Now · until {time}', { time: current.endTime ?? '' }) : isToday ? t('Next up') : t('First up')}</div>
                   <div className="strong" style={{ fontSize: '1.1rem' }}>
                     {next.startTime && `${next.startTime} · `}
                     {next.title}
@@ -195,14 +201,14 @@ export default function TodayPage() {
                 {isToday && !current && next.startTime && <Countdown to={next.startTime} now={now} />}
               </div>
             ) : (
-              <p className="muted">{dayItems.length ? 'All done for today 🎉' : 'Nothing planned — a free day.'}</p>
+              <p className="muted">{dayItems.length ? t('All done for today 🎉') : t('Nothing planned — a free day.')}</p>
             )}
             <div className="row wrap">
-              <button onClick={() => setEditing({ date })}>+ Add</button>
+              <button onClick={() => setEditing({ date })}>{t('+ Add')}</button>
               <Link className="btn" to={`../favorites${day?.city ? `?city=${encodeURIComponent(day.city)}` : ''}`}>
-                🗺️ City planner
+                {t('🗺️ City planner')}
               </Link>
-              <button onClick={() => setReplan(true)}>✨ Replan</button>
+              <button onClick={() => setReplan(true)}>{t('✨ Replan')}</button>
             </div>
           </div>
 
@@ -210,28 +216,28 @@ export default function TodayPage() {
 
           {transports.length > 0 && (
             <div className="card stack" style={{ gap: 8 }}>
-              <h3>🧭 Travel today</h3>
-              {transports.map((t) => (
-                <div key={t.id} className="row-top">
-                  <span style={{ fontSize: '1.4rem' }}>{KIND_META[t.kind].emoji}</span>
+              <h3>{t('🧭 Travel today')}</h3>
+              {transports.map((tr) => (
+                <div key={tr.id} className="row-top">
+                  <span style={{ fontSize: '1.4rem' }}>{KIND_META[tr.kind].emoji}</span>
                   <div className="grow">
                     <div className="strong">
-                      {t.startTime}
-                      {t.endTime && `–${t.endTime}`} {t.title}
+                      {tr.startTime}
+                      {tr.endTime && `–${tr.endTime}`} {tr.title}
                     </div>
                     <div className="small muted">
-                      {t.from?.name} → {t.to?.name}
-                      {t.startTime && t.endTime && ` · ${formatDuration((durationMin(t, { trip, days }) ?? 0) * 60)}`}
-                      {journeyNote(t, { trip, days }) && ` · 🌏 ${journeyNote(t, { trip, days })}`}
+                      {tr.from?.name} → {tr.to?.name}
+                      {tr.startTime && tr.endTime && ` · ${formatDuration((durationMin(tr, { trip, days }) ?? 0) * 60)}`}
+                      {journeyNote(tr, { trip, days }) && ` · 🌏 ${journeyNote(tr, { trip, days })}`}
                     </div>
-                    {t.bookingRef && (
+                    {tr.bookingRef && (
                       <div className="small">
-                        Booking ref <b style={{ fontFamily: 'ui-monospace, monospace', letterSpacing: '0.05em' }}>{t.bookingRef}</b>
+                        {t('Booking ref')} <b style={{ fontFamily: 'ui-monospace, monospace', letterSpacing: '0.05em' }}>{tr.bookingRef}</b>
                       </div>
                     )}
                   </div>
-                  {(t.status === 'booked' || t.status === 'done' || needsBooking(t.kind)) && (
-                    <span className={`badge ${t.status}`}>{t.status === 'booked' ? 'Booked' : t.status === 'done' ? 'Done' : 'Not booked'}</span>
+                  {(tr.status === 'booked' || tr.status === 'done' || needsBooking(tr.kind)) && (
+                    <span className={`badge ${tr.status}`}>{tr.status === 'booked' ? t('Booked') : tr.status === 'done' ? t('Done') : t('Not booked')}</span>
                   )}
                 </div>
               ))}
@@ -240,39 +246,38 @@ export default function TodayPage() {
 
           <div className="card">
             <div className="card-title">
-              <h3>Plan for the day</h3>
+              <h3>{t('Plan for the day')}</h3>
               <div className="row wrap" style={{ gap: 8 }}>
                 <span className="small muted nowrap">
-                  {dayItems.filter((i) => i.status === 'done').length}/{dayItems.length} done
+                  {t('{done}/{total} done', { done: dayItems.filter((i) => i.status === 'done').length, total: dayItems.length })}
                 </span>
                 {dayItems.length > 1 && <OptimiseDayButton tripId={trip.id} date={date} settings={settings} />}
                 {dayItems.length > 0 && (
                   <div className="chips" style={{ flexWrap: 'nowrap' }}>
                     <button className={`chip ${mode === 'timeline' ? 'on' : ''}`} onClick={() => setMode('timeline')}>
-                      🕒 Timeline
+                      {t('🕒 Timeline')}
                     </button>
                     <button className={`chip ${mode === 'list' ? 'on' : ''}`} onClick={() => setMode('list')}>
-                      ☰ List
+                      {t('☰ List')}
                     </button>
                   </div>
                 )}
               </div>
             </div>
-            {dayItems.length === 0 && <Empty emoji="☕" title="Free day">Add something, build a walk, or just wander.</Empty>}
+            {dayItems.length === 0 && <Empty emoji="☕" title={t('Free day')}>{t('Add something, build a walk, or just wander.')}</Empty>}
             {untimed.length > 0 && (
               <div className="notice row wrap between" style={{ marginBottom: 10 }}>
                 <span>
-                  ⏱ {untimed.length} {untimed.length === 1 ? 'item has' : 'items have'} no time yet: {untimed.map((i) => i.title).slice(0, 3).join(', ')}
-                  {untimed.length > 3 ? '…' : ''}
+                  {tn(untimed.length, '⏱ {n} item has no time yet: {titles}', '⏱ {n} items have no time yet: {titles}', { titles: untimed.map((i) => i.title).slice(0, 3).join(', ') + (untimed.length > 3 ? '…' : '') })}
                 </span>
                 <button
                   className="btn-sm btn-primary"
                   onClick={async () => {
                     const n = await fillUntimed(trip.id, date, settings)
-                    toast(n ? `${n} item${n > 1 ? 's' : ''} fitted into the day around what already has a time` : 'No room left that day: move something or give it a time by hand')
+                    toast(n ? tn(n, '{n} item fitted into the day around what already has a time', '{n} items fitted into the day around what already has a time') : t('No room left that day: move something or give it a time by hand'))
                   }}
                 >
-                  Fit them into the day
+                  {t('Fit them into the day')}
                 </button>
               </div>
             )}
@@ -291,7 +296,7 @@ export default function TodayPage() {
                 onUnlock={async (it) => {
                   await db.items.update(it.id, { locked: undefined })
                   await touchTrip(trip.id)
-                  toast(`🔓 ${it.title} can move again when you optimise or plan`)
+                  toast(t('🔓 {title} can move again when you optimise or plan', { title: it.title }))
                 }}
               />
             )}
@@ -303,14 +308,14 @@ export default function TodayPage() {
                     item={it}
                     zoneNote={journeyNote(it, { trip, days }) ?? (() => {
                       const z = view.entries.find((e) => e.item.id === it.id)?.otherZone
-                      return z ? `${tzCity(z)} time` : undefined
+                      return z ? t('{city} time', { city: tzCity(z) }) : undefined
                     })()}
                     pin={stopNo.get(it.id)}
                     onPin={showMap}
                     onClick={() => setEditing(it)}
                     actions={
                       <>
-                        <button className="icon-btn" title="Done" onClick={() => setStatus(it, 'done')}>
+                        <button className="icon-btn" title={t('Done')} onClick={() => setStatus(it, 'done')}>
                           {it.status === 'done' ? '✅' : '⬜'}
                         </button>
                         <DayItemMenu
@@ -325,7 +330,7 @@ export default function TodayPage() {
                           onLock={async () => {
                             await db.items.update(it.id, { locked: it.locked ? undefined : true })
                             await touchTrip(trip.id)
-                            toast(it.locked ? `${it.title} can move again when you optimise` : `📌 ${it.title} stays at ${it.startTime}`)
+                            toast(it.locked ? t('{title} can move again when you optimise', { title: it.title }) : t('📌 {title} stays at {time}', { title: it.title, time: it.startTime ?? '' }))
                           }}
                           onTomorrow={() => postpone(it)}
                           navigateTo={it.location ?? it.to}
@@ -358,8 +363,8 @@ export default function TodayPage() {
                   saveLocal('tm-day-map', mapOpen ? '0' : '1')
                   setMapOpen(!mapOpen)
                 }}
-                title="🗺️ Day on the map"
-                summary={`· ${routeStops.length} ${routeStops.length === 1 ? 'place' : 'places'}, numbered as in the list`}
+                title={t('🗺️ Day on the map')}
+                summary={tn(routeStops.length, '· {n} place, numbered as in the list', '· {n} places, numbered as in the list')}
               >
                 <DayRouteMap route={route} loading={routeLoading} onOpen={setEditing} initialSize={settings.mapSize} />
               </Section>
@@ -370,8 +375,8 @@ export default function TodayPage() {
         <div className="stack">
           {tonight && (
             <div className="card stack" style={{ gap: 6 }}>
-              <h3>🛏️ Tonight</h3>
-              <button type="button" className="btn-ghost" style={{ textAlign: 'left', padding: 0, minHeight: 0, border: 0 }} onClick={() => setEditing(tonight)} title="Edit the hotel: name, address, nights, booking">
+              <h3>{t('🛏️ Tonight')}</h3>
+              <button type="button" className="btn-ghost" style={{ textAlign: 'left', padding: 0, minHeight: 0, border: 0 }} onClick={() => setEditing(tonight)} title={t('Edit the hotel: name, address, nights, booking')}>
                 <div className="strong">
                   {tonight.title} <span className="small" style={{ color: 'var(--primary)' }}>✏️</span>
                 </div>
@@ -381,10 +386,10 @@ export default function TodayPage() {
               </button>
               {tonight.location?.lat != null && (
                 <a className="btn btn-sm" href={directionsUrl(tonight.location.lat, tonight.location.lon!, 'transit')} target="_blank" rel="noreferrer">
-                  Directions
+                  {t('Directions')}
                 </a>
               )}
-              {tonight.status !== 'booked' && <span className="badge danger">Not booked yet</span>}
+              {tonight.status !== 'booked' && <span className="badge danger">{t('Not booked yet')}</span>}
             </div>
           )}
         </div>
@@ -422,35 +427,35 @@ function DayItemMenu(p: {
   const [open, setOpen] = useState(false)
   return (
     <div style={{ position: 'relative' }}>
-      <button className="icon-btn" onClick={() => setOpen((o) => !o)} aria-label="More">
+      <button className="icon-btn" onClick={() => setOpen((o) => !o)} aria-label={t('More')}>
         ⋯
       </button>
       {open && (
         <div className="card tight stack" style={{ position: 'absolute', right: 0, top: 34, zIndex: 10, gap: 2, minWidth: 180 }} onClick={() => setOpen(false)}>
           {!p.first && (
             <button className="btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} onClick={p.onUp}>
-              ↑ Do earlier
+              {t('↑ Do earlier')}
             </button>
           )}
           {!p.last && (
             <button className="btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} onClick={p.onDown}>
-              ↓ Do later
+              {t('↓ Do later')}
             </button>
           )}
           <button className="btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} onClick={p.onTomorrow}>
-            → Move to next day
+            {t('→ Move to next day')}
           </button>
           <button className="btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} onClick={p.onSkip}>
-            {p.skipped ? '↺ Un-skip' : '⤼ Skip'}
+            {p.skipped ? t('↺ Un-skip') : t('⤼ Skip')}
           </button>
           {p.canLock && (
             <button className="btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} onClick={p.onLock}>
-              {p.locked ? '🔓 Let it move' : '📌 Lock this time'}
+              {p.locked ? t('🔓 Let it move') : t('📌 Lock this time')}
             </button>
           )}
           {p.navigateTo?.lat != null && (
             <a className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start' }} href={directionsUrl(p.navigateTo.lat, p.navigateTo.lon!, 'walking')} target="_blank" rel="noreferrer">
-              🧭 Directions
+              {t('🧭 Directions')}
             </a>
           )}
         </div>
@@ -464,8 +469,8 @@ function Countdown({ to, now }: { to: string; now: Date }) {
   if (mins < 0) return null
   return (
     <div className="right">
-      <div className="countdown">{mins >= 60 ? `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}` : `${mins}m`}</div>
-      <div className="tiny muted">to go</div>
+      <div className="countdown">{mins >= 60 ? `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}` : t('{n}m', { n: mins })}</div>
+      <div className="tiny muted">{t('to go')}</div>
     </div>
   )
 }
@@ -486,7 +491,7 @@ function Weather({ lat, lon, date }: { lat?: number; lon?: number; date: string 
   )
 }
 
-const REASONS = ['It’s raining', 'The kids are tired', 'We’re running late', 'A place is closed', 'We want something more relaxed', 'We have extra time']
+const REASONS = [t('It’s raining'), t('The kids are tired'), t('We’re running late'), t('A place is closed'), t('We want something more relaxed'), t('We have extra time')]
 
 function ReplanModal({ date, dayItems, onClose }: { date: string; dayItems: Item[]; onClose: () => void }) {
   const { trip, days, settings } = useTripCtx()
@@ -502,7 +507,7 @@ function ReplanModal({ date, dayItems, onClose }: { date: string; dayItems: Item
     try {
       const items = parseDayItems(answer)
       await applyDayReplan(trip, date, keep, items, settings.homeCurrency)
-      toast(`Day updated with ${items.length} items`)
+      toast(tn(items.length, 'Day updated with {n} item', 'Day updated with {n} items'))
       onClose()
     } catch (e) {
       setError((e as Error).message)
@@ -510,9 +515,9 @@ function ReplanModal({ date, dayItems, onClose }: { date: string; dayItems: Item
   }
 
   return (
-    <Modal title="✨ Replan the day" onClose={onClose}>
+    <Modal title={t('✨ Replan the day')} onClose={onClose}>
       <div className="stack">
-        <label>What changed?</label>
+        <label>{t('What changed?')}</label>
         <div className="chips">
           {REASONS.map((r) => (
             <button key={r} className={`chip ${reason === r ? 'on' : ''}`} onClick={() => setReason(r)}>
@@ -522,24 +527,24 @@ function ReplanModal({ date, dayItems, onClose }: { date: string; dayItems: Item
         </div>
         <div className="form-grid">
           <label className="full">
-            Or in your own words
+            {t('Or in your own words')}
             <input value={reason} onChange={(e) => setReason(e.target.value)} />
           </label>
           <label>
-            Replan from
+            {t('Replan from')}
             <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
           </label>
         </div>
         <PromptBox prompt={prompt} onAnswer={setAnswer} />
-        <AnswerBox label="2 · Paste the answer here" value={answer} onChange={setAnswer} placeholder='{"items": [ ... ]}' />
+        <AnswerBox label={t('2 · Paste the answer here')} value={answer} onChange={setAnswer} placeholder='{"items": [ ... ]}' />
         {error && <div className="notice error">{error}</div>}
         <p className="tiny muted">
-          Keeps {keep.length} item(s) that are done, booked or before {from}; the rest of the day is replaced.
+          {tn(keep.length, 'Keeps {n} item that is done, booked or before {from}; the rest of the day is replaced.', 'Keeps {n} items that are done, booked or before {from}; the rest of the day is replaced.', { from })}
         </p>
         <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <button onClick={onClose}>Cancel</button>
+          <button onClick={onClose}>{t('Cancel')}</button>
           <button className="btn-primary" disabled={!answer.trim()} onClick={apply}>
-            Update the day
+            {t('Update the day')}
           </button>
         </div>
       </div>

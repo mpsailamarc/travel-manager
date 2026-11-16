@@ -23,6 +23,9 @@ import { StaysCard } from '../components/StaysCard'
 import { fillUntimedTrip, untimedItems } from '../lib/favorites'
 import { useTripCtx } from './TripLayout'
 import { saveLocal } from '../lib/storage'
+import { t, tn } from '../i18n'
+
+const STATUS_LOWER = { idea: t('idea'), planned: t('planned'), booked: t('booked'), done: t('done'), skipped: t('skipped') }
 
 export default function PlanPage() {
   const { trip, items, days, settings } = useTripCtx()
@@ -101,7 +104,7 @@ export default function PlanPage() {
         lastCity = d.city
         if (!sameCity && (!last || last[0] !== d.lon || last[1] !== d.lat)) {
           line.push([d.lon, d.lat])
-          markers.push({ id: date, lat: d.lat, lon: d.lon, label: String(++stop), variant: 'on', title: `${d.city ?? ''} · from day ${i + 1}: open it`, onClick: () => navigate(`../today?date=${date}`) })
+          markers.push({ id: date, lat: d.lat, lon: d.lon, label: String(++stop), variant: 'on', title: t('{city} · from day {n}: open it', { city: d.city ?? '', n: i + 1 }), onClick: () => navigate(`../today?date=${date}`) })
         }
       }
     })
@@ -111,12 +114,12 @@ export default function PlanPage() {
     const end = fromHome && endP?.lat != null && endP.lon != null ? endP : undefined
     if (start) {
       line.unshift([start.lon!, start.lat!])
-      markers.push({ id: 'trip-start', lat: start.lat!, lon: start.lon!, label: 'S', variant: 'start', title: `Start: ${start.name}` })
+      markers.push({ id: 'trip-start', lat: start.lat!, lon: start.lon!, label: 'S', variant: 'start', title: t('Start: {name}', { name: start.name }) })
     }
     if (end) {
       line.push([end.lon!, end.lat!])
       const same = start && start.lat === end.lat && start.lon === end.lon
-      if (!same) markers.push({ id: 'trip-end', lat: end.lat!, lon: end.lon!, label: 'E', variant: 'start', title: `Return: ${end.name}` })
+      if (!same) markers.push({ id: 'trip-end', lat: end.lat!, lon: end.lon!, label: 'E', variant: 'start', title: t('Return: {name}', { name: end.name }) })
     }
     // Item dots go first so the numbered day markers are drawn on top of them.
     const dots: MapMarker[] = []
@@ -125,7 +128,7 @@ export default function PlanPage() {
     const onTrip = (p: { lat: number; lon: number }) => fromHome || !dayPoints.length || dayPoints.some((d) => haversineM(d, p) < 250000)
     for (const it of items) {
       const p = it.location ?? it.to
-      if (p?.lat != null && p.lon != null && it.kind !== 'stay' && onTrip({ lat: p.lat, lon: p.lon })) dots.push({ id: it.id, lat: p.lat, lon: p.lon, variant: 'dot', title: `${it.title}: open its day`, onClick: () => navigate(`../today?date=${it.date}`) })
+      if (p?.lat != null && p.lon != null && it.kind !== 'stay' && onTrip({ lat: p.lat, lon: p.lon })) dots.push({ id: it.id, lat: p.lat, lon: p.lon, variant: 'dot', title: t('{title}: open its day', { title: it.title }), onClick: () => navigate(`../today?date=${it.date}`) })
     }
     return { markers: [...dots, ...markers], line }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -161,7 +164,7 @@ export default function PlanPage() {
         if (fromHome || !homeDay(d)) push((f.i.to!.name || p.name).split(',')[0], p.lat, p.lon, date, true)
       }
       // The night's town, when you move (on the day you fly home it's still the last town: you've left it already).
-      if (!homeDay(d) && (!d?.city || d.city !== lastCity)) push(d?.city ?? 'Stop', d?.lat, d?.lon, date)
+      if (!homeDay(d) && (!d?.city || d.city !== lastCity)) push(d?.city ?? t('Stop'), d?.lat, d?.lon, date)
       if (d?.city) lastCity = d.city
     }
     const endP = trip.endPlace?.name ? trip.endPlace : trip.startPlace
@@ -213,7 +216,7 @@ export default function PlanPage() {
           icon: JOURNEY_ICON[it.kind]!,
           from: it.from?.name ?? leg?.from.name ?? '?',
           to: it.to?.name ?? leg?.to.name ?? '?',
-          detail: [it.startTime, it.status === 'booked' ? 'booked' : undefined, route ? `${distance(route.distanceM)} · ${formatDuration(route.durationS)} driving` : undefined].filter(Boolean).join(' · '),
+          detail: [it.startTime, it.status === 'booked' ? t('booked') : undefined, route ? t('{distance} · {duration} driving', { distance: distance(route.distanceM), duration: formatDuration(route.durationS) }) : undefined].filter(Boolean).join(' · '),
         }
       }),
     ...legs
@@ -225,9 +228,9 @@ export default function PlanPage() {
           date: l.to.arrive,
           time: '',
           icon: '🚗',
-          from: l.from.name || 'Start',
-          to: l.to.name || 'End',
-          detail: route ? `${distance(route.distanceM)} · ${formatDuration(route.durationS)} driving` : roads.loading ? 'finding the road…' : '',
+          from: l.from.name || t('Start'),
+          to: l.to.name || t('End'),
+          detail: route ? t('{distance} · {duration} driving', { distance: distance(route.distanceM), duration: formatDuration(route.durationS) }) : roads.loading ? t('finding the road…') : '',
         }
       }),
   ].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
@@ -238,11 +241,11 @@ export default function PlanPage() {
   const map = markers.length > 0 && (
     <div className="card stack" style={{ gap: 8 }}>
       <div className="row between">
-        <b>🗺️ Map</b>
+        <b>{t('🗺️ Map')}</b>
         <div className="chips">
           {(['small', 'large', 'hidden'] as const).map((v) => (
             <button key={v} className={`chip ${mapSize === v ? 'on' : ''}`} onClick={() => setMapSize(v)}>
-              {v === 'small' ? 'Small' : v === 'large' ? 'Large' : 'Hide'}
+              {v === 'small' ? t('Small') : v === 'large' ? t('Large') : t('Hide')}
             </button>
           ))}
         </div>
@@ -250,10 +253,10 @@ export default function PlanPage() {
       {mapSize !== 'hidden' && trip.startPlace?.lat != null && (
         <div className="chips">
           <button className={`chip ${fromHome ? 'on' : ''}`} onClick={() => setFromHome(true)}>
-            From {trip.startPlace.name.split(',')[0]}
+            {t('From {name}', { name: trip.startPlace.name.split(',')[0] })}
           </button>
           <button className={`chip ${!fromHome ? 'on' : ''}`} onClick={() => setFromHome(false)}>
-            The trip only
+            {t('The trip only')}
           </button>
         </div>
       )}
@@ -269,13 +272,13 @@ export default function PlanPage() {
           {/* The journeys and the map's key start folded: the map says most of it, the list is there when you need it. */}
           <details>
             <summary className="small muted" style={{ cursor: 'pointer' }}>
-              🧭 {journeyList.length ? `${journeyList.length} ${journeyList.length === 1 ? 'journey' : 'journeys'}, and the map's key` : "The map's key"}
+              {journeyList.length ? tn(journeyList.length, "🧭 {n} journey, and the map's key", "🧭 {n} journeys, and the map's key") : t("🧭 The map's key")}
             </summary>
             <div className="stack" style={{ gap: 6, marginTop: 6 }}>
             {journeyList.length > 0 && (
               <div className="stack" style={{ gap: 2 }}>
                 {journeyList.map((j) => (
-                  <Link key={j.key} to={`../today?date=${j.date}`} className="small journey-link" title="Open that day">
+                  <Link key={j.key} to={`../today?date=${j.date}`} className="small journey-link" title={t('Open that day')}>
                     {j.icon} {j.from} → {j.to}
                     <span className="muted">
                       {' · '}
@@ -287,17 +290,13 @@ export default function PlanPage() {
               </div>
             )}
             <p className="tiny muted">
-              <span style={{ color: LEG_STYLE.car }}>━</span> by car · <span style={{ color: LEG_STYLE.public }}>━</span> train / bus ·{' '}
-              <span style={{ color: LEG_STYLE.flight }}>┅</span> flight · <span style={{ color: LEG_STYLE.ferry }}>┅</span> boat
+              <span style={{ color: LEG_STYLE.car }}>━</span> {t('by car')} · <span style={{ color: LEG_STYLE.public }}>━</span> {t('train / bus')} ·{' '}
+              <span style={{ color: LEG_STYLE.flight }}>┅</span> {t('flight')} · <span style={{ color: LEG_STYLE.ferry }}>┅</span> {t('boat')}
             </p>
             <p className="tiny muted">
-              {trip.startPlace?.lat != null && (
-                <>
-                  🟠 <b>S</b> start{trip.endPlace?.name ? ' · 🟠 E return' : ' and return'} ·{' '}
-                </>
-              )}
-              Numbers = the places in the order you reach them (tap one to open its first day, or a grey dot to open its day) · lines follow the roads, except flights and boats (dashed) · grey dots = activities
-              {trip.startPlace?.lat == null && ' · Set where you start and finish in Trip details to see them here'}
+              {trip.startPlace?.lat != null && <>{trip.endPlace?.name ? t('🟠 S start · 🟠 E return') : t('🟠 S start and return')} · </>}
+              {t('Numbers = the places in the order you reach them (tap one to open its first day, or a grey dot to open its day) · lines follow the roads, except flights and boats (dashed) · grey dots = activities')}
+              {trip.startPlace?.lat == null && ` · ${t('Set where you start and finish in Trip details to see them here')}`}
             </p>
             </div>
           </details>
@@ -318,12 +317,12 @@ export default function PlanPage() {
       <div className="stack">
         <div className="row wrap between no-print">
           <div className="small muted">
-            {items.length} items · {items.filter((i) => i.status === 'booked').length} booked
-            {estimated > 0 && currency && ` · est. ${money(estimated, currency)}`}
+            {tn(items.length, '{n} item', '{n} items')} · {t('{n} booked', { n: items.filter((i) => i.status === 'booked').length })}
+            {estimated > 0 && currency && ` · ${t('est. {amount}', { amount: money(estimated, currency) })}`}
           </div>
           <div className="row">
             <button className="btn-sm" onClick={() => window.print()}>
-              🖨️ Print
+              {t('🖨️ Print')}
             </button>
           </div>
         </div>
@@ -345,10 +344,10 @@ export default function PlanPage() {
 
         {items.length === 0 && (
           <div className="card">
-            <Empty emoji="🗺️" title="Nothing planned yet">
-              <p style={{ marginBottom: 12 }}>Get three itinerary ideas from a free chatbot, start from a simple template, or add things day by day.</p>
+            <Empty emoji="🗺️" title={t('Nothing planned yet')}>
+              <p style={{ marginBottom: 12 }}>{t('Get three itinerary ideas from a free chatbot, start from a simple template, or add things day by day.')}</p>
               <Link to="../ideas" className="btn btn-primary">
-                ✨ Get itinerary ideas
+                {t('✨ Get itinerary ideas')}
               </Link>
             </Empty>
           </div>
@@ -356,25 +355,25 @@ export default function PlanPage() {
 
         {items.length > 0 && (
           <div className="row between wrap no-print">
-            <h3>Days</h3>
+            <h3>{t('Days')}</h3>
             {dates.some((d) => untimedItems(items, d).length) && (
               <button
                 className="btn-sm"
-                title="Give a time to every activity, meal and walk that has none, around what already has one"
+                title={t('Give a time to every activity, meal and walk that has none, around what already has one')}
                 onClick={async () => {
                   const n = await fillUntimedTrip(trip.id, settings)
-                  toast(n ? `${n} item${n > 1 ? 's' : ''} given a time` : 'No room left on those days: give them a time by hand')
+                  toast(n ? tn(n, '{n} item given a time', '{n} items given a time') : t('No room left on those days: give them a time by hand'))
                 }}
               >
-                ⏱ Give times to {dates.reduce((s, d) => s + untimedItems(items, d).length, 0)} untimed items
+                {tn(dates.reduce((s, d) => s + untimedItems(items, d).length, 0), '⏱ Give times to {n} untimed item', '⏱ Give times to {n} untimed items')}
               </button>
             )}
             <div className="chips">
               <button className={`chip ${!fold.open && !fold.except.length ? 'on' : ''}`} onClick={() => setFold({ open: false, except: [] })}>
-                ▸ Collapse all
+                {t('▸ Collapse all')}
               </button>
               <button className={`chip ${fold.open && !fold.except.length ? 'on' : ''}`} onClick={() => setFold({ open: true, except: [] })}>
-                ▾ Expand all
+                {t('▾ Expand all')}
               </button>
             </div>
           </div>
@@ -387,28 +386,28 @@ export default function PlanPage() {
             const journeys = dayItems.filter((it) => ['flight', 'train', 'bus', 'ferry', 'car', 'drive'].includes(it.kind))
             return (
               <div key={date} id={`day-${date}`} className={`card tight day-line ${date === now ? 'is-today' : ''}`}>
-                <button className="btn-sm btn-ghost no-print" style={{ fontSize: '1.1rem', lineHeight: 1, padding: '4px 8px' }} aria-label={`Expand day ${i + 1}`} aria-expanded={false} title="Show this day's items" onClick={() => toggleDay(date)}>
+                <button className="btn-sm btn-ghost no-print" style={{ fontSize: '1.1rem', lineHeight: 1, padding: '4px 8px' }} aria-label={t('Expand day {n}', { n: i + 1 })} aria-expanded={false} title={t("Show this day's items")} onClick={() => toggleDay(date)}>
                   ▸
                 </button>
                 <div className="day-num">
-                  <small>Day</small>
+                  <small>{t('Day')}</small>
                   <b>{i + 1}</b>
                 </div>
-                <Link to={`../today?date=${date}`} className="grow day-line-main" title="Open this day">
+                <Link to={`../today?date=${date}`} className="grow day-line-main" title={t('Open this day')}>
                   <div className="strong">
                     {[d?.city, d?.title].filter(Boolean).join(' · ') || formatDate(date, { weekday: 'long', day: 'numeric', month: 'long' })}
-                    {date === now && <span className="badge done" style={{ marginLeft: 6 }}>Today</span>}
+                    {date === now && <span className="badge done" style={{ marginLeft: 6 }}>{t('Today')}</span>}
                   </div>
                   <div className="small muted">
                     {formatDate(date, { weekday: 'short', day: 'numeric', month: 'short' })}
                     {' · '}
-                    {dayItems.length ? `${dayItems.length} ${dayItems.length === 1 ? 'item' : 'items'}` : 'free day'}
+                    {dayItems.length ? tn(dayItems.length, '{n} item', '{n} items') : t('free day')}
                     {journeys.map((j) => ` · ${KIND_META[j.kind].emoji} ${j.startTime ?? ''}`.trimEnd()).join('')}
                   </div>
                 </Link>
                 <div className="row no-print">
-                  <Link to={`../today?date=${date}`} className="btn btn-sm" aria-label={`Open day ${i + 1}`}>
-                    Open ›
+                  <Link to={`../today?date=${date}`} className="btn btn-sm" aria-label={t('Open day {n}', { n: i + 1 })}>
+                    {t('Open ›')}
                   </Link>
                 </div>
               </div>
@@ -418,28 +417,28 @@ export default function PlanPage() {
           return (
             <section key={date} id={`day-${date}`} className={`card day-card ${date === now ? 'is-today' : ''}`}>
               <div className="day-head">
-                <button className="btn-sm btn-ghost no-print" style={{ fontSize: '1.1rem', lineHeight: 1, padding: '4px 8px' }} aria-label={`Collapse day ${i + 1}`} aria-expanded title="Hide this day's items" onClick={() => toggleDay(date)}>
+                <button className="btn-sm btn-ghost no-print" style={{ fontSize: '1.1rem', lineHeight: 1, padding: '4px 8px' }} aria-label={t('Collapse day {n}', { n: i + 1 })} aria-expanded title={t("Hide this day's items")} onClick={() => toggleDay(date)}>
                   ▾
                 </button>
                 <div className="day-num">
-                  <small>Day</small>
+                  <small>{t('Day')}</small>
                   <b>{i + 1}</b>
                 </div>
                 <div className="grow clickable" onClick={() => setDayEdit(d ?? { id: `${trip.id}:${date}`, tripId: trip.id, date })}>
                   <div className="strong">
                     {formatDate(date, { weekday: 'long', day: 'numeric', month: 'long' })}
-                    {date === now && <span className="badge done" style={{ marginLeft: 6 }}>Today</span>}
+                    {date === now && <span className="badge done" style={{ marginLeft: 6 }}>{t('Today')}</span>}
                   </div>
                   <div className="small muted">
-                    {[d?.city, d?.title].filter(Boolean).join(' · ') || 'Set city & title ✏️'}
+                    {[d?.city, d?.title].filter(Boolean).join(' · ') || t('Set city & title ✏️')}
                   </div>
                 </div>
                 <div className="row no-print">
-                  <Link to={`../favorites${d?.city ? `?city=${encodeURIComponent(d.city)}` : ''}`} className="btn btn-sm btn-ghost" title="Plan this city's sights and walks">
+                  <Link to={`../favorites${d?.city ? `?city=${encodeURIComponent(d.city)}` : ''}`} className="btn btn-sm btn-ghost" title={t("Plan this city's sights and walks")}>
                     🚶
                   </Link>
                   <button className="btn-sm" onClick={() => setEditing({ date })}>
-                    + Add
+                    {t('+ Add')}
                   </button>
                 </div>
               </div>
@@ -448,7 +447,7 @@ export default function PlanPage() {
                 {dayItems.map((it) => (
                   <ItemRow key={it.id} item={it} zoneNote={journeyNote(it, { trip, days })} onClick={() => setEditing(it)} />
                 ))}
-                {dayItems.length === 0 && <div className="small muted" style={{ padding: '6px 4px' }}>Free day — add something or leave it open.</div>}
+                {dayItems.length === 0 && <div className="small muted" style={{ padding: '6px 4px' }}>{t('Free day — add something or leave it open.')}</div>}
               </div>
             </section>
           )
@@ -456,8 +455,8 @@ export default function PlanPage() {
 
         {outside.length > 0 && (
           <section className="card">
-            <h3>Outside the trip dates</h3>
-            <p className="small muted">These items fall before or after the trip (dates changed?). Edit them to move them to a day.</p>
+            <h3>{t('Outside the trip dates')}</h3>
+            <p className="small muted">{t('These items fall before or after the trip (dates changed?). Edit them to move them to a day.')}</p>
             <div className="items">
               {outside.map((it) => (
                 <ItemRow key={it.id} item={it} onClick={() => setEditing({ ...it, date: trip.startDate })} />
@@ -483,7 +482,7 @@ function DuplicatesNotice({ tripId, items }: { tripId: string; items: Item[] }) 
   if (!groups.length) return null
   const merge = async (gs: DuplicateGroup[]) => {
     await mergeGroups(tripId, gs)
-    toast(`Merged ${gs.length} duplicate${gs.length > 1 ? 's' : ''}`)
+    toast(tn(gs.length, 'Merged {n} duplicate', 'Merged {n} duplicates'))
   }
   const notDup = (gs: DuplicateGroup[]) => {
     markNotDuplicates(gs.map((g) => g.key))
@@ -493,17 +492,17 @@ function DuplicatesNotice({ tripId, items }: { tripId: string; items: Item[] }) 
     <>
       <div className="notice row wrap between" style={{ alignItems: 'center' }}>
         <span>
-          ⚠️ <b>{groups.length === 1 ? '1 item appears twice' : `${groups.length} items appear twice`}</b> in your plan (e.g. {groups[0].keep.title}).
+          ⚠️ <b>{tn(groups.length, '{n} item appears twice', '{n} items appear twice')}</b> {t('in your plan (e.g. {title}).', { title: groups[0].keep.title })}
         </span>
         <button className="btn-sm" onClick={() => setOpen(true)}>
-          Review & merge
+          {t('Review & merge')}
         </button>
       </div>
       {open && (
-        <Modal title="Duplicates" onClose={() => setOpen(false)}>
+        <Modal title={t('Duplicates')} onClose={() => setOpen(false)}>
           <div className="stack">
             <p className="small muted">
-              Each pair is merged into one item that keeps everything known about it (booking reference, times, price). The booked version is kept first.
+              {t('Each pair is merged into one item that keeps everything known about it (booking reference, times, price). The booked version is kept first.')}
             </p>
             {groups.map((g) => (
               <div key={g.key} className="card tight stack" style={{ gap: 6 }}>
@@ -512,24 +511,24 @@ function DuplicatesNotice({ tripId, items }: { tripId: string; items: Item[] }) 
                   <div key={i.id} className="row small">
                     <span>{KIND_META[i.kind].emoji}</span>
                     <span className="grow">
-                      <b>{i.title}</b> {i.startTime && `· ${i.startTime}`} · {i.status}
-                      {i.bookingRef && ` · ref ${i.bookingRef}`}
+                      <b>{i.title}</b> {i.startTime && `· ${i.startTime}`} · {STATUS_LOWER[i.status]}
+                      {i.bookingRef && ` · ${t('ref {ref}', { ref: i.bookingRef })}`}
                     </span>
-                    {n === 0 && <span className="badge booked">kept</span>}
+                    {n === 0 && <span className="badge booked">{t('kept')}</span>}
                   </div>
                 ))}
                 <div className="row">
                   <button className="btn-sm btn-primary" onClick={() => merge([g])}>
-                    Merge
+                    {t('Merge')}
                   </button>
                   <button className="btn-sm btn-ghost" onClick={() => notDup([g])}>
-                    Not duplicates
+                    {t('Not duplicates')}
                   </button>
                 </div>
               </div>
             ))}
             <div className="row" style={{ justifyContent: 'flex-end' }}>
-              <button onClick={() => setOpen(false)}>Close</button>
+              <button onClick={() => setOpen(false)}>{t('Close')}</button>
               <button
                 className="btn-primary"
                 onClick={async () => {
@@ -537,7 +536,7 @@ function DuplicatesNotice({ tripId, items }: { tripId: string; items: Item[] }) 
                   setOpen(false)
                 }}
               >
-                Merge all ({groups.length})
+                {t('Merge all ({n})', { n: groups.length })}
               </button>
             </div>
           </div>
@@ -560,14 +559,14 @@ function StartCard({ tripId }: { tripId: string }) {
   }
   return (
     <div className="card tight stack" style={{ gap: 6 }}>
-      <b className="small">📍 Where does the trip start (and end)?</b>
+      <b className="small">{t('📍 Where does the trip start (and end)?')}</b>
       <div className="row">
-        <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} placeholder="e.g. San Francisco" />
+        <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} placeholder={t('e.g. San Francisco')} />
         <button className="btn-primary" disabled={busy || !name.trim()} onClick={save}>
-          {busy ? '…' : 'Set'}
+          {busy ? '…' : t('Set')}
         </button>
       </div>
-      <span className="tiny muted">It's drawn on the map and used by the budget estimate. If you finish somewhere else, change it in Trip details.</span>
+      <span className="tiny muted">{t("It's drawn on the map and used by the budget estimate. If you finish somewhere else, change it in Trip details.")}</span>
     </div>
   )
 }
@@ -593,24 +592,24 @@ function DayEditor({ day, onClose }: { day: Day; onClose: () => void }) {
   return (
     <Modal title={formatDate(day.date, { weekday: 'long', day: 'numeric', month: 'long' })} onClose={onClose}>
       <div className="stack">
-        <PlaceSearch label="City / base for the day" value={place} onChange={(p) => setD({ ...d, city: p?.name, lat: p?.lat, lon: p?.lon })} placeholder="e.g. Kyoto" />
+        <PlaceSearch label={t('City / base for the day')} value={place} onChange={(p) => setD({ ...d, city: p?.name, lat: p?.lat, lon: p?.lon })} placeholder={t('e.g. Kyoto')} />
         <label>
-          Title
-          <input value={d.title ?? ''} onChange={(e) => setD({ ...d, title: e.target.value })} placeholder="e.g. Temples & tea" />
+          {t('Title')}
+          <input value={d.title ?? ''} onChange={(e) => setD({ ...d, title: e.target.value })} placeholder={t('e.g. Temples & tea')} />
         </label>
         <label>
-          Notes
+          {t('Notes')}
           <textarea style={{ minHeight: 70 }} value={d.notes ?? ''} onChange={(e) => setD({ ...d, notes: e.target.value })} />
         </label>
         <label className="inline">
           <input type="checkbox" checked={applyAll} onChange={(e) => setApplyAll(e.target.checked)} />
-          Also use this city for the following days (until another city is set)
+          {t('Also use this city for the following days (until another city is set)')}
         </label>
-        <p className="tiny muted">Tap “Find” to attach coordinates — used for weather, the map and walking tours.</p>
+        <p className="tiny muted">{t('Tap “Find” to attach coordinates — used for weather, the map and walking tours.')}</p>
         <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <button onClick={onClose}>Cancel</button>
+          <button onClick={onClose}>{t('Cancel')}</button>
           <button className="btn-primary" onClick={save}>
-            Save
+            {t('Save')}
           </button>
         </div>
       </div>

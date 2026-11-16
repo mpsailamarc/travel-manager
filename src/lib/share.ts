@@ -4,6 +4,7 @@ import { db } from '../db'
 import type { ChecklistItem, Day, Expense, Favorite, Item, Trip, TripDocument } from '../types'
 import { uid } from './ids'
 import { saveLocal } from './storage'
+import { t } from '../i18n'
 
 interface ExportedDoc extends Omit<TripDocument, 'blob'> {
   dataUrl: string
@@ -33,7 +34,7 @@ function blobToDataUrl(b: Blob): Promise<string> {
 
 export async function exportTrip(tripId: string, opts: { documents: boolean; expenses: boolean }): Promise<File> {
   const trip = await db.trips.get(tripId)
-  if (!trip) throw new Error('Trip not found')
+  if (!trip) throw new Error(t('Trip not found'))
   const docs = opts.documents ? await db.documents.where('tripId').equals(tripId).toArray() : []
   const file: TripFile = {
     app: 'travel-manager',
@@ -77,7 +78,7 @@ export async function shareOrDownload(file: File): Promise<'shared' | 'downloade
 /** Imports as a new copy (fresh ids), so importing the same file twice never overwrites your edits. */
 export async function importTrip(text: string): Promise<string> {
   const f = JSON.parse(text) as TripFile
-  if (f.app !== 'travel-manager' || !f.trip) throw new Error('This is not a Travel Manager trip file.')
+  if (f.app !== 'travel-manager' || !f.trip) throw new Error(t('This is not a Travel Manager trip file.'))
   const id = uid()
   const itemIds = new Map(f.items.map((i) => [i.id, uid()]))
   const favIds = new Map((f.favorites ?? []).map((v) => [v.id, uid()])) // items point at their wishlist place, so both are remapped

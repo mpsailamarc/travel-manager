@@ -4,6 +4,7 @@ import { KIND_META } from './kinds'
 import { formatDuration, minToHHMM } from '../lib/dates'
 import { tzCity, tzLabel } from '../lib/tz'
 import type { DayEntry, DayView } from '../lib/dayview'
+import { t, tn } from '../i18n'
 
 const PX_PER_HOUR = 52
 const GUTTER = 46 // room for the hour labels
@@ -14,11 +15,11 @@ const HOLD_MS = 550 // touch: hold this long before a block (or its edge) can be
 type Group = 'travel' | 'activities' | 'meals' | 'stay' | 'other'
 
 export const GROUPS: Record<Group, { label: string; emoji: string; color: string }> = {
-  travel: { label: 'Travel', emoji: '🧭', color: '#60a5fa' },
-  activities: { label: 'Activities', emoji: '🎟️', color: '#2dd4bf' },
-  meals: { label: 'Meals', emoji: '🍽️', color: '#fb923c' },
-  stay: { label: 'Check-in', emoji: '🛏️', color: '#c084fc' },
-  other: { label: 'Other', emoji: '📝', color: '#a8a29e' },
+  travel: { label: t('Travel'), emoji: '🧭', color: '#60a5fa' },
+  activities: { label: t('Activities'), emoji: '🎟️', color: '#2dd4bf' },
+  meals: { label: t('Meals'), emoji: '🍽️', color: '#fb923c' },
+  stay: { label: t('Check-in'), emoji: '🛏️', color: '#c084fc' },
+  other: { label: t('Other'), emoji: '📝', color: '#a8a29e' },
 }
 
 function groupOf(kind: ItemKind): Group {
@@ -127,7 +128,7 @@ export function DayProportions({ entries }: { entries: DayEntry[] }) {
             {GROUPS[g].label} <b>{formatDuration(totals.get(g)! * 60)}</b> <span className="muted">{Math.round((totals.get(g)! / sum) * 100)}%</span>
           </span>
         ))}
-        <span className="small muted">· {formatDuration(sum * 60)} planned</span>
+        <span className="small muted">· {t('{duration} planned', { duration: formatDuration(sum * 60) })}</span>
       </div>
     </div>
   )
@@ -294,7 +295,7 @@ export function DayTimeline({
   }
 
   if (!blocks.length) {
-    return <p className="small muted">Give items a start time (and an end time) to see the day laid out here.{untimed.length ? ` ${untimed.length} item(s) have no time yet.` : ''}</p>
+    return <p className="small muted">{t('Give items a start time (and an end time) to see the day laid out here.')}{untimed.length ? ` ${tn(untimed.length, '{n} item has no time yet.', '{n} items have no time yet.')}` : ''}</p>
   }
   const y = (min: number) => ((min - from) / 60) * PX_PER_HOUR
   const nowMin = now ? now.getHours() * 60 + now.getMinutes() : undefined
@@ -306,19 +307,19 @@ export function DayTimeline({
     <div className="stack" style={{ gap: 8 }}>
       {view.tz && !view.zones && (
         <p className="tiny muted" style={{ margin: 0 }}>
-          🕒 Times in <b>{tzLabel(view.tz, view.noonUtc)}</b>, the local time of this day
+          {t('🕒 Times in {zone}, the local time of this day', { zone: tzLabel(view.tz, view.noonUtc) })}
         </p>
       )}
       {view.tz && view.zones && (
         <div className="stack" style={{ gap: 4 }}>
           <p className="tiny muted" style={{ margin: 0 }}>
-            🕒 This day changes time zone. Times in <b>{tzLabel(view.tz, view.noonUtc)}</b>; what's in <b>{tzCity(view.zones.find((z) => z !== view.tz)!)}</b> time is highlighted, with its own local time.
+            {t("🕒 This day changes time zone. Times in {zone}; what's in {other} time is highlighted, with its own local time.", { zone: tzLabel(view.tz, view.noonUtc), other: tzCity(view.zones.find((z) => z !== view.tz)!) })}
           </p>
           {onZone && (
             <div className="chips">
               {view.zones.map((z) => (
                 <button key={z} className={`chip ${z === view.tz ? 'on' : ''}`} onClick={() => onZone(z)}>
-                  {tzCity(z)} time
+                  {t('{city} time', { city: tzCity(z) })}
                 </button>
               ))}
             </div>
@@ -354,15 +355,15 @@ export function DayTimeline({
               onPointerDown={(e) => down(e, b, 'move')}
               onContextMenu={(e) => gesture.current && e.preventDefault()}
               onClick={() => !suppressClick.current && onOpen(b.item)}
-              title={`${b.item.title} · ${hhmm(start)}–${hhmm(end)}${b.estimated ? ' (estimated length)' : ''}${note ? ` · ${note}` : ''}${b.entry.otherZone ? ` · ${hhmm(start + (b.entry.shift ?? 0))} ${tzCity(b.entry.otherZone)} time` : ''}`}
+              title={`${b.item.title} · ${hhmm(start)}–${hhmm(end)}${b.estimated ? ` ${t('(estimated length)')}` : ''}${note ? ` · ${note}` : ''}${b.entry.otherZone ? ` · ${hhmm(start + (b.entry.shift ?? 0))} ${t('{city} time', { city: tzCity(b.entry.otherZone) })}` : ''}`}
             >
-              {gripTop && <i className="tl-grip top" onPointerDown={(e) => down(e, b, 'start')} onClick={(e) => e.stopPropagation()} aria-label="Drag to change the start" />}
+              {gripTop && <i className="tl-grip top" onPointerDown={(e) => down(e, b, 'start')} onClick={(e) => e.stopPropagation()} aria-label={t('Drag to change the start')} />}
               {b.item.locked && (
                 <i
                   className="tl-pin"
                   role="button"
-                  title={onUnlock ? 'Locked at this time: tap to let it move' : 'Locked at this time'}
-                  aria-label="Unlock"
+                  title={onUnlock ? t('Locked at this time: tap to let it move') : t('Locked at this time')}
+                  aria-label={t('Unlock')}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -373,16 +374,16 @@ export function DayTimeline({
                 </i>
               )}
               <b>
-                {meta.emoji} {b.entry.marker && !tall ? `${b.entry.marker === 'lands' ? 'Lands' : 'Leaves'} ${hhmm(start)} · ` : ''}
+                {meta.emoji} {b.entry.marker && !tall ? `${b.entry.marker === 'lands' ? t('Lands {time}', { time: hhmm(start) }) : t('Leaves {time}', { time: hhmm(start) })} · ` : ''}
                 {b.item.title}
               </b>
               {tall && (
                 <span>
                   {b.entry.marker ? (
-                    `${b.entry.marker} ${hhmm(start)}`
+                    b.entry.marker === 'lands' ? t('lands {time}', { time: hhmm(start) }) : t('departs {time}', { time: hhmm(start) })
                   ) : (
                     <>
-                      {b.entry.spill ? `lands ${hhmm(end)}` : `${hhmm(start)}–${hhmm(end)}`} · {b.estimated && !l ? '~' : ''}
+                      {b.entry.spill ? t('lands {time}', { time: hhmm(end) }) : `${hhmm(start)}–${hhmm(end)}`} · {b.estimated && !l ? '~' : ''}
                       {formatDuration((end - start) * 60)}
                     </>
                   )}
@@ -392,10 +393,10 @@ export function DayTimeline({
               {b.entry.otherZone && (
                 <span className="tl-zone">
                   🕒 {hhmm(b.start + (b.entry.shift ?? 0))}
-                  {b.estimated ? '' : `–${hhmm(b.end + (b.entry.shift ?? 0))}`} {tzCity(b.entry.otherZone)} time
+                  {b.estimated ? '' : `–${hhmm(b.end + (b.entry.shift ?? 0))}`} {t('{city} time', { city: tzCity(b.entry.otherZone) })}
                 </span>
               )}
-              {gripBottom && <i className="tl-grip bottom" onPointerDown={(e) => down(e, b, 'end')} onClick={(e) => e.stopPropagation()} aria-label="Drag to change the end" />}
+              {gripBottom && <i className="tl-grip bottom" onPointerDown={(e) => down(e, b, 'end')} onClick={(e) => e.stopPropagation()} aria-label={t('Drag to change the end')} />}
               {l && (
                 <em className="tl-tip">
                   {hhmm(start)}–{hhmm(end)} · {formatDuration((end - start) * 60)}
@@ -406,20 +407,19 @@ export function DayTimeline({
         })}
         {nowMin != null && nowMin >= from && nowMin <= to && (
           <div className="tl-now" style={{ top: y(nowMin) }}>
-            <span>now</span>
+            <span>{t('now')}</span>
           </div>
         )}
       </div>
       {editable && (
         <p className="tiny muted">
-          ✋ Press and hold a block, then drag it to move it (it snaps to the quarter hour); press and hold its top or bottom edge, then drag, to change when it starts or ends. What you place is 📌 locked there:
-          tap the 📌 to let it move again. Booked items stay fixed.
+          {t('✋ Press and hold a block, then drag it to move it (it snaps to the quarter hour); press and hold its top or bottom edge, then drag, to change when it starts or ends. What you place is 📌 locked there: tap the 📌 to let it move again. Booked items stay fixed.')}
         </p>
       )}
-      {blocks.some((b) => b.estimated) && <p className="tiny muted">Dashed blocks have no end time: their length is a guess (~). Drag the bottom edge to set it.</p>}
+      {blocks.some((b) => b.estimated) && <p className="tiny muted">{t('Dashed blocks have no end time: their length is a guess (~). Drag the bottom edge to set it.')}</p>}
       {untimed.length > 0 && (
         <div className="stack" style={{ gap: 4 }}>
-          <b className="small">No time set</b>
+          <b className="small">{t('No time set')}</b>
           <div className="chips">
             {untimed.map((i) => (
               <button key={i.id} className="chip" onClick={() => onOpen(i)}>

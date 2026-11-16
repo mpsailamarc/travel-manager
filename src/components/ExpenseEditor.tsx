@@ -7,6 +7,7 @@ import { CURRENCIES } from '../lib/countries'
 import { fxRate } from '../lib/apis'
 import { money } from '../lib/format'
 import { Modal, toast } from './ui'
+import { t } from '../i18n'
 
 /** Edit a logged expense: amount, currency, date, category, note — and what it came to in your home currency. */
 export function ExpenseEditor({ expense, home, onClose }: { expense: Expense; home: string; onClose: () => void }) {
@@ -32,7 +33,7 @@ export function ExpenseEditor({ expense, home, onClose }: { expense: Expense; ho
   }
 
   async function save() {
-    if (!(value > 0)) return toast('Enter an amount')
+    if (!(value > 0)) return toast(t('Enter an amount'))
     setBusy(true)
     await db.expenses.update(expense.id, {
       amount: value,
@@ -42,22 +43,22 @@ export function ExpenseEditor({ expense, home, onClose }: { expense: Expense; ho
       note: note.trim() || undefined,
       amountHome: homeValue > 0 ? homeValue : value,
     })
-    toast('Expense updated')
+    toast(t('Expense updated'))
     onClose()
   }
 
   async function remove() {
-    if (!confirm(`Delete this expense (${money(expense.amount, expense.currency, 2)})?`)) return
+    if (!confirm(t('Delete this expense ({amount})?', { amount: money(expense.amount, expense.currency, 2) }))) return
     await db.expenses.delete(expense.id)
     onClose()
   }
 
   return (
-    <Modal title="Edit expense" onClose={onClose}>
+    <Modal title={t('Edit expense')} onClose={onClose}>
       <div className="stack">
         <div className="form-grid">
           <label>
-            Amount
+            {t('Amount')}
             <input
               inputMode="decimal"
               autoFocus
@@ -69,7 +70,7 @@ export function ExpenseEditor({ expense, home, onClose }: { expense: Expense; ho
             />
           </label>
           <label>
-            Currency
+            {t('Currency')}
             <select
               value={currency}
               onChange={(e) => {
@@ -84,12 +85,12 @@ export function ExpenseEditor({ expense, home, onClose }: { expense: Expense; ho
           </label>
           {currency !== home && (
             <label>
-              In {home}
+              {t('In {currency}', { currency: home })}
               <input inputMode="decimal" value={homeAmount} onChange={(e) => setHomeAmount(e.target.value)} />
             </label>
           )}
           <label>
-            Date
+            {t('Date')}
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
         </div>
@@ -101,20 +102,20 @@ export function ExpenseEditor({ expense, home, onClose }: { expense: Expense; ho
           ))}
         </div>
         <label>
-          Note
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was it for?" />
+          {t('Note')}
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('What was it for?')} />
         </label>
-        {currency !== home && <p className="tiny muted">The {home} amount follows the amount you type; change it by hand if your card charged something different.</p>}
+        {currency !== home && <p className="tiny muted">{t('The {currency} amount follows the amount you type; change it by hand if your card charged something different.', { currency: home })}</p>}
         <div className="row between">
           <button type="button" className="btn-ghost btn-danger" onClick={remove}>
-            Delete
+            {t('Delete')}
           </button>
           <div className="row">
             <button type="button" onClick={onClose}>
-              Cancel
+              {t('Cancel')}
             </button>
             <button type="button" className="btn-primary" disabled={busy} onClick={save}>
-              Save
+              {t('Save')}
             </button>
           </div>
         </div>

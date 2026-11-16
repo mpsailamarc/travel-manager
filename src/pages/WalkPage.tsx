@@ -13,6 +13,7 @@ import { Empty, toast } from '../components/ui'
 import LazyMap, { type MapMarker } from '../components/LazyMap'
 import { tripadvisorSearch } from '../lib/links'
 import { useTripCtx } from './TripLayout'
+import { t, tn } from '../i18n'
 
 export default function WalkPage() {
   const { trip, items, days, settings } = useTripCtx()
@@ -37,14 +38,14 @@ export default function WalkPage() {
   const [cats, setCats] = useState<string[]>(Object.keys(POI_CATEGORIES))
   const [stops, setStops] = useState<WalkStop[]>(existing?.walk?.stops ?? [])
   const [start, setStart] = useState<Place | undefined>(
-    existing?.walk?.start ?? (stay?.location ? { ...stay.location, name: `${stay.title}` } : day?.lat != null ? { name: `${day.city ?? 'City'} centre`, lat: day.lat, lon: day.lon } : undefined),
+    existing?.walk?.start ?? (stay?.location ? { ...stay.location, name: `${stay.title}` } : day?.lat != null ? { name: t('{city} centre', { city: day.city ?? t('City') }), lat: day.lat, lon: day.lon } : undefined),
   )
   const [roundTrip, setRoundTrip] = useState(existing?.walk?.roundTrip ?? false)
   const [startTime, setStartTime] = useState(existing?.startTime ?? '10:00')
   const [route, setRoute] = useState<WalkRoute | undefined>(existing?.walk?.geometry.length ? existing.walk : undefined)
   const [busy, setBusy] = useState(false)
   const [detail, setDetail] = useState<Poi | WalkStop>()
-  const [title, setTitle] = useState(existing?.title ?? `${day?.city ?? 'City'} walk`)
+  const [title, setTitle] = useState(existing?.title ?? t('{city} walk', { city: day?.city ?? t('City') }))
   const [cityQuery, setCityQuery] = useState<Place | undefined>()
 
   const { data: pois, error: poiError, loading } = useAsync(
@@ -103,7 +104,7 @@ export default function WalkPage() {
       })
       const total = legs.reduce((a, l) => a + l.distanceM, 0)
       setRoute({ start, roundTrip, stops: order, geometry: pts.map((p) => [p.lon, p.lat]), legs, distanceM: total, walkS: total / speed, routedBy: 'straight-line' })
-      toast('Routing service unavailable — showing straight-line estimate')
+      toast(t('Routing service unavailable — showing straight-line estimate'))
     } finally {
       setBusy(false)
     }
@@ -121,7 +122,7 @@ export default function WalkPage() {
       await db.items.add({ id: uid(), tripId: trip.id, kind: 'walk', status: 'planned', order: sameDay.length, ...base } as Item)
     }
     await touchTrip(trip.id)
-    toast('Walk saved to the plan')
+    toast(t('Walk saved to the plan'))
     navigate(`../today?date=${date}`)
   }
 
@@ -143,31 +144,31 @@ export default function WalkPage() {
     <div className="stack">
       <div className="card tight row wrap">
         <label style={{ minWidth: 170 }}>
-          Day
+          {t('Day')}
           <select value={date} onChange={(e) => setDate(e.target.value)}>
             {dateRange(trip.startDate, trip.endDate).map((d, i) => (
               <option key={d} value={d}>
-                Day {i + 1} · {formatDate(d)} {days.find((x) => x.date === d)?.city ? `· ${days.find((x) => x.date === d)?.city}` : ''}
+                {t('Day {n}', { n: i + 1 })} · {formatDate(d)} {days.find((x) => x.date === d)?.city ? `· ${days.find((x) => x.date === d)?.city}` : ''}
               </option>
             ))}
           </select>
         </label>
         <div className="grow" style={{ minWidth: 220 }}>
           <PlaceSearch
-            label="City or neighbourhood"
+            label={t('City or neighbourhood')}
             value={cityQuery ?? (day?.city ? { name: day.city, lat: day.lat, lon: day.lon } : undefined)}
             onChange={(p) => {
               setCityQuery(p)
               if (p?.lat != null && p.lon != null) {
                 setCenter({ lat: p.lat, lon: p.lon })
-                if (!start) setStart({ name: `${p.name} centre`, lat: p.lat, lon: p.lon })
+                if (!start) setStart({ name: t('{city} centre', { city: p.name }), lat: p.lat, lon: p.lon })
               }
             }}
-            placeholder="e.g. Rome, Trastevere"
+            placeholder={t('e.g. Rome, Trastevere')}
           />
         </div>
         <label style={{ width: 130 }}>
-          Search radius
+          {t('Search radius')}
           <select value={radius} onChange={(e) => setRadius(Number(e.target.value))}>
             <option value={1000}>1 km</option>
             <option value={2000}>2 km</option>
@@ -178,8 +179,8 @@ export default function WalkPage() {
 
       {!center && (
         <div className="card">
-          <Empty emoji="🏙️" title="Which city?">
-            Search for a city above (tap “Find”), or set the day's city on the Plan tab.
+          <Empty emoji="🏙️" title={t('Which city?')}>
+            {t('Search for a city above (tap “Find”), or set the day\'s city on the Plan tab.')}
           </Empty>
         </div>
       )}
@@ -201,10 +202,10 @@ export default function WalkPage() {
             <div className="row wrap">
               {mapCenter && haversineM(mapCenter, center) > radius / 2 && (
                 <button className="btn-sm" onClick={() => setCenter(mapCenter)}>
-                  🔎 Search this area
+                  {t('🔎 Search this area')}
                 </button>
               )}
-              <span className="tiny muted">Tap a sight on the map or in the list to read about it; add the ones you want.</span>
+              <span className="tiny muted">{t('Tap a sight on the map or in the list to read about it; add the ones you want.')}</span>
             </div>
             {detail && <PoiDetail poi={detail} selected={selectedIds.has(detail.id)} onToggle={() => toggle(detail)} onClose={() => setDetail(undefined)} />}
           </div>
@@ -212,41 +213,41 @@ export default function WalkPage() {
           <div className="stack">
             <div className="card stack">
               <div className="row between">
-                <h3>Your walk {stops.length > 0 && `· ${stops.length} stops`}</h3>
+                <h3>{t('Your walk')} {stops.length > 0 && `· ${tn(stops.length, '{n} stop', '{n} stops')}`}</h3>
                 {stops.length > 0 && (
                   <button className="btn-sm btn-ghost" onClick={() => setStops([])}>
-                    Clear
+                    {t('Clear')}
                   </button>
                 )}
               </div>
               <div className="form-grid">
                 <div className="full">
-                  <PlaceSearch label="Start from" value={start} onChange={setStart} near={day?.city} placeholder="Hotel, station…" />
+                  <PlaceSearch label={t('Start from')} value={start} onChange={setStart} near={day?.city} placeholder={t('Hotel, station…')} />
                 </div>
                 <label>
-                  Start time
+                  {t('Start time')}
                   <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
                 </label>
                 <label className="inline" style={{ alignSelf: 'end' }}>
-                  <input type="checkbox" checked={roundTrip} onChange={(e) => setRoundTrip(e.target.checked)} /> Come back to the start
+                  <input type="checkbox" checked={roundTrip} onChange={(e) => setRoundTrip(e.target.checked)} /> {t('Come back to the start')}
                 </label>
               </div>
               <div className="row wrap">
                 {stay?.location && (
                   <button className="btn-sm" onClick={() => setStart({ ...stay.location!, name: stay.title })}>
-                    🛏️ From accommodation
+                    {t('🛏️ From accommodation')}
                   </button>
                 )}
                 <button
                   className="btn-sm"
                   onClick={() =>
                     navigator.geolocation?.getCurrentPosition(
-                      (p) => setStart({ name: 'My location', lat: p.coords.latitude, lon: p.coords.longitude }),
-                      () => toast('Location not available'),
+                      (p) => setStart({ name: t('My location'), lat: p.coords.latitude, lon: p.coords.longitude }),
+                      () => toast(t('Location not available')),
                     )
                   }
                 >
-                  📍 From my location
+                  {t('📍 From my location')}
                 </button>
               </div>
 
@@ -254,20 +255,20 @@ export default function WalkPage() {
                 <div className="stack" style={{ gap: 8 }}>
                   <div className="info-grid">
                     <div className="info-tile">
-                      <div className="k">Walking</div>
+                      <div className="k">{t('Walking')}</div>
                       <div className="v">
                         {distance(route.distanceM)} · {formatDuration(route.walkS)}
                       </div>
                     </div>
                     <div className="info-tile">
-                      <div className="k">With visits</div>
+                      <div className="k">{t('With visits')}</div>
                       <div className="v">{formatDuration(route.walkS + route.stops.reduce((a, s) => a + s.visitMin * 60, 0))}</div>
                     </div>
                   </div>
-                  {route.routedBy === 'straight-line' && <div className="notice">Estimated with straight lines (no route service). Rebuild when online for real streets.</div>}
+                  {route.routedBy === 'straight-line' && <div className="notice">{t('Estimated with straight lines (no route service). Rebuild when online for real streets.')}</div>}
                   <div className="timeline">
                     <div className="t-stop">
-                      <b>{startTime}</b> · Start: {route.start.name}
+                      <b>{startTime}</b> · {t('Start: {name}', { name: route.start.name })}
                     </div>
                     {timeline.map(({ stop, leg, arrive, leave }, i) => (
                       <div key={stop.id}>
@@ -293,21 +294,21 @@ export default function WalkPage() {
                           🚶 {distance(back.distanceM)} · {formatDuration(back.durationS)}
                         </div>
                         <div className="t-stop">
-                          <b>{minToHHMM(hhmmToMin(timeline[timeline.length - 1]?.leave ?? startTime) + back.durationS / 60)}</b> · Back at {route.start.name}
+                          <b>{minToHHMM(hhmmToMin(timeline[timeline.length - 1]?.leave ?? startTime) + back.durationS / 60)}</b> · {t('Back at {name}', { name: route.start.name })}
                         </div>
                       </>
                     )}
                   </div>
                   <label>
-                    Name
+                    {t('Name')}
                     <input value={title} onChange={(e) => setTitle(e.target.value)} />
                   </label>
                   <div className="row wrap">
                     <button onClick={build} disabled={busy}>
-                      ↻ Rebuild
+                      {t('↻ Rebuild')}
                     </button>
                     <button className="btn-primary" onClick={save}>
-                      💾 {existing ? 'Update walk' : `Save to ${formatDate(date)}`}
+                      💾 {existing ? t('Update walk') : t('Save to {date}', { date: formatDate(date) })}
                     </button>
                   </div>
                 </div>
@@ -323,7 +324,7 @@ export default function WalkPage() {
                     </div>
                   )}
                   <button className="btn-primary" disabled={!stops.length || start?.lat == null || busy} onClick={build}>
-                    {busy ? 'Finding the best route…' : start?.lat == null ? 'Set a start point first' : `🧭 Build the best route (${stops.length} stops)`}
+                    {busy ? t('Finding the best route…') : start?.lat == null ? t('Set a start point first') : t('🧭 Build the best route ({n} stops)', { n: stops.length })}
                   </button>
                 </>
               )}
@@ -331,17 +332,17 @@ export default function WalkPage() {
 
             <div className="card stack">
               <div className="row between">
-                <h3>Sights nearby</h3>
-                {loading && <span className="small muted">Loading…</span>}
+                <h3>{t('Sights nearby')}</h3>
+                {loading && <span className="small muted">{t('Loading…')}</span>}
               </div>
               <div className="chips">
                 {Object.entries(POI_CATEGORIES).map(([k, c]) => (
                   <button key={k} className={`chip ${cats.includes(k) ? 'on' : ''}`} onClick={() => setCats((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]))}>
-                    {c.emoji} {c.label}
+                    {c.emoji} {t(c.label)}
                   </button>
                 ))}
               </div>
-              {poiError && <div className="notice error">{online ? 'The free sights service is busy — try again in a minute.' : 'You are offline — sights load when you are back online.'}</div>}
+              {poiError && <div className="notice error">{online ? t('The free sights service is busy — try again in a minute.') : t('You are offline — sights load when you are back online.')}</div>}
               <div className="poi-list">
                 {visible.map((p) => (
                   <div key={p.id} className={`poi ${selectedIds.has(p.id) ? 'on' : ''}`} onClick={() => setDetail(p)}>
@@ -349,7 +350,7 @@ export default function WalkPage() {
                     <div className="grow">
                       <div className="strong small">{p.name}</div>
                       <div className="tiny muted">
-                        {POI_CATEGORIES[p.category]?.label} · {distance(haversineM(center, p))} away · ~{p.visitMin} min
+                        {t(POI_CATEGORIES[p.category]?.label)} · {t('{distance} away', { distance: distance(haversineM(center, p)) })} · ~{p.visitMin} min
                         {p.openingHours && ` · ${p.openingHours}`}
                       </div>
                     </div>
@@ -364,9 +365,9 @@ export default function WalkPage() {
                     </button>
                   </div>
                 ))}
-                {!loading && !poiError && visible.length === 0 && <p className="small muted">No sights found here — try a bigger radius or another area.</p>}
+                {!loading && !poiError && visible.length === 0 && <p className="small muted">{t('No sights found here — try a bigger radius or another area.')}</p>}
               </div>
-              <p className="tiny muted">Sights from OpenStreetMap; descriptions from Wikipedia.</p>
+              <p className="tiny muted">{t('Sights from OpenStreetMap; descriptions from Wikipedia.')}</p>
             </div>
           </div>
         </div>
@@ -377,7 +378,7 @@ export default function WalkPage() {
 
 function VisitMinutes({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <select className="btn-sm" style={{ width: 82, minHeight: 28, padding: '2px 4px' }} value={value} onChange={(e) => onChange(Number(e.target.value))} title="Time at this stop">
+    <select className="btn-sm" style={{ width: 82, minHeight: 28, padding: '2px 4px' }} value={value} onChange={(e) => onChange(Number(e.target.value))} title={t('Time at this stop')}>
       {[5, 10, 15, 20, 30, 45, 60, 90, 120, 180].map((m) => (
         <option key={m} value={m}>
           {m < 60 ? `${m} min` : `${m / 60} h`}
@@ -392,8 +393,8 @@ export function PoiDetail({
   selected,
   onToggle,
   onClose,
-  addLabel = '+ Add to walk',
-  removeLabel = 'Remove from walk',
+  addLabel = t('+ Add to walk'),
+  removeLabel = t('Remove from walk'),
   city,
 }: {
   poi: Poi | WalkStop
@@ -413,18 +414,18 @@ export function PoiDetail({
         <div className="grow">
           <div className="row between">
             <h3>{poi.name}</h3>
-            <button className="icon-btn" onClick={onClose} aria-label="Close">
+            <button className="icon-btn" onClick={onClose} aria-label={t('Close')}>
               ✕
             </button>
           </div>
           <div className="tiny muted">
-            {POI_CATEGORIES[poi.category]?.emoji} {POI_CATEGORIES[poi.category]?.label}
+            {POI_CATEGORIES[poi.category]?.emoji} {t(POI_CATEGORIES[poi.category]?.label)}
             {p.openingHours && ` · 🕘 ${p.openingHours}`}
-            {p.fee && ` · fee: ${p.fee}`}
+            {p.fee && ` · ${t('fee: {fee}', { fee: p.fee })}`}
           </div>
         </div>
       </div>
-      {loading && <p className="small muted">Loading description…</p>}
+      {loading && <p className="small muted">{t('Loading description…')}</p>}
       {data?.extract && <p className="small">{data.extract.length > 420 ? data.extract.slice(0, 420) + '…' : data.extract}</p>}
       {!loading && !data && p.description && <p className="small">{p.description}</p>}
       <div className="row">

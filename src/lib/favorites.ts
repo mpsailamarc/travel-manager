@@ -15,16 +15,19 @@ import { addMissingHomeLegs, isHome, isHomeTransfer, misplacedEnds } from './hom
 import { addDays, hhmmToMin, minToHHMM, today } from './dates'
 import { centroid, haversineM, type LatLon } from './geo'
 import { uid } from './ids'
+import { t as tr } from '../i18n'
+
+const POI_META = Object.fromEntries(Object.entries(POI_CATEGORIES).map(([k, v]) => [k, { ...v, label: tr(v.label) }])) as typeof POI_CATEGORIES
 
 export const CATEGORY_META: Record<string, { label: string; emoji: string; visitMin: number; indoor?: boolean }> = {
-  ...POI_CATEGORIES,
-  museum: { ...POI_CATEGORIES.museum, indoor: true },
-  religious: { ...POI_CATEGORIES.religious, indoor: true },
-  family: { ...POI_CATEGORIES.family, indoor: true },
-  food: { label: 'Food & markets', emoji: '🍽️', visitMin: 60 },
-  experience: { label: 'Experiences', emoji: '✨', visitMin: 90 },
-  shopping: { label: 'Shopping', emoji: '🛍️', visitMin: 60 },
-  daytrip: { label: 'Day trips', emoji: '🚌', visitMin: 420 },
+  ...POI_META,
+  museum: { ...POI_META.museum, indoor: true },
+  religious: { ...POI_META.religious, indoor: true },
+  family: { ...POI_META.family, indoor: true },
+  food: { label: tr('Food & markets'), emoji: '🍽️', visitMin: 60 },
+  experience: { label: tr('Experiences'), emoji: '✨', visitMin: 90 },
+  shopping: { label: tr('Shopping'), emoji: '🛍️', visitMin: 60 },
+  daytrip: { label: tr('Day trips'), emoji: '🚌', visitMin: 420 },
 }
 
 export const categoryMeta = (c: string) => CATEGORY_META[c] ?? CATEGORY_META.attraction
@@ -330,7 +333,7 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
       for (const f of geo) {
         const slot = plan.slots.get(f.id)
         if (!slot) {
-          built.push({ id: uid(), tripId: trip.id, date, kind: f.category === 'food' ? 'meal' : 'activity', title: f.name, location: { name: f.name, lat: f.lat, lon: f.lon }, status: 'idea', order: order++, planner: tag, favId: f.id, notes: 'No time left that day: move it to another day in the City planner.' })
+          built.push({ id: uid(), tripId: trip.id, date, kind: f.category === 'food' ? 'meal' : 'activity', title: f.name, location: { name: f.name, lat: f.lat, lon: f.lon }, status: 'idea', order: order++, planner: tag, favId: f.id, notes: tr('No time left that day: move it to another day in the City planner.') })
           continue
         }
         built.push({
@@ -553,7 +556,7 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
       : stay?.location?.lat != null
         ? { ...stay.location, name: stay.title }
         : day?.lat != null
-          ? { name: `${city ?? trip.name} centre`, lat: day.lat, lon: day.lon }
+          ? { name: tr('{city} centre', { city: city ?? trip.name }), lat: day.lat, lon: day.lon }
           : located[0]
             ? { name: located[0].name, lat: located[0].lat, lon: located[0].lon }
             : undefined
@@ -1156,7 +1159,7 @@ export async function retimeAfter(changed: Item, settings: Settings, nowMin?: nu
     // Skipped: leave from where you were before it, when you would have left for it.
     const g = changed.legIn?.geometry
     const t = hhmmToMin(changed.startTime) - (changed.legIn?.minutes ?? 0)
-    if (g?.length) start = { t, at: { lat: g[0][1], lon: g[0][0] }, name: changed.legIn!.fromName ?? 'the previous place' }
+    if (g?.length) start = { t, at: { lat: g[0][1], lon: g[0][0] }, name: changed.legIn!.fromName ?? tr('the previous place') }
     else {
       const prev = dayItems.filter((i) => i.id !== changed.id && i.status !== 'skipped' && i.startTime && i.startTime < changed.startTime! && at(i)).sort((a, b) => b.startTime!.localeCompare(a.startTime!))[0]
       if (prev) start = { t: prev.endTime ? hhmmToMin(prev.endTime) : t, at: at(prev)!, name: prev.title }

@@ -4,6 +4,7 @@ import { COUNTRIES, countryLabel, countryName, flag } from '../lib/countries'
 import { searchPlaces } from '../lib/apis'
 import { uid } from '../lib/ids'
 import { PlaceSearch } from '../components/PlaceSearch'
+import { t as tr, tn } from '../i18n'
 
 export const INTERESTS = [
   'history', 'museums', 'architecture', 'food', 'markets', 'nature', 'hiking', 'beaches', 'wildlife', 'art',
@@ -11,56 +12,56 @@ export const INTERESTS = [
 ]
 
 export const STYLES: Record<TripStyle, { label: string; desc: string }> = {
-  relaxed: { label: '🐢 Relaxed', desc: '1–2 things a day, lots of downtime' },
-  balanced: { label: '🚶 Balanced', desc: 'A plan each day with breaks' },
-  packed: { label: '🏃 Packed', desc: 'See as much as possible: about 90% of the day, 9:00–21:00' },
-  intense: { label: '⚡ All out', desc: 'Up at dawn, out until late, long walks, meals on the go: 7:00 to midnight' },
+  relaxed: { label: tr('🐢 Relaxed'), desc: tr('1–2 things a day, lots of downtime') },
+  balanced: { label: tr('🚶 Balanced'), desc: tr('A plan each day with breaks') },
+  packed: { label: tr('🏃 Packed'), desc: tr('See as much as possible: about 90% of the day, 9:00–21:00') },
+  intense: { label: tr('⚡ All out'), desc: tr('Up at dawn, out until late, long walks, meals on the go: 7:00 to midnight') },
 }
 
 export const BUDGET_LEVELS: Record<BudgetLevel, { label: string; desc: string }> = {
-  shoestring: { label: '🎒 Shoestring', desc: 'Hostels, street food, public transport' },
-  mid: { label: '🏨 Mid-range', desc: '3★ hotels, nice restaurants sometimes' },
-  comfort: { label: '🛎️ Comfort', desc: '4★ hotels, taxis when useful' },
-  luxury: { label: '💎 Luxury', desc: 'The best of everything' },
+  shoestring: { label: tr('🎒 Shoestring'), desc: tr('Hostels, street food, public transport') },
+  mid: { label: tr('🏨 Mid-range'), desc: tr('3★ hotels, nice restaurants sometimes') },
+  comfort: { label: tr('🛎️ Comfort'), desc: tr('4★ hotels, taxis when useful') },
+  luxury: { label: tr('💎 Luxury'), desc: tr('The best of everything') },
 }
 
 export const FOCUS: Record<TripFocus, { label: string; desc: string }> = {
-  cities: { label: '🏛️ Cities', desc: 'Sights, museums and food; nature as day trips' },
-  mix: { label: '⚖️ A mix', desc: 'Cities, countryside and some walks' },
-  outdoors: { label: '🥾 Road trip & hikes', desc: 'Scenic drives, small towns, trails; short city stops' },
+  cities: { label: tr('🏛️ Cities'), desc: tr('Sights, museums and food; nature as day trips') },
+  mix: { label: tr('⚖️ A mix'), desc: tr('Cities, countryside and some walks') },
+  outdoors: { label: tr('🥾 Road trip & hikes'), desc: tr('Scenic drives, small towns, trails; short city stops') },
 }
 
 export const INNER_FLIGHTS: Record<InnerFlights, { label: string; desc: string }> = {
-  auto: { label: '🤔 You decide', desc: 'With 2 or more people, lean towards driving or trains' },
-  fly: { label: '✈️ Fly when faster', desc: 'Time matters more than cost' },
-  few: { label: '🛬 Only long hops', desc: 'One or two flights at most' },
-  none: { label: '🚗 No flights', desc: 'Road, train or ferry between places' },
+  auto: { label: tr('🤔 You decide'), desc: tr('With 2 or more people, lean towards driving or trains') },
+  fly: { label: tr('✈️ Fly when faster'), desc: tr('Time matters more than cost') },
+  few: { label: tr('🛬 Only long hops'), desc: tr('One or two flights at most') },
+  none: { label: tr('🚗 No flights'), desc: tr('Road, train or ferry between places') },
 }
 
 /** Why the planner leans away from flights for a group, in a line (nothing for one person or when you chose). */
 export function groupTravelHint(t: Trip) {
   const n = t.travellers.length
   return n >= 2 && (t.innerFlights ?? 'auto') === 'auto'
-    ? `With ${n} travellers every flight is paid ${n} times, while a rental car costs the same for everyone, so the plan will drive or take the train when that's reasonable.`
+    ? tr("With {n} travellers every flight is paid {n} times, while a rental car costs the same for everyone, so the plan will drive or take the train when that's reasonable.", { n })
     : undefined
 }
 
 /** Cities or the outdoors, and flights between places: the two questions that shape the route. */
 export const SLEEP: Record<'hotels' | 'camper', { label: string; desc: string }> = {
-  hotels: { label: '🏨 Hotels', desc: 'Hotels, B&Bs or apartments' },
-  camper: { label: '🚐 Camper van', desc: 'Sleep in the van, at campsites' },
+  hotels: { label: tr('🏨 Hotels'), desc: tr('Hotels, B&Bs or apartments') },
+  camper: { label: tr('🚐 Camper van'), desc: tr('Sleep in the van, at campsites') },
 }
 
 export function RouteFields({ value: t, onChange }: { value: Trip; onChange: (v: Partial<Pick<Trip, 'focus' | 'innerFlights' | 'sleep'>>) => void }) {
   const hint = groupTravelHint(t)
   return (
     <>
-      <label>Cities or the outdoors?</label>
+      <label>{tr('Cities or the outdoors?')}</label>
       <ChoiceGrid options={FOCUS} value={t.focus ?? 'mix'} onChange={(v) => onChange({ focus: v })} />
-      <label>Flights between places</label>
+      <label>{tr('Flights between places')}</label>
       <ChoiceGrid options={INNER_FLIGHTS} value={t.innerFlights ?? 'auto'} onChange={(v) => onChange({ innerFlights: v })} />
       {hint && <p className="tiny muted" style={{ margin: 0 }}>👥 {hint}</p>}
-      <label>Where you sleep</label>
+      <label>{tr('Where you sleep')}</label>
       <ChoiceGrid options={SLEEP} value={t.sleep ?? 'hotels'} onChange={(v) => onChange({ sleep: v })} />
     </>
   )
@@ -142,14 +143,14 @@ export function DestinationInput({ cities, countryCodes, onChange }: { cities: s
           {places.map((p) => {
             const c = found[p.toLowerCase()]
             return (
-              <button key={p} type="button" className="chip on" title="Remove" onClick={() => setPlaces(places.filter((x) => x !== p))}>
+              <button key={p} type="button" className="chip on" title={tr('Remove')} onClick={() => setPlaces(places.filter((x) => x !== p))}>
                 {c ? flag(c) : c === null ? '📍' : '…'} {p} ✕
               </button>
             )
           })}
           {whole.map((c) => (
-            <button key={c} type="button" className="chip on" title="Remove" onClick={() => setWhole(whole.filter((x) => x !== c))}>
-              {countryLabel(c)} (anywhere) ✕
+            <button key={c} type="button" className="chip on" title={tr('Remove')} onClick={() => setWhole(whole.filter((x) => x !== c))}>
+              {tr('{country} (anywhere) ✕', { country: countryLabel(c) })}
             </button>
           ))}
         </div>
@@ -158,7 +159,7 @@ export function DestinationInput({ cities, countryCodes, onChange }: { cities: s
         <input
           className="grow"
           value={text}
-          placeholder={places.length || whole.length ? 'Add another place…' : 'e.g. Rome, Florence, Amalfi Coast — or a country'}
+          placeholder={places.length || whole.length ? tr('Add another place…') : tr('e.g. Rome, Florence, Amalfi Coast — or a country')}
           onChange={(e) => (e.target.value.includes(',') ? add(e.target.value) : setText(e.target.value))}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -169,23 +170,23 @@ export function DestinationInput({ cities, countryCodes, onChange }: { cities: s
           onBlur={() => text.trim() && add(text)}
         />
         <button type="button" className="btn-sm" disabled={!text.trim()} onClick={() => add(text)}>
-          ＋ Add
+          {tr('＋ Add')}
         </button>
       </div>
       {countryHits.length > 0 && (
         <div className="chips">
           {countryHits.map((c) => (
             <button key={c.code} type="button" className="chip" onMouseDown={(e) => e.preventDefault()} onClick={() => add(c.name)}>
-              {flag(c.code)} {c.name} (the whole country)
+              {flag(c.code)} {tr('{country} (the whole country)', { country: c.name })}
             </button>
           ))}
         </div>
       )}
       <p className="tiny muted" style={{ margin: 0 }}>
         {countries.length
-          ? `Countries: ${countries.map(countryName).join(', ')} — filled in from your places.`
-          : 'Type cities or regions in the order you’d visit them, or just a country. Their countries are filled in for you.'}
-        {places.some((p) => found[p.toLowerCase()] === null) && ' 📍 = country not found (offline, or an unusual name): add the country too.'}
+          ? tr('Countries: {list} — filled in from your places.', { list: countries.map(countryName).join(', ') })
+          : tr('Type cities or regions in the order you’d visit them, or just a country. Their countries are filled in for you.')}
+        {places.some((p) => found[p.toLowerCase()] === null) && ' ' + tr('📍 = country not found (offline, or an unusual name): add the country too.')}
       </p>
     </div>
   )
@@ -196,7 +197,7 @@ export function StartEndFields({ value, onChange, hint }: { value: Pick<Trip, 's
   const sameEnd = !value.endPlace
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <PlaceSearch label="Starting from" value={value.startPlace} onChange={(p) => onChange({ ...value, startPlace: p })} placeholder="e.g. San Francisco" />
+      <PlaceSearch label={tr('Starting from')} value={value.startPlace} onChange={(p) => onChange({ ...value, startPlace: p })} placeholder={tr('e.g. San Francisco')} />
       {hint && <p className="tiny muted" style={{ margin: 0 }}>{hint}</p>}
       {value.startPlace && (
         <>
@@ -206,10 +207,10 @@ export function StartEndFields({ value, onChange, hint }: { value: Pick<Trip, 's
               checked={sameEnd}
               onChange={(e) => onChange({ ...value, endPlace: e.target.checked ? undefined : { name: value.startPlace?.name ?? '' } })}
             />{' '}
-            Return to the same place
+            {tr('Return to the same place')}
           </label>
-          {!sameEnd && <PlaceSearch label="Returning to" value={value.endPlace} onChange={(p) => onChange({ ...value, endPlace: p ?? { name: '' } })} placeholder="e.g. Los Angeles" />}
-          <p className="tiny muted">Tap “Find” so it appears on the map. Starting in the same country as your destination also means no flights in the budget estimate.</p>
+          {!sameEnd && <PlaceSearch label={tr('Returning to')} value={value.endPlace} onChange={(p) => onChange({ ...value, endPlace: p ?? { name: '' } })} placeholder={tr('e.g. Los Angeles')} />}
+          <p className="tiny muted">{tr('Tap “Find” so it appears on the map. Starting in the same country as your destination also means no flights in the budget estimate.')}</p>
         </>
       )}
     </div>
@@ -220,7 +221,7 @@ export function StartEndFields({ value, onChange, hint }: { value: Pick<Trip, 's
 export function travellersText(ts: Traveller[]) {
   const adults = ts.filter((x) => x.type === 'adult').length
   const kids = ts.filter((x) => x.type === 'child')
-  return `${adults} adult${adults === 1 ? '' : 's'}${kids.length ? ` + ${kids.length} ${kids.length === 1 ? 'child' : 'children'}${kids.some((k) => k.age != null) ? ` (${kids.map((k) => k.age ?? '?').join(', ')})` : ''}` : ''}`
+  return `${tn(adults, '{n} adult', '{n} adults')}${kids.length ? ` + ${tn(kids.length, '{n} child', '{n} children')}${kids.some((k) => k.age != null) ? ` (${kids.map((k) => k.age ?? '?').join(', ')})` : ''}` : ''}`
 }
 
 export function TravellersEditor({ value, onChange }: { value: Traveller[]; onChange: (v: Traveller[]) => void }) {
@@ -237,22 +238,22 @@ export function TravellersEditor({ value, onChange }: { value: Traveller[]; onCh
               min={0}
               max={17}
               style={{ width: 80 }}
-              placeholder="Age"
+              placeholder={tr('Age')}
               value={t.age ?? ''}
               onChange={(e) => update(t.id, { age: e.target.value === '' ? undefined : Number(e.target.value) })}
             />
           )}
-          <button type="button" className="icon-btn" onClick={() => onChange(value.filter((x) => x.id !== t.id))} aria-label="Remove">
+          <button type="button" className="icon-btn" onClick={() => onChange(value.filter((x) => x.id !== t.id))} aria-label={tr('Remove')}>
             ✕
           </button>
         </div>
       ))}
       <div className="row">
-        <button type="button" className="btn-sm" onClick={() => onChange([...value, { id: uid(), type: 'adult', name: `Adult ${value.filter((v) => v.type === 'adult').length + 1}` }])}>
-          + Adult
+        <button type="button" className="btn-sm" onClick={() => onChange([...value, { id: uid(), type: 'adult', name: tr('Adult {n}', { n: value.filter((v) => v.type === 'adult').length + 1 }) }])}>
+          {tr('+ Adult')}
         </button>
-        <button type="button" className="btn-sm" onClick={() => onChange([...value, { id: uid(), type: 'child', name: `Child ${value.filter((v) => v.type === 'child').length + 1}`, age: 8 }])}>
-          + Child
+        <button type="button" className="btn-sm" onClick={() => onChange([...value, { id: uid(), type: 'child', name: tr('Child {n}', { n: value.filter((v) => v.type === 'child').length + 1 }), age: 8 }])}>
+          {tr('+ Child')}
         </button>
       </div>
     </div>
@@ -269,7 +270,7 @@ export function ChipToggle({ options, value, onChange }: { options: string[]; va
           className={`chip ${value.includes(o) ? 'on' : ''}`}
           onClick={() => onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o])}
         >
-          {o}
+          {tr(o)}
         </button>
       ))}
     </div>
@@ -295,22 +296,22 @@ export function TripFields({ value: t, onChange }: { value: Trip; onChange: (t: 
     <div className="stack">
       <div className="form-grid">
         <label className="full">
-          Name
+          {tr('Name')}
           <input value={t.name} onChange={(e) => set('name', e.target.value)} />
         </label>
         <label>
-          First day there (you land)
+          {tr('First day there (you land)')}
           <input type="date" value={t.startDate} onChange={(e) => set('startDate', e.target.value)} />
         </label>
         <label>
-          Last day there (you fly out)
+          {tr('Last day there (you fly out)')}
           <input type="date" value={t.endDate} onChange={(e) => set('endDate', e.target.value)} />
         </label>
         <p className="tiny muted full" style={{ margin: 0 }}>
-          The days at the destination, not counting the flights from and to home (the flight out may leave the day before).
+          {tr('The days at the destination, not counting the flights from and to home (the flight out may leave the day before).')}
         </p>
       </div>
-      <label>Icon</label>
+      <label>{tr('Icon')}</label>
       <div className="chips">
         {EMOJIS.concat(t.countryCodes.map(flag)).map((e) => (
           <button key={e} type="button" className={`chip ${t.coverEmoji === e ? 'on' : ''}`} onClick={() => set('coverEmoji', e)}>
@@ -318,22 +319,22 @@ export function TripFields({ value: t, onChange }: { value: Trip; onChange: (t: 
           </button>
         ))}
       </div>
-      <label>Where to</label>
+      <label>{tr('Where to')}</label>
       <DestinationInput cities={t.cities} countryCodes={t.countryCodes} onChange={(v) => onChange({ ...t, ...v })} />
       <StartEndFields value={t} onChange={(v) => onChange({ ...t, ...v })} />
-      <label>Travellers</label>
+      <label>{tr('Travellers')}</label>
       <p className="small" style={{ margin: 0 }}>
-        👥 {travellersText(t.travellers)} · <span className="muted">change who is travelling in the Budget tab, where the costs follow.</span>
+        👥 {travellersText(t.travellers)} · <span className="muted">{tr('change who is travelling in the Budget tab, where the costs follow.')}</span>
       </p>
-      <label>Pace</label>
+      <label>{tr('Pace')}</label>
       <ChoiceGrid options={STYLES} value={t.style} onChange={(v) => set('style', v)} />
-      <label>Budget level</label>
+      <label>{tr('Budget level')}</label>
       <ChoiceGrid options={BUDGET_LEVELS} value={t.budgetLevel} onChange={(v) => set('budgetLevel', v)} />
       <RouteFields value={t} onChange={(v) => onChange({ ...t, ...v })} />
-      <label>Interests</label>
+      <label>{tr('Interests')}</label>
       <ChipToggle options={INTERESTS} value={t.interests} onChange={(v) => set('interests', v)} />
       <label>
-        Notes & wishes
+        {tr('Notes & wishes')}
         <textarea value={t.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
       </label>
     </div>
