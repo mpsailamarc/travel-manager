@@ -86,7 +86,7 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   asked for campsites and drives of at most about 4 hours a day.
 - **Ideas (AI) out of the way once planned**: after an itinerary is chosen, Ideas (AI) moves into the last tab, ⋯ More (it comes back as a
   tab while you're on it). "📧 Import a booking email" is also linked from Where you sleep and Docs.
-- **Duplicate a trip** (Trip details → 📄 Duplicate): a copy under a new name to try things on — other dates, cities, pace or hotels —
+- **Duplicate a trip** (📄 Duplicate on each trip in the list of trips, or in Trip details): a copy under a new name to try things on — other dates, cities, pace or hotels —
   while the original stays as it is. The plan, days, stays, budget, checklist (unticked) and backup ideas are copied; expenses and documents
   stay with the original.
 - **Map size in Settings**: "Maps (Plan, Day by day, City planner)": Small, Large or Hidden. Each screen's Small / Large / Hide chips still change

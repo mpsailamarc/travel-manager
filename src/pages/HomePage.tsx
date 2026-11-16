@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
 import { createDemoTrip } from '../lib/sample'
-import { importAny } from '../lib/share'
+import { duplicateTrip, importAny } from '../lib/share'
 import { formatRange } from '../lib/dates'
 import { countryLabel } from '../lib/countries'
 import { useSettings } from '../lib/hooks'
@@ -98,6 +98,15 @@ export default function HomePage() {
 }
 
 function TripGroup({ title, trips }: { title: string; trips: Trip[] }) {
+  const navigate = useNavigate()
+  // A copy to try things on (other dates, cities, pace), the original untouched — the same as in Trip details.
+  async function duplicate(t: Trip) {
+    const name = prompt('Name of the copy', `${t.name} (copy)`)
+    if (!name?.trim()) return
+    const id = await duplicateTrip(t.id, name.trim())
+    toast(`📄 “${name.trim()}” created: a copy to try things on, the original is unchanged`)
+    navigate(`/trip/${id}/plan`)
+  }
   if (!trips.length) return null
   return (
     <section className="stack">
@@ -116,6 +125,20 @@ function TripGroup({ title, trips }: { title: string; trips: Trip[] }) {
               <h3>{t.name}</h3>
               <div className="small muted">{formatRange(t.startDate, t.endDate)}</div>
               <div className="small">{t.countryCodes.map(countryLabel).join(' · ') || t.cities.join(' · ')}</div>
+              <div>
+                <button
+                  type="button"
+                  className="btn-sm btn-ghost"
+                  title="A copy of this trip to try other dates, cities or pace"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    void duplicate(t)
+                  }}
+                >
+                  📄 Duplicate
+                </button>
+              </div>
             </Link>
           )
         })}
