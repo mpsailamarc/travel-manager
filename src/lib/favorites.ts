@@ -963,7 +963,18 @@ export function arrivalTest(city: string | undefined, day: Day | undefined, firs
     return p?.lat != null && p.lon != null && day?.lat != null && day.lon != null ? haversineM({ lat: p.lat, lon: p.lon }, { lat: day.lat, lon: day.lon }) < 40000 : undefined
   }
   const named = (p?: Place) => (city && p?.name ? p.name.toLowerCase().includes(city.trim().toLowerCase()) : undefined)
-  return (i: Item) => nearCity(i.to) ?? named(i.to) ?? (nearCity(i.from) === true || named(i.from) === true ? false : firstDayInCity)
+  const km = (raw?: Place) => {
+    const p = raw && (trustedPlace(raw).lat != null ? trustedPlace(raw) : cityIn(raw.name))
+    return p?.lat != null && p.lon != null && day?.lat != null && day.lon != null ? haversineM({ lat: p.lat, lon: p.lon }, { lat: day.lat, lon: day.lon }) / 1000 : undefined
+  }
+  return (i: Item) => {
+    if (nearCity(i.to) || named(i.to)) return true
+    // Coming this way from far off (the flight from Sydney landing at an airport 85 km from where you sleep): an arrival.
+    const from = km(i.from)
+    const to = km(i.to)
+    if (from != null && from > 300 && (to == null ? i.kind === 'flight' && !i.to : to < from)) return true
+    return nearCity(i.to) ?? named(i.to) ?? (nearCity(i.from) === true || named(i.from) === true ? false : firstDayInCity)
+  }
 }
 
 /** When the day's sightseeing has to end: before the first journey that leaves after it starts (the flight home, the train on). */

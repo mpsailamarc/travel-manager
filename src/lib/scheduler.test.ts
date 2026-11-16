@@ -192,6 +192,16 @@ describe('road trips and arrivals (from a real Greece itinerary)', () => {
     expect(mins((await db.items.get(stroll.id))!.startTime)).toBeGreaterThanOrEqual(19 * 60 + 15)
   })
 
+  it('a flight in that lands at an airport far from the day’s town (and before it left, on the local clock) frees the day after landing', async () => {
+    // Sydney 11:45 → Santiago 10:30 the same day, then on to Valparaíso (85 km from the airport) to sleep.
+    const trip = await makeTrip({ startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 }, startDate: D, endDate: '2027-03-13', countryCodes: ['CL'] })
+    await db.days.update(`${trip.id}:${D}`, { city: 'Valparaíso', lat: -33.047, lon: -71.612 })
+    await addItem(trip, { date: D, kind: 'flight', title: 'Flight SYD → SCL', startTime: '11:45', endTime: '10:30', from: { name: 'Sydney Kingsford Smith (SYD)' }, to: { name: 'Santiago (SCL)', lat: -33.393, lon: -70.786 } })
+    const walk = await addItem(trip, { date: D, kind: 'activity', title: 'Cerro Alegre', location: { name: 'Cerro Alegre', lat: -33.042, lon: -71.627 } })
+    expect(await fillUntimed(trip.id, D, SETTINGS)).toBe(1)
+    expect(mins((await db.items.get(walk.id))!.startTime)).toBeGreaterThanOrEqual(11 * 60 + 30)
+  })
+
   it('on a driving day, a visit between two drives goes between them, where the first drive arrives', async () => {
     const trip = await makeTrip()
     const [athens, corinth, nemea] = [
