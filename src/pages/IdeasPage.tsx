@@ -9,7 +9,7 @@ import { money } from '../lib/format'
 import { countryLabel } from '../lib/countries'
 import { KIND_META } from '../components/kinds'
 import { copyText, toast } from '../components/ui'
-import { aiReady, askAI, getAiConfig, useAiConfig } from '../lib/openai'
+import { active, aiReady, askAI, getAiConfig, useAiConfig } from '../lib/openai'
 import { askAllCityIdeas } from '../lib/cityideas'
 import { fillUntimedTrip } from '../lib/favorites'
 import { BUDGET_LEVELS, STYLES } from './TripFields'
@@ -119,7 +119,7 @@ export function PromptBox({
           <button className="btn-primary" disabled={busy} onClick={ask}>
             {busy ? (chars ? t('⏳ ChatGPT is writing… {chars} characters', { chars: chars.toLocaleString() }) : t('⏳ ChatGPT is thinking…')) : t('✨ Ask ChatGPT')}
           </button>
-          <span className="tiny muted">{t('uses your API key · {model}', { model: cfg.model })}</span>
+          <span className="tiny muted">{t('uses your API key · {model}', { model: active(cfg).model })}</span>
         </div>
         {error && <div className="notice error">{error}</div>}
         <details>

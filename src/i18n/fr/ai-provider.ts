@@ -11,4 +11,5 @@ export default {
     'Elle n’est pas synchronisée, ni dans les sauvegardes, ni dans les voyages partagés : saisissez-la sur chaque appareil que vous voulez utiliser. Toute personne qui peut utiliser ce navigateur peut utiliser la clé. Si elle fuit, supprimez-la sur aistudio.google.com et créez-en une nouvelle.',
   'Gemini says: {detail} (429). The free tier has daily limits: try again later, or pick another model in Settings.':
     'Gemini indique : {detail} (429). L’offre gratuite a des limites quotidiennes : réessayez plus tard, ou choisissez un autre modèle dans les Réglages.',
+  'Gemini is busy: {detail}': 'Gemini est occupé : {detail}',
 } as Record<string, string>

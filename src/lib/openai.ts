@@ -78,6 +78,9 @@ export interface ChatMessage {
   content: string
 }
 
+// Tried in turn when the chosen Gemini model is overloaded.
+const GEMINI_FALLBACKS = ['gemini-flash-latest', 'gemini-flash-lite-latest']
+
 class AiError extends Error {
   constructor(
     message: string,
@@ -90,11 +93,14 @@ class AiError extends Error {
 async function failure(res: Response, provider: Provider = 'openai'): Promise<AiError> {
   let detail = ''
   try {
-    detail = ((await res.json()) as { error?: { message?: string } }).error?.message ?? ''
+    // OpenAI sends { error }, Google often a list: [{ error }].
+    const j = (await res.json()) as { error?: { message?: string } } | { error?: { message?: string } }[]
+    detail = (Array.isArray(j) ? j[0] : j)?.error?.message ?? ''
   } catch {
     /* no JSON body */
   }
   if (res.status === 401) return new AiError(t('OpenAI did not accept this key (401). Check that it was copied in full.'))
+  if (provider === 'gemini' && (res.status === 503 || res.status === 500)) return new AiError(t('Gemini is busy: {detail}', { detail: detail || res.statusText }), true)
   if (provider === 'gemini' && res.status === 429) return new AiError(t('Gemini says: {detail} (429). The free tier has daily limits: try again later, or pick another model in Settings.', { detail: detail || t('too many requests') }), /per minute|rate/i.test(detail))
   if (res.status === 429 && /quota|billing|credit/i.test(detail)) return new AiError(t('OpenAI says: {detail} (429). Check your usage limits and billing at platform.openai.com.', { detail }))
   if (res.status === 429) return new AiError(t('OpenAI is busy (429): {detail}', { detail: detail || t('too many requests') }), true)
@@ -121,16 +127,17 @@ async function call<T>(base: string, path: string, init: RequestInit, key: strin
 // and networks drop), and there is no limit on how long the whole answer takes — only on silence: a few minutes for
 // the model to start (reasoning models think first), then a minute between pieces.
 const FIRST_WORD_MS = 240_000
+const GEMINI_FIRST_WORD_MS = 60_000 // Gemini answers within seconds, or it is overloaded: no point in waiting minutes
 const BETWEEN_MS = 60_000
 
-async function streamOnce(messages: ChatMessage[], cfg: AiConfig, onProgress?: (chars: number) => void): Promise<{ text: string; tokens?: number }> {
+async function streamOnce(messages: ChatMessage[], cfg: AiConfig, onProgress?: (chars: number) => void, model?: string): Promise<{ text: string; tokens?: number }> {
   const ctrl = new AbortController()
-  let timer = setTimeout(() => ctrl.abort(), FIRST_WORD_MS)
+  let timer = setTimeout(() => ctrl.abort(), cfg.provider === 'gemini' ? GEMINI_FIRST_WORD_MS : FIRST_WORD_MS)
   const alive = (ms: number) => {
     clearTimeout(timer)
     timer = setTimeout(() => ctrl.abort(), ms)
   }
-  const ai = active(cfg)
+  const ai = { ...active(cfg), ...(model ? { model } : {}) }
   const reasoning = ai.provider === 'openai' && /^(o\d|gpt-5)/.test(ai.model)
   try {
     let res: Response
@@ -173,7 +180,8 @@ async function streamOnce(messages: ChatMessage[], cfg: AiConfig, onProgress?: (
         const data = line.startsWith('data:') ? line.slice(5).trim() : ''
         if (!data || data === '[DONE]') continue
         try {
-          const j = JSON.parse(data) as { choices?: { delta?: { content?: string } }[]; usage?: { total_tokens?: number }; error?: { message?: string } }
+          const parsed = JSON.parse(data) as Record<string, unknown> | Record<string, unknown>[]
+          const j = (Array.isArray(parsed) ? parsed[0] : parsed) as { choices?: { delta?: { content?: string } }[]; usage?: { total_tokens?: number }; error?: { message?: string } }
           if (j.error) throw new AiError(t('OpenAI error: {detail}', { detail: j.error.message ?? t('unknown') }), true)
           const piece = j.choices?.[0]?.delta?.content
           if (piece) {
@@ -201,14 +209,18 @@ async function streamOnce(messages: ChatMessage[], cfg: AiConfig, onProgress?: (
 export async function askAI(messages: ChatMessage[], onProgress?: (chars: number) => void): Promise<string> {
   const cfg = getAiConfig()
   if (!aiReady(cfg)) throw new Error(t('Add your OpenAI key in Settings first.'))
+  // When Google is busy, the retries go to another model: the one chosen first, then the usual quick ones.
+  const models = cfg.provider === 'gemini' ? [...new Set([active(cfg).model, ...GEMINI_FALLBACKS])] : [undefined]
   let last: unknown
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt) await new Promise((r) => setTimeout(r, attempt * 3000))
     try {
-      const { text, tokens } = await streamOnce(messages, cfg, onProgress)
+      const { text, tokens } = await streamOnce(messages, cfg, onProgress, models[Math.min(attempt, models.length - 1)])
       if (tokens) setAiConfig({ tokens: getAiConfig().tokens + tokens })
       return text
     } catch (e) {
+      // A fallback model that isn't there for this key says nothing about why the first one failed: that one is reported.
+      if (attempt > 0 && e instanceof AiError && !e.retry && last) throw last
       last = e
       if (!(e instanceof AiError) || !e.retry) throw e
     }

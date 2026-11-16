@@ -75,5 +75,36 @@ describe('asking Gemini (the free tier)', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 'models/gemini-2.5-pro' }, { id: 'models/text-embedding-004' }, { id: 'models/gemini-flash-latest' }, { id: 'models/gemini-2.5-flash-lite' }, { id: 'models/gemini-2.5-flash-image' }] }))))
     expect(await listModels('AIza-test', 'gemini')).toEqual(['gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'])
   })
-})
 
+  it('shows Google’s own message when it is busy (an error sent as a list), and tries another model', async () => {
+    vi.useFakeTimers()
+    const busy = () => new Response(JSON.stringify([{ error: { code: 503, message: 'This model is currently experiencing high demand.', status: 'UNAVAILABLE' } }]), { status: 503 })
+    const fetch = vi.fn().mockImplementationOnce(async () => busy()).mockImplementationOnce(async () => streamed(['fine']))
+    vi.stubGlobal('fetch', fetch)
+    const answer = askAI([{ role: 'user', content: 'plan' }])
+    await vi.runAllTimersAsync()
+    expect(await answer).toBe('fine')
+    const models = fetch.mock.calls.map((c) => JSON.parse((c[1] as RequestInit).body as string).model)
+    expect(models).toEqual(['gemini-flash-latest', 'gemini-flash-lite-latest'])
+
+    const always = vi.fn(async () => busy())
+    vi.stubGlobal('fetch', always)
+    const failing = askAI([{ role: 'user', content: 'plan' }])
+    const caught = failing.catch((e: Error) => e.message)
+    await vi.runAllTimersAsync()
+    expect(await caught).toContain('Gemini is busy: This model is currently experiencing high demand.')
+    expect(always).toHaveBeenCalledTimes(3)
+    vi.useRealTimers()
+  })
+
+  it('does not wait minutes for a first word from Gemini', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn((_u: string, init: RequestInit) => new Promise((_res, rej) => init.signal!.addEventListener('abort', () => rej(Object.assign(new Error('aborted'), { name: 'AbortError' }))))))
+    const caught = askAI([{ role: 'user', content: 'plan' }]).catch((e: Error) => e.message)
+    await vi.advanceTimersByTimeAsync(61_000)
+    expect(vi.getTimerCount()).toBeGreaterThan(0) // already on to the next try after a minute
+    await vi.runAllTimersAsync()
+    expect(await caught).toContain('tried 3 times')
+    vi.useRealTimers()
+  })
+})
