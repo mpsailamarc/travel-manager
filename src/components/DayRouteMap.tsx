@@ -29,6 +29,9 @@ export function DayRouteMap({ route, loading, onOpen, sizeKey = 'tm-day-route-ma
         variant: 'start',
         title: route.start.name ?? 'Start',
       })
+    // Tonight's hotel, when it isn't where the day started (a moving day).
+    const e = route.end
+    if (e && !(route.start && Math.abs(route.start.lat - e.lat) < 1e-3 && Math.abs(route.start.lon - e.lon) < 1e-3)) m.push({ id: 'end', lat: e.lat, lon: e.lon, label: '🏨', variant: 'start', title: `Tonight: ${e.name}` })
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route])
@@ -87,6 +90,20 @@ export function DayRouteMap({ route, loading, onOpen, sizeKey = 'tm-day-route-ma
               </button>
             </li>
           ))}
+          {route.end?.leg && (
+            <li>
+              <div className="route-stop">
+                <span className="pin">🏨</span>
+                <span className="grow" style={{ textAlign: 'left' }}>
+                  <b className="small">Back to {route.end.name}</b>
+                  <span className="tiny muted" style={{ display: 'block' }}>
+                    {legText(route.end.leg, distance)}
+                    {route.end.leg.fromName ? ` from ${route.end.leg.fromName}` : ''}
+                  </span>
+                </span>
+              </div>
+            </li>
+          )}
         </ol>
       </details>
     </div>

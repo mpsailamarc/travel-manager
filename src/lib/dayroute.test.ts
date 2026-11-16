@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Item } from '../types'
-import { buildRoute, dayStartPlace, routeItems } from './dayroute'
+import { buildRoute, dayEndPlace, dayStartPlace, routeItems } from './dayroute'
 import { SETTINGS } from '../test/fixtures'
 
 const it_ = (o: Partial<Item>) => ({ tripId: 't', status: 'planned', order: 0, ...o }) as Item
@@ -40,5 +40,33 @@ describe("the day's path on the map", () => {
     expect(r.stops[1].leg).toMatchObject({ mode: 'flight', geometry: [[-68.9036, -22.4982], [-70.7858, -33.393]] })
     expect(r.stops[2].leg?.fromName).toBe('Flight CJC → SCL') // on from where it landed, not from San Pedro
     expect(r.segments.find((s) => s.dashed && s.coords.length === 2)).toBeTruthy()
+  })
+})
+
+describe('the day ends at the hotel', () => {
+  const hotelA = { name: 'Hotel in Athens', lat: 37.9715, lon: 23.7295 }
+  const hotelB = { name: 'Hotel in Nafplio', lat: 37.5673, lon: 22.8016 }
+  const items = [
+    it_({ id: 'h1', date: '2027-07-14', kind: 'stay', title: 'Hotel in Athens', nights: 2, location: hotelA }),
+    it_({ id: 'h2', date: '2027-07-16', kind: 'stay', title: 'Hotel in Nafplio', nights: 2, location: hotelB }),
+    it_({ id: 'v', date: '2027-07-15', kind: 'activity', title: 'Acropolis', startTime: '09:00', location: { name: 'Acropolis', lat: 37.9715, lon: 23.7257 } }),
+    it_({ id: 'm', date: '2027-07-15', kind: 'meal', title: 'Dinner in Psyrri', startTime: '19:00', location: { name: 'Psyrri', lat: 37.978, lon: 23.722 } }),
+  ]
+
+  it("is tonight's hotel (on a moving day, the new one), unless turned off for the day", () => {
+    expect(dayEndPlace(items, '2027-07-15')?.name).toBe('Hotel in Athens')
+    expect(dayEndPlace(items, '2027-07-16')?.name).toBe('Hotel in Nafplio')
+    expect(dayEndPlace(items, '2027-07-15', { id: 'd', tripId: 't', date: '2027-07-15', walkRoundTrip: false })).toBeUndefined()
+    // A stay with a night too many still "covers" the night after moving to Nafplio: not tonight's hotel there.
+    const tooLong = items.map((i) => (i.id === 'h1' ? { ...i, nights: 3 } : i)).filter((i) => i.id !== 'h2')
+    expect(dayEndPlace(tooLong, '2027-07-16', { id: 'd', tripId: 't', date: '2027-07-16', city: 'Nafplio', lat: 37.5673, lon: 22.8016 })).toBeUndefined()
+  })
+
+  it('the map draws the way back there after the last stop', async () => {
+    const D = '2027-07-15'
+    const r = await buildRoute(routeItems(items, D), 'walk', SETTINGS, dayStartPlace(items, D), dayEndPlace(items, D))
+    expect(r.end?.name).toBe('Hotel in Athens')
+    expect(r.end?.leg?.fromName).toBe('Dinner in Psyrri')
+    expect(r.segments.at(-1)?.coords.at(-1)).toEqual([hotelA.lon, hotelA.lat])
   })
 })

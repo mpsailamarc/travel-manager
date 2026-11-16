@@ -21,6 +21,7 @@ export interface DayRoute {
   stops: RouteStop[]
   segments: { coords: [number, number][]; dashed: boolean; color?: string }[]
   start?: { lat: number; lon: number; name?: string } // where the day begins (last night's hotel), when known
+  end?: { lat: number; lon: number; name: string; leg?: Leg } // where it ends (tonight's hotel) and the way back there
 }
 
 const PLACES = new Set(['activity', 'meal', 'walk', 'note'])
@@ -59,6 +60,17 @@ export function dayStartPlace(items: Item[], date: string): { lat: number; lon: 
   return stay?.location?.lat != null && stay.location.lon != null ? { lat: stay.location.lat, lon: stay.location.lon, name: stay.title } : undefined
 }
 
+/** Where the day ends: tonight's hotel (on a moving day, the new one), unless the day is set not to end there. */
+export function dayEndPlace(items: Item[], date: string, day?: Day): { lat: number; lon: number; name: string } | undefined {
+  if (day?.walkRoundTrip === false) return undefined
+  // In the day's city: a stay whose nights were written one too many (still "covering" the night after you moved on) isn't it.
+  const inCity = (p: { lat: number; lon: number }) => day?.lat == null || day.lon == null || haversineM(p, { lat: day.lat, lon: day.lon }) < 50_000
+  const stay = items.find(
+    (i) => i.kind === 'stay' && i.date <= date && date < addDays(i.date, i.nights ?? 1) && i.location?.lat != null && i.location.lon != null && inCity({ lat: i.location.lat, lon: i.location.lon }),
+  )
+  return stay ? { lat: stay.location!.lat!, lon: stay.location!.lon!, name: stay.title } : undefined
+}
+
 const near = (p: [number, number] | undefined, at: { lat: number; lon: number }) => !!p && haversineM({ lat: p[1], lon: p[0] }, at) < 150
 
 /** A stored leg is still right if it starts at the previous stop's name (or is the first) and ends at this place. */
@@ -81,7 +93,13 @@ function journeyPref(it: Item, pref: GetAround): GetAround | 'boat' | undefined 
   return pref === 'car' ? 'walk' : pref // getting to the car rental office
 }
 
-export async function buildRoute(stops: Item[], pref: GetAround, settings: Settings, begin?: { lat: number; lon: number; name: string }): Promise<DayRoute> {
+export async function buildRoute(
+  stops: Item[],
+  pref: GetAround,
+  settings: Settings,
+  begin?: { lat: number; lon: number; name: string },
+  finish?: { lat: number; lon: number; name: string },
+): Promise<DayRoute> {
   const out: RouteStop[] = []
   const walkMax = settings.walkMaxMin ?? DEFAULT_WALK_MAX_MIN
   const leg = async (a: { lat: number; lon: number }, b: { lat: number; lon: number }, it: Item, fromName: string): Promise<Leg | undefined> => {
@@ -121,14 +139,22 @@ export async function buildRoute(stops: Item[], pref: GetAround, settings: Setti
     out.push({ item: it, at, leg: l })
     prev = it
   }
+  // Back to tonight's hotel after the last thing of the day (unless that's where it already is).
+  let end: DayRoute['end']
+  const last = prev && placeAt(prev)
+  if (finish && last && haversineM(last, finish) > 150) {
+    const l = await planLeg(last, finish, prev!.kind === 'drive' ? 'car' : pref, walkMax, settings.walkSpeedKmh)
+    end = { ...finish, leg: { ...l, fromName: prev!.title } }
+  } else if (finish && last) end = finish
   const first = out[0]?.leg?.geometry?.[0]
   const start = begin ?? (first ? { lat: first[1], lon: first[0], name: out[0].leg!.fromName } : undefined)
   const segments = out
     .flatMap((s) => [s.access, s.leg].filter((l): l is Leg => !!l?.geometry?.length).map((l) => ({ l, ferry: s.item.kind === 'ferry' && l === s.leg })))
     .map(({ l, ferry }) => ({ coords: l.geometry!, dashed: ferry || MODE_DASHED[l.mode], color: ferry ? '#0891b2' : MODE_COLOR[l.mode] }))
+  if (end?.leg?.geometry?.length) segments.push({ coords: end.leg.geometry, dashed: MODE_DASHED[end.leg.mode], color: MODE_COLOR[end.leg.mode] })
   // Old walking tours (one item with its own path) keep drawing that path.
   for (const s of out) if (s.item.walk?.geometry?.length) segments.push({ coords: s.item.walk.geometry, dashed: s.item.walk.routedBy === 'straight-line', color: MODE_COLOR.walk })
-  return { stops: out, segments, start }
+  return { stops: out, segments, start, end }
 }
 
 /** The day's route, rebuilt whenever its places, times or the way of getting around change. */
@@ -136,7 +162,8 @@ export function useDayRoute(items: Item[], date: string, day: Day | undefined, s
   const stops = routeItems(items, date)
   const pref = getAroundFor(day, settings, items, date)
   const begin = dayStartPlace(items, date)
-  const key = [pref, settings.walkMaxMin, settings.walkSpeedKmh, begin?.lat, begin?.lon, ...stops.map((i) => `${i.id}|${i.startTime}|${placeAt(i)?.lat}|${placeAt(i)?.lon}|${i.legIn?.minutes}`)].join(';')
-  const r = useAsync(() => (stops.length ? buildRoute(stops, pref, settings, begin) : Promise.resolve({ stops: [], segments: [] } as DayRoute)), [key])
+  const finish = dayEndPlace(items, date, day)
+  const key = [pref, settings.walkMaxMin, settings.walkSpeedKmh, begin?.lat, begin?.lon, finish?.lat, finish?.lon, ...stops.map((i) => `${i.id}|${i.startTime}|${placeAt(i)?.lat}|${placeAt(i)?.lon}|${i.legIn?.minutes}`)].join(';')
+  const r = useAsync(() => (stops.length ? buildRoute(stops, pref, settings, begin, finish) : Promise.resolve({ stops: [], segments: [] } as DayRoute)), [key])
   return { route: r.data, loading: r.loading, stops }
 }

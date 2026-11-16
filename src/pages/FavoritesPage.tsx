@@ -429,6 +429,9 @@ export default function FavoritesPage() {
           variant: 'start',
           title: focusStart.name ?? 'Start',
         })
+      // Tonight's hotel, when it isn't where the day started (a moving day).
+      const end = focusRoute?.end
+      if (end && !(focusStart && Math.abs(focusStart.lat - end.lat) < 1e-3 && Math.abs(focusStart.lon - end.lon) < 1e-3)) m.push({ id: 'end', lat: end.lat, lon: end.lon, label: '🏨', variant: 'start', title: `Tonight: ${end.name}` })
       focusRoute?.stops.forEach(({ item: it, at }, n) => {
         const f = cityFavs.find((x) => x.id === it.favId || x.itemId === it.id)
         m.push({
@@ -602,7 +605,7 @@ export default function FavoritesPage() {
                       <OptimiseDayButton tripId={trip.id} date={d} settings={settings} />
                     </div>
                   )}
-                  {list.some((e) => e.fav && e.fav.lat != null && !e.fav.itemId) && (
+                  {list.some((e) => (e.item?.location?.lat ?? e.fav?.lat) != null) && (
                     <WalkSettings
                       key={d + (days.find((x) => x.date === d)?.walkStart?.name ?? '')}
                       day={days.find((x) => x.date === d)}
@@ -841,8 +844,8 @@ function WalkSettings({ day, stay, defaultAround, onSave }: { day?: Day; stay?: 
   return (
     <details className="card tight">
       <summary className="small strong" style={{ cursor: 'pointer' }}>
-        🚶 Walk · {day?.walkStartTime ? `starts ${day.walkStartTime}` : 'starts after what is already planned'} · from {from}
-        {day?.walkRoundTrip ? ' · back to the start' : ''} · {GET_AROUND_LABEL[day?.getAround ?? defaultAround].slice(0, 2)}
+        🧭 The day's route · {day?.walkStartTime ? `starts ${day.walkStartTime}` : 'starts after what is already planned'} · from {from}
+        {day?.walkRoundTrip === false ? ' · no way back counted' : ' · ends at the hotel'} · {GET_AROUND_LABEL[day?.getAround ?? defaultAround].slice(0, 2)}
       </summary>
       <div className="stack" style={{ marginTop: 8, gap: 8 }}>
         <div className="form-grid">
@@ -869,7 +872,7 @@ function WalkSettings({ day, stay, defaultAround, onSave }: { day?: Day; stay?: 
             </select>
           </label>
           <label className="inline" style={{ alignSelf: 'end' }}>
-            <input type="checkbox" checked={!!day?.walkRoundTrip} onChange={(e) => onSave({ walkRoundTrip: e.target.checked || undefined })} /> End back at the start
+            <input type="checkbox" checked={day?.walkRoundTrip !== false} onChange={(e) => onSave({ walkRoundTrip: e.target.checked ? undefined : false })} /> End the day at the hotel
           </label>
         </div>
         <PlaceSearch

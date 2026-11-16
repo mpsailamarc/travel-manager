@@ -69,6 +69,9 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   its photo, description, practical facts and a **star rating**.
 - **One name per city**: chatbots name a city differently from day to day ("London, United Kingdom", "Rome (Trastevere)", "Rome central"):
   the app keeps one name per city for the days, their wishlist places and the City planner, so each city shows once with all its days.
+- **Each day starts and ends at the hotel**: from last night's hotel (on a moving day, before you move on) and back to tonight's (on a moving
+  day, the new one), once the stay has an address (Edit → Where → Find; until then the city centre). The way back is counted when the day is
+  planned and drawn on the day's map (🏨). Turn it off for a day in the City planner: "🧭 The day's route" → "End the day at the hotel".
 - **Back to backup from anywhere**: an activity, meal or walk opened from Day by day has "🧺 Back to backup" next to Delete.
 - **ChatGPT ideas ready when you get there**: with an API key, picking an itinerary asks ChatGPT, in the background, for ideas in every city on
   the route, telling it what's already planned there so the ideas add to it; a city added later is asked for the first time you open it, and

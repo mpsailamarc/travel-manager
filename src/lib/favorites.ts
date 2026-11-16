@@ -354,21 +354,6 @@ async function rebuildCityPlan(trip: Trip, city: string, dates: string[], settin
         if (slot) ownUpdates.push({ key: i.id, changes: { startTime: minToHHMM(Math.min(slot.from, 1439)), endTime: minToHHMM(Math.min(slot.to, 1439)), legIn: slot.leg, autoTime: true } })
         else if (i.startTime) ownUpdates.push({ key: i.id, changes: { startTime: undefined, endTime: undefined, legIn: undefined, autoTime: undefined } })
       }
-      if (plan.back) {
-        built.push({
-          id: uid(),
-          tripId: trip.id,
-          date,
-          kind: 'note',
-          title: `Back to ${plan.back.to.name}`,
-          startTime: minToHHMM(Math.min(plan.back.at, 1439)),
-          status: 'planned',
-          order: order++,
-          location: plan.back.to,
-          planner: tag,
-          legIn: plan.back.leg,
-        })
-      }
     }
     if (ownUpdates.length) await db.items.bulkUpdate(ownUpdates)
     for (const f of mine.filter((f) => !geo.includes(f))) {
@@ -528,7 +513,6 @@ interface DayContext {
 
 export interface DayPlan {
   slots: Map<string, { from: number; to: number; leg?: Leg } | undefined>
-  back?: { to: Place; at: number; leg: Leg } // "back to the start" at the end, when asked for
 }
 
 /** A quick travel-time guess (no network) for choosing the order; the real routes come after. */
@@ -572,7 +556,12 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
             ? { name: located[0].name, lat: located[0].lat, lon: located[0].lon }
             : undefined
   const home = startPlace?.lat != null && startPlace.lon != null ? { lat: startPlace.lat, lon: startPlace.lon } : undefined
-  const roundTrip = !!day?.walkRoundTrip && !!home
+  // Where the day ends: tonight's hotel (on a moving day, the new one), so the way back counts; off when turned off for
+  // the day. Without a hotel tonight (flying home), it ends wherever the last thing is — or back at the start, if asked.
+  // In the day's city: a stay whose nights were written one too many (still "covering" the night after you moved on) isn't it.
+  const tonight = items.find((i) => covers(date)(i) && (day?.lat == null || day.lon == null || haversineM(i.location as LatLon, { lat: day.lat, lon: day.lon }) < 50_000))
+  const endAt: LatLon | undefined =
+    day?.walkRoundTrip === false ? undefined : tonight?.location?.lat != null && tonight.location.lon != null ? { lat: tonight.location.lat, lon: tonight.location.lon } : day?.walkRoundTrip ? home : undefined
 
   const here = home ?? (day?.lat != null && day.lon != null ? { lat: day.lat, lon: day.lon } : undefined)
   // A flight from the day before that lands today keeps the morning until it's down; the day then starts at the airport.
@@ -599,7 +588,7 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
     if (w.s > cur.t) stretches.push({ s: cur.t, e: w.s, a: cur.at, b: w.startAt, seq: [] })
     cur = { t: Math.max(cur.t, w.e), at: w.at }
   }
-  stretches.push({ s: cur.t, e: dayEnd, a: cur.at, b: roundTrip ? home : undefined, seq: [] })
+  stretches.push({ s: cur.t, e: dayEnd, a: cur.at, b: endAt, seq: [] })
 
   // Walk a stretch in order: travel, wait for opening if early, visit. `late` adds up the minutes past closing time.
   const simulate = (st: Stretch, seq: (Movable & LatLon)[]) => {
@@ -798,15 +787,7 @@ export async function scheduleDay(ctx: DayContext, fixedItems: Item[], movable: 
     }
   }
 
-  let back: DayPlan['back']
-  if (roundTrip && home && startPlace) {
-    const done = order.map((m, n) => ({ m, s: slotsArr[n] })).filter((x) => x.s && x.m.lat != null).sort((a, b) => b.s!.to - a.s!.to)[0]
-    if (done) {
-      const leg = { ...(await planLeg({ lat: done.m.lat!, lon: done.m.lon! }, home, pref, walkMax, speed)), fromName: done.m.name }
-      back = { to: startPlace, at: quarter(done.s!.to + leg.minutes), leg }
-    }
-  }
-  return { slots, back }
+  return { slots }
 }
 
 export interface DayProposal {
