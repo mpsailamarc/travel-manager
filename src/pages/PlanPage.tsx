@@ -16,6 +16,7 @@ import { useAsync, useMapSize, useMediaQuery } from '../lib/hooks'
 import { findDuplicateGroups, markNotDuplicates, mergeGroups, notDuplicates, type DuplicateGroup } from '../lib/duplicates'
 import { KIND_META } from '../components/kinds'
 import { PlanStaleNotice } from '../components/PlanStale'
+import { StaysCard } from '../components/StaysCard'
 import { fillUntimedTrip, untimedItems } from '../lib/favorites'
 import { useTripCtx } from './TripLayout'
 import { saveLocal } from '../lib/storage'
@@ -291,6 +292,8 @@ export default function PlanPage() {
             📍 <b>{routeLine.join(' → ')}</b>
           </div>
         )}
+
+        <StaysCard trip={trip} items={items} days={days} currency={settings.homeCurrency} />
 
         {!wide && map}
 

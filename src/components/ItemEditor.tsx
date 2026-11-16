@@ -119,6 +119,7 @@ export function ItemEditor({ trip, item, city, area, onClose }: Props) {
       to: isTransport(kind) ? it.to : undefined,
       location: isTransport(kind) ? undefined : it.location,
       nights: kind === 'stay' ? it.nights ?? 1 : undefined,
+      hotelSet: kind === 'stay' ? true : it.hotelSet, // a stay you saved yourself: tidying the stays leaves it as it is
       bookingRef: it.bookingRef || undefined,
       provider: it.provider || undefined,
       url: it.url || undefined,

@@ -13,6 +13,7 @@ import { uid } from './ids'
 import { carKind } from './drive'
 import { isSameItem } from './duplicates'
 import { CATEGORY_META, visitMinutes } from './favorites'
+import { nightsOf } from './stays'
 
 export const CHATBOTS = [
   { name: 'Claude', url: 'https://claude.ai/new' },
@@ -293,7 +294,8 @@ Outline:
 ${outline}
 
 Guidelines:
-- Include transport between places (typical duration in notes), one "stay" item on each arrival day with "nights", and 2–5 activities or meals per day with times.
+- Include transport between places (typical duration in notes) and 2–5 activities or meals per day with times.
+- Accommodation: exactly one "stay" item per city, on the day you arrive, with "nights" = the nights spent there (until the day you move on). Never one stay per night, never the same hotel again on a later day, and no "check-in" or "back to the hotel" activities: the stay covers it. Give the stay "place" and coordinates of the area to stay in.
 - Each day's "city", "lat" and "lon" are the town where we sleep that night (on a day we fly in, where we land; not home, nor an excursion spot). Day trips and excursions are items of that day.
 - Flights: a real schedule for that route (usual departure time and flight time, with the time difference); "time" and "endTime" are never the same. If it lands the next day, say "arrives next day" in notes.
 - If the trip starts with a long flight from home, day 1 is the day it leaves: put it on day 1, and plan nothing at the destination until after it has landed (on day 1 or day 2, whichever it is). The flight home goes on the day it leaves.
@@ -611,7 +613,16 @@ export async function applyBookings(trip: Trip, items: ReturnType<typeof parseBo
       const sameDay = await db.items.where({ tripId: trip.id, date: fresh.date }).toArray()
       const same = sameDay.filter((x) => isSameItem(x, fresh))
       if (fresh.bookingRef && same.some((x) => x.bookingRef === fresh.bookingRef)) continue // imported before
-      const target = same.find((x) => x.status !== 'booked') ?? same[0]
+      let target = same.find((x) => x.status !== 'booked') ?? same[0]
+      if (fresh.kind === 'stay') {
+        // A hotel booking fills the stay planned for those nights (the placeholder, or the itinerary's), whatever day it
+        // starts on, rather than adding a second one; the nights and the address come from the booking.
+        const booked = nightsOf(fresh)
+        const stays = (await db.items.where('tripId').equals(trip.id).toArray()).filter((x) => x.kind === 'stay' && x.status !== 'booked' && !x.bookingRef)
+        const overlap = (x: Item) => nightsOf(x).filter((n) => booked.includes(n)).length
+        target = stays.filter((x) => overlap(x) > 0).sort((x, y) => overlap(y) - overlap(x))[0] ?? target
+        fresh.hotelSet = true
+      }
       if (!target) {
         await db.items.add(fresh)
         continue
@@ -621,6 +632,9 @@ export async function applyBookings(trip: Trip, items: ReturnType<typeof parseBo
         ...target,
         title: fresh.title || target.title,
         status: 'booked',
+        date: fresh.kind === 'stay' ? fresh.date : target.date,
+        location: fresh.location?.lat != null ? fresh.location : target.location,
+        hotelSet: fresh.hotelSet ?? target.hotelSet,
         startTime: fresh.startTime ?? target.startTime,
         endTime: fresh.endTime ?? target.endTime,
         from: fresh.from ?? target.from,

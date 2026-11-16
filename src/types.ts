@@ -157,6 +157,7 @@ export interface Item {
   hours?: string // published opening hours (OpenStreetMap format, e.g. "Tu-Su 10:00-18:00")
   legIn?: Leg // how to get here from the previous place of the day (set by the City planner)
   locked?: boolean // 📌 keep this time: optimising and planning never move it (booked items, journeys and stays are always kept)
+  hotelSet?: boolean // a stay you set yourself (name, address, nights): tidying the trip's stays leaves it as it is
   autoTime?: boolean // its time was set by "Plan my days" (it had none): planning again may move it; editing it by hand makes the time yours
 }
 

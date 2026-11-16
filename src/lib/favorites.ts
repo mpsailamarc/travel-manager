@@ -10,6 +10,7 @@ import { cityIn, trustedPlace } from './cities'
 import { DEFAULT_WALK_MAX_MIN, getAroundFor, planLeg } from './legs'
 import { sunClock } from './sun'
 import { midnight, transportSpan, tzAt, zoneOfDate } from './tz'
+import { tidyStays } from './stays'
 import { addDays, hhmmToMin, minToHHMM, today } from './dates'
 import { centroid, haversineM, type LatLon } from './geo'
 import { uid } from './ids'
@@ -1243,7 +1244,7 @@ async function reconcileNow(tripId: string, depth = 0): Promise<string[]> {
   // One name per city: "London, United Kingdom" and "London" are the same city, so the City planner shows it once with all
   // its days. The days, the wishlist places and the City planner's own items take the new name.
   const renamed = canonicalCities(days)
-  if (renamed.size && depth < 2) {
+  if (renamed.size && depth < 3) {
     await db.transaction('rw', [db.days, db.favorites, db.items], async () => {
       for (const d of days) if (d.city && renamed.has(d.city)) await db.days.update(d.id, { city: renamed.get(d.city) })
       for (const f of favs) {
@@ -1257,6 +1258,8 @@ async function reconcileNow(tripId: string, depth = 0): Promise<string[]> {
     })
     return reconcileNow(tripId, depth + 1) // everything below works with the new names
   }
+  // One stay per city stretch (merged repeats, placeholders where there's none): every night has somewhere to end the day.
+  if (depth < 3 && (await tidyStays(tripId))) return reconcileNow(tripId, depth + 1)
 
   // Journeys whose stored coordinates contradict their names (a chatbot's slip): the name's city wins, once and for all.
   const fixedPlaces = items.flatMap((i) => {

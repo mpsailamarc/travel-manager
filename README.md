@@ -69,6 +69,14 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   its photo, description, practical facts and a **star rating**.
 - **One name per city**: chatbots name a city differently from day to day ("London, United Kingdom", "Rome (Trastevere)", "Rome central"):
   the app keeps one name per city for the days, their wishlist places and the City planner, so each city shows once with all its days.
+- **🏨 Where you sleep** (Plan tab): one row per stay — normally one per city — with its dates, nights and status. Tap one to enter the
+  hotel's name and address (Find), booked or not, price, reference and link; "Changing hotel part-way?" splits a stay. Everything follows:
+  each day starts and ends there, the checklist has one "Book" per stay, the budget uses its price.
+- **Stays tidied to one per city**: chatbots write stays every which way (one per night, the same hotel twice, none for a city). The app
+  merges repeats into one stay per city stretch (at the average price per night), cuts a stay back to its city, and adds a placeholder
+  ("Hotel in Amsterdam (to choose)", at the city centre) where there's none. Nights on an overnight flight or at home need none. Stays you set
+  yourself (edited, booked, or with a reference) are never touched, so a city can have two hotels. Imported hotel bookings fill the stay for
+  those nights instead of adding another.
 - **Each day starts and ends at the hotel**: from last night's hotel (on a moving day, before you move on) and back to tonight's (on a moving
   day, the new one), once the stay has an address (Edit → Where → Find; until then the city centre). The way back is counted when the day is
   planned and drawn on the day's map (🏨). Turn it off for a day in the City planner: "🧭 The day's route" → "End the day at the hotel".

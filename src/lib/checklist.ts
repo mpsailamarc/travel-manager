@@ -6,6 +6,7 @@ import { db } from '../db'
 import { addDays, dateRange, formatDate } from './dates'
 import { country, needsAdapter, travelAdvice, visaWikipediaUrl } from './countries'
 import { tripadvisorSearch } from './links'
+import { stayStretches } from './stays'
 
 export interface ChecklistDraft {
   ruleId: string
@@ -203,8 +204,10 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
     })
     run = []
   }
+  // Only nights that need a bed: not one spent on an overnight flight or train, nor at home.
+  const needed = days.length ? new Set(stayStretches(trip, days, items).flatMap((st) => st.nights)) : undefined
   for (const n of dateRange(trip.startDate, addDays(trip.endDate, -1))) {
-    if (covered.has(n)) flush()
+    if (covered.has(n) || (needed && !needed.has(n))) flush()
     else {
       if (run.length && cityOn(n) !== cityOn(run[0])) flush()
       run.push(n)
@@ -282,7 +285,7 @@ export function generateChecklist(trip: Trip, items: Item[], settings: Settings,
 }
 
 /** A Booking.com search for the city and dates, pre-filled with the group (a plain link: no account, no tracking). */
-function bookingSearch(city: string, checkin: string, checkout: string, adults: number, childAges: number[]) {
+export function bookingSearch(city: string, checkin: string, checkout: string, adults: number, childAges: number[]) {
   const p = new URLSearchParams({ ss: city, checkin, checkout, group_adults: String(adults), no_rooms: '1', group_children: String(childAges.length) })
   for (const a of childAges) p.append('age', String(a))
   return `https://www.booking.com/searchresults.html?${p}`
