@@ -4,11 +4,12 @@ import { applyBookings, applyPlan, applyTemplate, bookingPrompt, CHATBOTS, detai
 import { refreshChecklist } from '../lib/checklist'
 import { BUDGET_LABELS } from '../lib/budget'
 import { addDays, daysBetween, formatDate } from '../lib/dates'
-import { money } from '../lib/format'
+import { money, plural } from '../lib/format'
 import { countryLabel } from '../lib/countries'
 import { KIND_META } from '../components/kinds'
 import { copyText, toast } from '../components/ui'
-import { aiReady, askAI, useAiConfig } from '../lib/openai'
+import { aiReady, askAI, getAiConfig, useAiConfig } from '../lib/openai'
+import { askAllCityIdeas } from '../lib/cityideas'
 import { fillUntimedTrip } from '../lib/favorites'
 import { BUDGET_LEVELS, STYLES } from './TripFields'
 import { useTripCtx } from './TripLayout'
@@ -218,6 +219,11 @@ function ItineraryIdeas() {
     // Activities the chatbot gave no time get one, around the times it did give, so every day reads as a schedule.
     const timed = await fillUntimedTrip(trip.id, settings)
     toast(`"${o.title}" is now your plan${timed ? ` · ${timed} item${timed > 1 ? 's' : ''} given a time` : ''}`)
+    // With ChatGPT set up, ideas for each city on the route are asked for in the background, ready in the City planner.
+    if (aiReady(getAiConfig()))
+      void askAllCityIdeas(trip.id, settings).then(({ done, failed }) => {
+        if (done || failed) toast(`✨ Ideas ready for ${plural(done, 'city', 'cities')} in the City planner${failed ? ` · ${failed} couldn't be asked, try again there` : ''}`)
+      })
     navigate('../plan')
   }
 

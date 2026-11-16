@@ -317,11 +317,11 @@ ${ITEM_SCHEMA}`
 }
 
 /** Things to do in one city, for the favourites board. */
-export function cityIdeasPrompt(trip: Trip, settings: Settings, city: string) {
+export function cityIdeasPrompt(trip: Trip, settings: Settings, city: string, planned: string[] = []) {
   return `Suggest 20 things to do in ${city} for this trip — a mix of sights, food, experiences, kid-friendly places (if children are coming) and 1–2 day trips.
 
 ${tripBrief(trip, settings)}
-
+${planned.length ? `\nAlready in the plan for ${city} (don't suggest these again; suggest other things): ${planned.join('; ')}\n` : ''}
 Keep "notes" under 15 words. Give real coordinates when the place is a fixed location.
 Reply with ONLY a JSON code block, no other text:
 { "ideas": [ { "name": string, "category": one of ${Object.keys(CATEGORY_META).map((c) => `"${c}"`).join('|')},

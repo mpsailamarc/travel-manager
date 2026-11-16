@@ -59,17 +59,22 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   Tick, skip, reorder or push an item to the next day, and get directions.
 - **Replan**: "it's raining" / "kids are tired" → a prompt for a free chatbot → paste back a new plan for the rest of the day
   (keeps what's booked or done).
-- **City planner** (one tab; it replaces the separate Favourites and Walks tabs): per city, a wishlist and your days. Browse sights (OpenStreetMap + Wikipedia), AI ideas (restaurants, experiences, day trips,
-  kid-friendly places) or add your own, and tap ＋ on the ones you want. Tap any place to open it in a window with its photo, description,
-  practical facts and a **star rating**. **Plan my days** groups the wishlist by area, fits it to your pace and what's already planned
-  (booked tickets, travel days), and builds a walking tour per day. Move any place to another day yourself and it stays there.
-  What doesn't fit becomes a backup idea.
+- **City planner** (one tab; it replaces the separate Favourites and Walks tabs): per city, your days and the backup ideas. Each day lists
+  **everything** planned there (the itinerary's activities, your own, booked tickets and wishlist places) in time order, and its time bar counts
+  all of it. Every row has the same menu: another day (it gets a time there), **🧺 Backup** (anything, including the itinerary's activities;
+  booked or 📌 ones ask first) or ✕. **Things to do** is one list: sights from the map (OpenStreetMap + Wikipedia) and ChatGPT's ideas
+  (restaurants, experiences, day trips), marked ✨, most interesting or nearest first; ＋ keeps one as a backup idea, and "✏️ Add your own"
+  sits underneath. **Plan my days** spreads the backup ideas over the days by area and your pace, with times. Tap any place to open it with
+  its photo, description, practical facts and a **star rating**.
+- **ChatGPT ideas ready when you get there**: with an API key, picking an itinerary asks ChatGPT, in the background, for ideas in every city on
+  the route, telling it what's already planned there so the ideas add to it; a city added later is asked for the first time you open it, and
+  "↻ New ideas" asks again. With copy and paste, "✨ Add ChatGPT ideas" holds the prompt and the answer box.
 - **Sights follow the map**: the sights list covers the part of the map you chose. Pan or zoom the map, tap **Search this area**, and the list
   (and its distances) refreshes for what's on screen; "Back to the city centre" resets it. Wide views list well-known places only (a free-service limit).
 - **A day on the map**: in the City planner, the map has a chip per day (or "🗺️ Show this day on the map" inside a day). It shows that day's places
   numbered in walking order, joined by the walking route, with the stop list, distance and time underneath.
-- **The City planner knows what's planned**: it counts the places already in your days, and in Find things to do a sight or AI idea that's
-  already on a day shows "📅 Day 3" instead of ＋.
+- **The City planner knows what's planned**: a sight or idea that's already on a day shows "📅 Day 3" instead of ＋.
+- **Day by day map**: just the map, with numbered stops; the step-by-step list (travel between stops) and the colour key are folded underneath.
 - **Level of interest (stars)**: no free source has visitor reviews, so the stars show how widely a place is written about: the number of
   Wikipedia language editions with an article on it (Wikidata), from 1★ (a village chapel) to 5★ (Eiffel Tower, 170+ languages). Sights can be
   sorted most interesting first; the place window also shows Wikipedia page views per month. Tripadvisor stays a link out.
