@@ -14,7 +14,7 @@ import { carKind } from './drive'
 import { isSameItem } from './duplicates'
 import { CATEGORY_META, visitMinutes } from './favorites'
 import { nightsOf } from './stays'
-import { isHome } from './home'
+import { addMissingHomeLegs, isHome } from './home'
 
 export const CHATBOTS = [
   { name: 'Claude', url: 'https://claude.ai/new' },
@@ -94,7 +94,8 @@ function startLine(trip: Trip) {
   const start = trip.startPlace?.name
   if (!start) return undefined
   const end = trip.endPlace?.name
-  const home = ` ${start}${end && end !== start ? ` and ${end} are` : ' is'} only where we start and finish: no activities, meals or stays there, and leave ${end && end !== start ? 'them' : 'it'} out of the route.`
+  const back = end && end !== start ? end : start
+  const home = ` ${start}${end && end !== start ? ` and ${end} are` : ' is'} only where we start and finish: no activities, meals or stays there, and not a place of the route — but the plan still includes getting there from ${start} at the start and the journey back to ${back} at the end.`
   return end && end !== start
     ? `Starting in ${start} and returning to ${end} (include only the transport actually needed from and to these places; no flights if they are close to the destination).${home}`
     : `Starting and ending in ${start} (include only the transport actually needed from and back to there; no flights if it is close to the destination).${home}`
@@ -201,7 +202,7 @@ Guidelines:
 - Respect the pace, the children's ages, the focus and how we want to get between places.
 - Each day's city is the town where we sleep that night (a day trip is a highlight, not the city).
 - Keep it short: per day only the city, a title and ${long ? '1–2 highlights' : '2 highlights'} of 2–4 words each.
-- Budget totals are for the whole group in ${settings.homeCurrency}, using categories: ${BUDGET_CATEGORIES.join(', ')}.
+- Budget totals are for the whole group in ${settings.homeCurrency}, using categories: ${BUDGET_CATEGORIES.join(', ')}. "flights" covers every flight, including there and back.
 - Write compact JSON: one line per day.
 
 Reply with ONLY a JSON code block, no other text, using exactly this shape:
@@ -303,7 +304,7 @@ Guidelines:
 - Accommodation: exactly one "stay" item per city, on the day you arrive, with "nights" = the nights spent there (until the day you move on). Never one stay per night, never the same hotel again on a later day, and no "check-in" or "back to the hotel" activities: the stay covers it. Give the stay "place" and coordinates of the area to stay in.
 - Each day's "city", "lat" and "lon" are the town where we sleep that night (on a day we fly in, where we land; not home, nor an excursion spot). Day trips and excursions are items of that day.
 - Flights: a real schedule for that route (usual departure time and flight time, with the time difference); "time" and "endTime" are never the same. If it lands the next day, say "arrives next day" in notes.
-- If the trip starts with a long flight from home, day 1 is the day it leaves: put it on day 1, and plan nothing at the destination until after it has landed (on day 1 or day 2, whichever it is). The flight home goes on the day it leaves.
+- If the trip starts with a long flight from home, day 1 is the day it leaves: put it on day 1, and plan nothing at the destination until after it has landed (on day 1 or day 2, whichever it is). The trip always ends with the journey home: the flight home is an item on the day it leaves (with the trip to the airport before it), never left out.
 - Nothing is planned during a journey, and the first thing after landing starts at least 1 hour later (2 hours after a long-haul flight). Before a flight, be at the airport 2 hours ahead (3 for a long-haul one), with the trip to the airport as its own item, and plan nothing in that time.
 - A connecting flight is its own item on the day it actually leaves: after a flight that lands past midnight, that's the next day.
 - Things at sunrise or sunset start at that place's real sunrise or sunset time on that date; evening and night things are in the evening.
@@ -585,9 +586,11 @@ export async function applyPlan(trip: Trip, option: AiOption, currency: string, 
         .map((c) => ({ id: uid(), tripId: trip.id, title: c.title, category: c.category, ruleId: c.ruleId, done: false, order: order++ })),
     )
   })
+  // A chatbot sometimes forgets the flight home (or out): it's added as an idea to book, so the plan and budget have it.
+  await addMissingHomeLegs(trip.id)
   // Remember what this itinerary was made for, so a later change of dates, pace… can offer new ideas.
   const now = await db.trips.get(trip.id)
-  if (now) await db.trips.update(trip.id, { planBasis: planInputs(now) })
+  if (now) await db.trips.update(trip.id, { planBasis: planInputs(now), homeLegsChecked: true })
   await touchTrip(trip.id)
 }
 

@@ -85,6 +85,7 @@ It is a web app you can install on Android and iPhone (a PWA). All data stays on
   the van's rental and campsites instead of a car and hotels; the checklist links to campsites on the map and reminds you later; ChatGPT is
   asked for campsites and drives of at most about 4 hours a day.
 - **Home is only the starting point**: where the trip starts and ends isn't one of its places. An itinerary's "Sydney → … → Sydney" route
+- **The flight home is never forgotten**: when an itinerary has no flight out or home (and home is over 500 km away), one is added as an idea to book, on the day after the last night away, priced like the flight the other way so the budget counts it. The prompt also asks ChatGPT for the journey home and for return flights in the budget. Itineraries chosen before this are checked once; a flight you then delete stays deleted.
   is kept without it, activities and meals planned at home are left out, the City planner has no tab for it and ChatGPT isn't asked for
   ideas there (unless the whole trip is at home). The prompt says so too.
 - **Ideas (AI) out of the way once planned**: after an itinerary is chosen, Ideas (AI) moves into the last tab, ⋯ More (it comes back as a

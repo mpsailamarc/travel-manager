@@ -170,6 +170,28 @@ describe('home is only the starting point', () => {
     await applyPlan(trip, option as never, 'EUR', true)
     expect((await db.trips.get(trip.id))!.cities).toEqual(['Rome'])
     const titles = (await db.items.where('tripId').equals(trip.id).toArray()).map((i) => i.title).sort()
-    expect(titles).toEqual(['Colosseum', 'Sydney → Rome'])
+    // The answer forgot the way home: it's added, the day after the last night away.
+    expect(titles).toEqual(['Colosseum', 'Flight home: Rome → Sydney', 'Sydney → Rome'])
+    const home = (await db.items.where('tripId').equals(trip.id).toArray()).find((i) => i.title.startsWith('Flight home'))!
+    expect(home).toMatchObject({ date: '2027-07-03', kind: 'flight', status: 'idea' })
+  })
+
+  it('prices a forgotten flight home like the flight out, and adds nothing when the plan has both', async () => {
+    const { applyPlan } = await import('./ai')
+    const { makeTrip } = await import('../test/fixtures')
+    const { db } = await import('../db')
+    const sydney = { name: 'Sydney', lat: -33.87, lon: 151.21 }
+    const day1 = { day: 1, city: 'Rome', lat: 41.9, lon: 12.5, title: 'Fly', highlights: [], items: [{ kind: 'flight', title: 'Flight SYD → FCO', from: 'Sydney Kingsford Smith (SYD)', to: 'Rome (FCO)', time: '21:00', estCost: 1500 }] }
+    const plan = (days: unknown[]) => ({ title: 'A', bestFor: '', summary: '', route: ['Rome'], days, budget: {}, checklist: [], tips: [] })
+    const one = await makeTrip({ startPlace: sydney, startDate: '2027-07-01', endDate: '2027-07-06' })
+    await applyPlan(one, plan([day1, { day: 6, city: 'Rome', lat: 41.9, lon: 12.5, title: 'Rome', highlights: [], items: [] }]) as never, 'AUD', true)
+    const added = (await db.items.where('tripId').equals(one.id).toArray()).filter((i) => i.title.startsWith('Flight home'))
+    expect(added).toHaveLength(1)
+    expect(added[0]).toMatchObject({ date: '2027-07-06', cost: { amount: 1500, currency: 'AUD' } })
+
+    const both = await makeTrip({ startPlace: sydney, startDate: '2027-07-01', endDate: '2027-07-06' })
+    const day6 = { day: 6, city: 'Rome', lat: 41.9, lon: 12.5, title: 'Home', highlights: [], items: [{ kind: 'flight', title: 'Flight FCO → SYD', from: 'Rome (FCO)', to: 'Sydney (SYD)', time: '12:00' }] }
+    await applyPlan(both, plan([day1, day6]) as never, 'AUD', true)
+    expect((await db.items.where('tripId').equals(both.id).toArray()).filter((i) => i.kind === 'flight')).toHaveLength(2)
   })
 })

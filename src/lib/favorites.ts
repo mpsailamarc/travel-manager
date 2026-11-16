@@ -11,7 +11,7 @@ import { DEFAULT_WALK_MAX_MIN, getAroundFor, planLeg } from './legs'
 import { sunClock } from './sun'
 import { midnight, transportSpan, tzAt, zoneOfDate } from './tz'
 import { tidyStays } from './stays'
-import { isHome } from './home'
+import { addMissingHomeLegs, isHome } from './home'
 import { addDays, hhmmToMin, minToHHMM, today } from './dates'
 import { centroid, haversineM, type LatLon } from './geo'
 import { uid } from './ids'
@@ -1262,6 +1262,11 @@ async function reconcileNow(tripId: string, depth = 0): Promise<string[]> {
   // Home isn't one of the trip's places ("Sydney → Rome → … → Sydney" from an itinerary is Rome and the rest).
   const away = trip.cities.filter((c) => !isHome(trip, { name: c }))
   if (away.length && away.length < trip.cities.length) await db.trips.update(trip.id, { cities: away })
+  // An itinerary made before the app checked for it may lack the flight home: added once (one you delete stays deleted).
+  if (trip.planBasis && !trip.homeLegsChecked) {
+    await db.trips.update(trip.id, { homeLegsChecked: true })
+    if (depth < 3 && (await addMissingHomeLegs(tripId))) return reconcileNow(tripId, depth + 1)
+  }
   // One stay per city stretch (merged repeats, placeholders where there's none): every night has somewhere to end the day.
   if (depth < 3 && (await tidyStays(tripId))) return reconcileNow(tripId, depth + 1)
 
