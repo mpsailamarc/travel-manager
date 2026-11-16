@@ -11,7 +11,7 @@ import { DEFAULT_WALK_MAX_MIN, getAroundFor, planLeg } from './legs'
 import { sunClock } from './sun'
 import { midnight, transportSpan, tzAt, zoneOfDate } from './tz'
 import { tidyStays } from './stays'
-import { addMissingHomeLegs, isHome, isHomeTransfer } from './home'
+import { addMissingHomeLegs, isHome, isHomeTransfer, misplacedEnds } from './home'
 import { addDays, hhmmToMin, minToHHMM, today } from './dates'
 import { centroid, haversineM, type LatLon } from './geo'
 import { uid } from './ids'
@@ -1288,6 +1288,12 @@ async function reconcileNow(tripId: string, depth = 0): Promise<string[]> {
   // One stay per city stretch (merged repeats, placeholders where there's none): every night has somewhere to end the day.
   if (depth < 3 && (await tidyStays(tripId))) return reconcileNow(tripId, depth + 1)
 
+  // Journeys an older version placed at a far-away namesake (Casablanca, Morocco, for the Chilean town) are put back.
+  const misplaced = misplacedEnds(trip, days, items)
+  if (misplaced.length && depth < 3) {
+    await db.items.bulkUpdate(misplaced)
+    return reconcileNow(tripId, depth + 1)
+  }
   // Journeys whose stored coordinates contradict their names (a chatbot's slip): the name's city wins, once and for all.
   const fixedPlaces = items.flatMap((i) => {
     if (!JOURNEYS.has(i.kind) && i.kind !== 'taxi') return []

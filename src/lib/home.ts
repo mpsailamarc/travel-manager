@@ -6,7 +6,8 @@ import type { Day, Item, Money, Place, Trip } from '../types'
 import { haversineM } from './geo'
 import { cityBase, sameCity } from './favorites'
 import { addDays, daysBetween } from './dates'
-import { cityIn } from './cities'
+import { CITIES, cityIn, looksLikeHub, nearTrip } from './cities'
+import { country } from './countries'
 import { uid } from './ids'
 
 /** Is this place (by name, or within 50 km) where the trip starts or ends? */
@@ -112,4 +113,34 @@ export async function addMissingHomeLegs(tripId: string): Promise<number> {
   ]
   if (rows.length) await db.items.bulkAdd(rows)
   return rows.length
+}
+
+/** Where the trip is: its days' places, its countries' capitals, and home. Name-only matches far from all of them don't count. */
+export function tripArea(trip: Pick<Trip, 'startPlace' | 'endPlace' | 'countryCodes'>, days: Pick<Day, 'lat' | 'lon'>[]): { lat: number; lon: number }[] {
+  const pts: { lat: number; lon: number }[] = []
+  for (const d of days) if (d.lat != null && d.lon != null) pts.push({ lat: d.lat, lon: d.lon })
+  for (const c of trip.countryCodes) {
+    const cap = country(c)?.capital
+    if (cap) pts.push({ lat: cap.lat, lon: cap.lon })
+  }
+  for (const h of [trip.startPlace, trip.endPlace]) if (h?.lat != null && h.lon != null) pts.push({ lat: h.lat, lon: h.lon })
+  return pts
+}
+
+const GROUND_KINDS = new Set(['taxi', 'drive', 'car', 'bus', 'train'])
+
+/**
+ * Journeys an older version sent to the wrong side of the world: a bus to "Casablanca" (in Chile) got the coordinates of
+ * Casablanca in Morocco from the list of well-known cities. Such an end (exactly that city's coordinates, a plain town
+ * name, far from the trip) loses its coordinates, so it's placed by the trip again. Returns the changes to make.
+ */
+export function misplacedEnds(trip: Pick<Trip, 'startPlace' | 'endPlace' | 'countryCodes'>, days: Pick<Day, 'lat' | 'lon'>[], items: Item[]) {
+  const area = tripArea(trip, days)
+  if (!area.length) return []
+  const wrong = (p?: Place) => !!p && p.lat != null && p.lon != null && !looksLikeHub(p.name) && CITIES.some((c) => c.lat === p.lat && c.lon === p.lon && !nearTrip(c, area))
+  return items.flatMap((i) => {
+    if (!GROUND_KINDS.has(i.kind) || (!wrong(i.from) && !wrong(i.to))) return []
+    const strip = (p?: Place) => (p && wrong(p) ? { name: p.name, country: p.country } : p)
+    return [{ key: i.id, changes: { from: strip(i.from), to: strip(i.to) } }]
+  })
 }

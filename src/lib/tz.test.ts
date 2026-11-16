@@ -194,3 +194,38 @@ describe('a day that changes time zone during the trip: London → Athens', () =
     expect(v.entries.find((e) => e.item.id === 'd')).toMatchObject({ start: 20 * 60 + 30 })
   })
 })
+
+describe('a town named like a far-away city: Casablanca, in Chile', () => {
+  const t = { id: 'K', startDate: '2027-02-01', endDate: '2027-02-05', countryCodes: ['CL'], startPlace: { name: 'Sydney', lat: -33.87, lon: 151.21 } } as Trip
+  const kd = [{ id: 'K:1', tripId: 'K', date: '2027-02-02', city: 'Santiago', lat: -33.45, lon: -70.67 }]
+  const bus = (to: { name: string; lat?: number; lon?: number }) =>
+    ({ id: 'b', tripId: 'K', date: '2027-02-02', kind: 'bus', title: 'Bus to the Casablanca valley', status: 'planned', order: 0, startTime: '09:00', endTime: '10:00', from: { name: 'Santiago', lat: -33.45, lon: -70.67 }, to }) as Item
+
+  it('keeps its own coordinates, and stays on Chile time', async () => {
+    const { trustedPlace } = await import('./cities')
+    const chile = { name: 'Casablanca', lat: -33.32, lon: -71.41 }
+    expect(trustedPlace(chile)).toEqual(chile)
+    expect(itemZones(bus(chile), { trip: t, days: kd }).to).toBe('America/Santiago')
+    expect(buildDayView([bus(chile)], '2027-02-02', { trip: t, days: kd }).zones).toBeUndefined()
+  })
+
+  it('without coordinates, the name alone is not Morocco while a Chile trip is open', async () => {
+    const { cityIn, setTripArea } = await import('./cities')
+    const { tripArea } = await import('./home')
+    setTripArea(tripArea(t, kd))
+    try {
+      expect(cityIn('Casablanca')).toBeUndefined()
+      expect(cityIn('Bus Santiago → Casablanca')?.name).toBe('Santiago')
+      expect(cityIn('Casablanca (CMN)')?.name).toBe('Casablanca') // an airport code is still that airport
+      expect(itemZones(bus({ name: 'Casablanca' }), { trip: t, days: kd }).to).toBe('America/Santiago')
+    } finally {
+      setTripArea([])
+    }
+  })
+
+  it('a journey an older version sent to Morocco is put back', async () => {
+    const { misplacedEnds } = await import('./home')
+    const changes = misplacedEnds(t, kd, [bus({ name: 'Casablanca', lat: 33.57, lon: -7.59 })])
+    expect(changes).toEqual([{ key: 'b', changes: { from: { name: 'Santiago', lat: -33.45, lon: -70.67 }, to: { name: 'Casablanca', country: undefined } } }])
+  })
+})

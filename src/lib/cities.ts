@@ -200,21 +200,55 @@ const plain = (s: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-/** A known city named in free text: "Sydney Airport (SYD)", "Narita, Tokyo", "Gare de Lyon, Paris". The longest city name wins. */
-export function cityIn(text?: string): City | undefined {
-  if (!text) return undefined
-  const t = ` ${plain(text)} `
-  // Airport codes only where they're written as codes: "(SYD)", "(CDG/ORY)", "SYD → LHR", or on their own — not a
-  // capitalised word ("SEA LIFE London Aquarium" isn't Seattle).
-  const codes = new Set([
+// The open trip's area (its days' places, its countries' capitals and home). A town that shares its name with a far-away
+// well-known city ("Casablanca", a wine valley in Chile, isn't Casablanca in Morocco) isn't taken for it.
+let area: { lat: number; lon: number }[] = []
+const FAR_KM = 5000
+export function setTripArea(points: { lat: number; lon: number }[]) {
+  area = points
+}
+const km = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(b.lat - a.lat)
+  const dLon = toRad(b.lon - a.lon)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2
+  return 12742 * Math.asin(Math.sqrt(h))
+}
+/** Is this well-known city anywhere near the trip (always, when no trip is set)? */
+export function nearTrip(c: { lat: number; lon: number }, points = area): boolean {
+  return !points.length || points.some((p) => km(c, p) < FAR_KM)
+}
+
+/** Airport codes written as codes: "(SYD)", "(CDG/ORY)", "SYD → LHR", or on their own — not a capitalised word ("SEA LIFE"). */
+function codesIn(text: string) {
+  return new Set([
     ...[...text.matchAll(/\(([A-Z]{3}(?:\s*\/\s*[A-Z]{3})*)\)/g)].flatMap((m) => m[1].split(/\s*\/\s*/)),
     ...[...text.matchAll(/\b([A-Z]{3})\s*(?:→|->|–|—)/g)].map((m) => m[1]),
     ...[...text.matchAll(/(?:→|->|–|—)\s*([A-Z]{3})\b/g)].map((m) => m[1]),
     ...(/^\s*[A-Z]{3}\s*$/.test(text) ? [text.trim()] : []),
   ])
+}
+
+/** An airport, station or port by its name ("Athens International (ATH)", "Gare de Lyon"), not just a town. */
+export function looksLikeHub(name: string): boolean {
+  return codesIn(name).size > 0 || /airport|aeropuerto|aeroporto|a[eé]roport|flughafen|lufthavn|\bintl\b|international|station|bahnhof|\bgare\b|estaci[oó]n|terminal|\bport\b|\bpier\b|harbou?r/i.test(name)
+}
+
+/**
+ * A known city named in free text: "Sydney Airport (SYD)", "Narita, Tokyo", "Gare de Lyon, Paris". The longest city name
+ * wins. A city found by its name (not its airport code) counts only when it's near the open trip.
+ */
+export function cityIn(text?: string, near = area): City | undefined {
+  if (!text) return undefined
+  const t = ` ${plain(text)} `
+  // Airport codes only where they're written as codes: "(SYD)", "(CDG/ORY)", "SYD → LHR", or on their own — not a
+  // capitalised word ("SEA LIFE London Aquarium" isn't Seattle).
+  const codes = codesIn(text)
   let best: City | undefined
   for (const c of CITIES) {
-    if ((t.includes(` ${plain(c.name)} `) || c.codes.some((k) => codes.has(k))) && (!best || c.name.length > best.name.length)) best = c
+    const byCode = c.codes.some((k) => codes.has(k))
+    const byName = t.includes(` ${plain(c.name)} `) && nearTrip(c, near)
+    if ((byCode || byName) && (!best || c.name.length > best.name.length)) best = c
   }
   return best
 }
@@ -225,8 +259,11 @@ export function cityIn(text?: string): City | undefined {
  * coordinates, the name wins.
  */
 export function trustedPlace<P extends { name: string; lat?: number; lon?: number }>(p: P): P {
+  // Only an airport, station or port's name is surer than its coordinates: "Casablanca" with coordinates in Chile is the
+  // Chilean town, whatever the list of well-known cities says.
+  if (p.lat == null || p.lon == null || !looksLikeHub(p.name)) return p
   const c = cityIn(p.name)
-  if (!c || p.lat == null || p.lon == null) return p
+  if (!c) return p
   const toRad = (d: number) => (d * Math.PI) / 180
   const dLat = toRad(c.lat - p.lat)
   const dLon = toRad(c.lon - p.lon)

@@ -3,6 +3,8 @@ import { Navigate, NavLink, Outlet, useLocation, useNavigate, useOutletContext, 
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db'
 import { reconcileTrip } from '../lib/favorites'
+import { setTripArea } from '../lib/cities'
+import { tripArea } from '../lib/home'
 import { forPace } from '../lib/legs'
 import type { Day, Item, Settings, Trip } from '../types'
 import { useDays, useItems, useSettings, useTrip } from '../lib/hooks'
@@ -110,6 +112,8 @@ export default function TripLayout() {
   const base = useSettings()
   // Every page of the trip plans with the trip's pace in mind (all out walks further).
   const settings = useMemo(() => forPace(base, trip?.style), [base, trip?.style])
+  // Place names are read with the trip's area in mind (Casablanca in Chile isn't the one in Morocco): set before the pages draw.
+  useMemo(() => setTripArea(trip && days ? tripArea(trip, days) : []), [trip, days])
   const [editing, setEditing] = useState(false)
   const navigate = useNavigate()
   const { pathname } = useLocation()
