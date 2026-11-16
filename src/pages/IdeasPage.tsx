@@ -189,6 +189,10 @@ function ItineraryIdeas() {
   const [revisions, setRevisions] = useState<{ from: number; changes: string; reply: string }[]>(() => JSON.parse(localStorage.getItem(revKey) ?? '[]'))
   const [pending, setPending] = useState<{ from: number; changes: string }>()
   const [pick, setPick] = useState(0)
+  // Which plans show their detail: all by default, then the ones you folded or unfolded.
+  const [fold, setFold] = useState<{ open: boolean; except: number[] }>({ open: true, except: [] })
+  const isOpen = (i: number) => fold.open !== fold.except.includes(i)
+  const toggle = (i: number) => setFold({ ...fold, except: fold.except.includes(i) ? fold.except.filter((x) => x !== i) : [...fold.except, i] })
   const saveRevisions = (next: typeof revisions) => {
     setRevisions(next)
     keep(revKey, next)
@@ -334,11 +338,23 @@ function ItineraryIdeas() {
             {replaceChoice}
           </div>
           <Comparison options={options.map((o) => o.option)} compare={compare} currency={settings.homeCurrency} />
+          {all.length > 1 && (
+            <div className="chips">
+              <button className={`chip ${!fold.open && !fold.except.length ? 'on' : ''}`} onClick={() => setFold({ open: false, except: [] })}>
+                ▸ Collapse all
+              </button>
+              <button className={`chip ${fold.open && !fold.except.length ? 'on' : ''}`} onClick={() => setFold({ open: true, except: [] })}>
+                ▾ Expand all
+              </button>
+            </div>
+          )}
           <div className="grid-3">
             {all.map(({ option, incomplete, revised }, i) => (
               <OptionCard
                 key={i}
                 n={i + 1}
+                open={isOpen(i)}
+                onToggle={() => toggle(i)}
                 option={option}
                 incomplete={incomplete}
                 revised={revised}
@@ -424,6 +440,8 @@ function Comparison({ options, compare, currency }: { options: AiOption[]; compa
 
 function OptionCard({
   n,
+  open,
+  onToggle,
   option: o,
   incomplete,
   revised,
@@ -433,6 +451,8 @@ function OptionCard({
   trip,
 }: {
   n: number
+  open: boolean
+  onToggle: () => void
   option: AiOption
   incomplete?: boolean
   revised?: { from: number; changes: string }
@@ -444,13 +464,19 @@ function OptionCard({
   const tripDays = daysBetween(start, end) + 1
   const total = Object.values(o.budget).reduce((s, v) => s + (v || 0), 0)
   const [mapSize, setMapSize] = useState<'small' | 'large' | 'hidden'>('small')
+  const [allDays, setAllDays] = useState(false)
   return (
     <div className="card stack option-card">
       <div>
-        <h3>
-          <span className="muted">Plan {n} · </span>
-          {o.title}
-        </h3>
+        <div className="row" style={{ alignItems: 'flex-start', gap: 6 }}>
+          <button className="btn-sm btn-ghost" style={{ fontSize: '1.1rem', lineHeight: 1, padding: '4px 8px' }} aria-expanded={open} aria-label={`${open ? 'Collapse' : 'Expand'} plan ${n}`} title={open ? 'Hide the detail of this plan' : 'Show the detail of this plan'} onClick={onToggle}>
+            {open ? '▾' : '▸'}
+          </button>
+          <h3 className="grow" style={{ cursor: 'pointer' }} onClick={onToggle}>
+            <span className="muted">Plan {n} · </span>
+            {o.title}
+          </h3>
+        </div>
         {revised && (
           <div className="tiny muted">
             ✏️ Revised from plan {revised.from + 1}: {revised.changes}
@@ -464,6 +490,8 @@ function OptionCard({
           </span>
         )}
       </div>
+      {open && (
+        <>
       <div className="chips">
         {(['small', 'large', 'hidden'] as const).map((v) => (
           <button key={v} className={`chip ${mapSize === v ? 'on' : ''}`} onClick={() => setMapSize(v)}>
@@ -473,7 +501,7 @@ function OptionCard({
       </div>
       {mapSize !== 'hidden' && <OptionMap option={o} trip={trip} tall={mapSize === 'large'} />}
       <p className="small">{o.summary}</p>
-      <ul className="option-days" style={{ paddingLeft: 18, margin: 0 }}>
+      <ul className="option-days" style={{ paddingLeft: 18, margin: 0, maxHeight: allDays ? 'none' : undefined }}>
         {o.days.map((d) => (
           <li key={d.day}>
             <b>
@@ -484,6 +512,13 @@ function OptionCard({
           </li>
         ))}
       </ul>
+      {o.days.length > 5 && (
+        <button className="btn-sm btn-ghost" onClick={() => setAllDays(!allDays)}>
+          {allDays ? '⇡ Fewer lines' : `⇣ Show all ${o.days.length} days`}
+        </button>
+      )}
+        </>
+      )}
       {total > 0 && (
         <div className="small">
           <b>Budget ≈ {money(total, currency)}</b>

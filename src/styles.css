@@ -1184,6 +1184,7 @@ pre.prompt {
   font-size: 0.85rem;
   max-height: 240px;
   overflow-y: auto;
+  resize: vertical; /* drag the corner to stretch it */
 }
 
 .option-days li {
