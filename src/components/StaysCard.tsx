@@ -49,6 +49,12 @@ function useLookUpTypedHotels(stays: Item[], cityOf: (s: Item) => string) {
  */
 export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: Item[]; days: Day[]; currency: string }) {
   const [editing, setEditing] = useState<Item>()
+  // Folded away until you want it (it's mostly filled in once, then forgotten); the choice is remembered on this device.
+  const [open, setOpen] = useState(() => localStorage.getItem('tm-stays-open') === '1')
+  const toggle = () => {
+    localStorage.setItem('tm-stays-open', open ? '0' : '1')
+    setOpen(!open)
+  }
   const stays = items
     .filter((i) => i.kind === 'stay' && i.status !== 'skipped' && nightsOf(i).some((n) => n >= trip.startDate && n < trip.endDate))
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -61,15 +67,17 @@ export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: 
   const booked = stays.filter((s) => s.status === 'booked').length
   return (
     <div className="card stack" style={{ gap: 8 }}>
-      <div className="row between wrap">
-        <b>{t('🏨 Where you sleep')}</b>
+      <div className="row between wrap clickable" onClick={toggle} role="button" aria-expanded={open}>
+        <b>
+          {open ? '▾' : '▸'} {t('🏨 Where you sleep')}
+        </b>
         <span className="tiny muted">
           {tn(stays.reduce((n, s) => n + (s.nights ?? 1), 0), '{n} night', '{n} nights')}
           {booked > 0 && ` · ${t('{n} booked', { n: booked })}`}
           {toChoose > 0 && ` · ${t('{n} to choose', { n: toChoose })}`}
         </span>
       </div>
-      {stays.map((s) => {
+      {open && stays.map((s) => {
         const n = s.nights ?? 1
         const city = cityOf(s)
         return (
@@ -100,10 +108,10 @@ export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: 
           </div>
         )
       })}
-      <p className="tiny muted" style={{ margin: 0 }}>
+      {open && <p className="tiny muted" style={{ margin: 0 }}>
         {t('Each day starts where you slept and ends where you sleep that night (at the city centre until you enter the address). The checklist and budget follow.')}{' '}
         <Link to="../ideas?tab=bookings">{t('📧 Import a booking email')}</Link> {t('to fill a stay from its confirmation.')}
-      </p>
+      </p>}
       {editing && <StayEditor stay={editing} city={cityOf(editing)} currency={currency} onClose={() => setEditing(undefined)} />}
     </div>
   )
