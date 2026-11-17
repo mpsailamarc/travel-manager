@@ -36,8 +36,10 @@ const KIND_TO_CATEGORY: Record<ItemKind, BudgetCategory> = {
 export default function BudgetPage() {
   const { trip, items, days, settings } = useTripCtx()
   const home = settings.homeCurrency
+  // Spending is only followed when the Settings preference is on: otherwise the page is about the budget alone.
+  const track = !!settings.trackSpend
+  const cols = track ? 3 : 2
   const [editing, setEditing] = useState<Expense | null>(null)
-  const cols = 3
   const [basisOpen, setBasisOpen] = useState(false)
   // Categories start folded: the totals first, open one for its lines.
   const [folded, setFolded] = useState<Partial<Record<BudgetCategory, boolean>>>(() => Object.fromEntries(BUDGET_CATEGORIES.map((c) => [c, true])))
@@ -192,20 +194,21 @@ export default function BudgetPage() {
     <div className="stack-lg">
       <div className="info-grid">
         <Kpi k={t('Budget')} v={money(totalBudget, home)} sub={totalPlanned > 0 ? t('incl. {amount} priced in the plan', { amount: money(totalPlanned, home) }) : undefined} />
-        <Kpi k={t('Spent')} v={money(totalSpent, home)} sub={t('{ahead} booked ahead · {onTrip} on the trip', { ahead: money(prepaid, home), onTrip: money(onTrip, home) })} />
-        <Kpi
+        {track && <Kpi k={t('Spent')} v={money(totalSpent, home)} sub={t('{ahead} booked ahead · {onTrip} on the trip', { ahead: money(prepaid, home), onTrip: money(onTrip, home) })} />}
+        {track && <Kpi
           k={t('Left')}
           v={money(totalBudget - totalSpent, home)}
           sub={daysLeft ? tn(daysLeft, '{amount}/day for {n} day', '{amount}/day for {n} days', { amount: money((totalBudget - totalSpent) / daysLeft, home) }) : undefined}
           warn={totalBudget > 0 && totalSpent > totalBudget}
-        />
+        />}
       </div>
 
       <WhoIsTravelling trip={trip} />
 
       <BudgetBars
-        rows={BUDGET_CATEGORIES.map((c) => ({ c, budget: catTotal(c), spent: spent[c] })).filter((r) => r.budget > 0 || r.spent > 0)}
+        rows={BUDGET_CATEGORIES.map((c) => ({ c, budget: catTotal(c), spent: track ? spent[c] : 0 })).filter((r) => r.budget > 0 || r.spent > 0)}
         home={home}
+        track={track}
       />
 
       <div className="grid-2 wide-left">
@@ -235,7 +238,7 @@ export default function BudgetPage() {
               <tr>
                 <th>{t('Category')}</th>
                 <th className="num">{t('Budget ({currency})', { currency: home })}</th>
-                <th className="num" title={t('Bookings paid ahead + expenses')}>{t('Spent')}</th>
+                {track && <th className="num" title={t('Bookings paid ahead + expenses')}>{t('Spent')}</th>}
               </tr>
             </thead>
             <tbody>
@@ -264,7 +267,7 @@ export default function BudgetPage() {
                           ＋
                         </button>
                       </div>
-                      {b > 0 && (
+                      {track && b > 0 && (
                         <div style={{ marginTop: 4 }}>
                           <Progress value={Math.max(spent[c], 0)} max={b} over={spent[c] > b} />
                         </div>
@@ -285,7 +288,7 @@ export default function BudgetPage() {
                         />
                       )}
                     </td>
-                    <td className="num">{spent[c] ? money(spent[c], home) : '—'}</td>
+                    {track && <td className="num">{spent[c] ? money(spent[c], home) : '—'}</td>}
                   </tr>
                 )
                 // The breakdown sits right under its category. Each line: a name, an amount — or a quantity × price assumption.
@@ -570,12 +573,14 @@ export default function BudgetPage() {
           <p className="tiny muted" style={{ marginTop: 8 }}>
             {t('Each category adds up the lines under it: the prices of plan items (📌: change one here and the plan item changes too) and your own lines for everything else, such as meals and local transport.')}
           </p>
-          <p className="tiny muted" style={{ marginTop: 8 }}>
-            <b>{t('Spent')}</b> {t('= bookings that have a booking reference (paid ahead) + expenses you log.')}
-          </p>
+          {track && (
+            <p className="tiny muted" style={{ marginTop: 8 }}>
+              <b>{t('Spent')}</b> {t('= bookings that have a booking reference (paid ahead) + expenses you log.')}
+            </p>
+          )}
         </div>
 
-        <div className="stack">
+        {track && <div className="stack">
           <QuickExpense tripId={trip.id} home={home} local={country(trip.countryCodes[0])?.currency ?? home} />
           <div className="card">
             <h3 style={{ marginBottom: 8 }}>{t('Expenses')}</h3>
@@ -619,7 +624,7 @@ export default function BudgetPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </div>}
       </div>
       {editing && <ExpenseEditor expense={editing} home={home} onClose={() => setEditing(null)} />}
     </div>
@@ -643,7 +648,7 @@ function Kpi({ k, v, sub, warn }: { k: string; v: string; sub?: string; warn?: b
  * with the amounts written at the end (a bar chart reads better than a pie for comparing six amounts). Spending past the
  * budget continues in red with a "⚠ over" label, so it never relies on colour alone. The table below has every figure.
  */
-function BudgetBars({ rows, home }: { rows: { c: BudgetCategory; budget: number; spent: number }[]; home: string }) {
+function BudgetBars({ rows, home, track }: { rows: { c: BudgetCategory; budget: number; spent: number }[]; home: string; track: boolean }) {
   if (!rows.length) return null
   const sorted = [...rows].sort((a, b) => b.budget - a.budget || b.spent - a.spent)
   const max = Math.max(...sorted.map((r) => Math.max(r.budget, r.spent)), 1)
@@ -653,9 +658,11 @@ function BudgetBars({ rows, home }: { rows: { c: BudgetCategory; budget: number;
       <div className="row between wrap">
         <h3>{t('📊 Budget by type')}</h3>
         <div className="row small muted" style={{ gap: 12 }} aria-hidden>
-          <span className="row" style={{ gap: 4 }}>
-            <i className="bb-key bb-key-spent" /> {t('spent')}
-          </span>
+          {track && (
+            <span className="row" style={{ gap: 4 }}>
+              <i className="bb-key bb-key-spent" /> {t('spent')}
+            </span>
+          )}
           <span className="row" style={{ gap: 4 }}>
             <i className="bb-key bb-key-budget" /> {t('budget')}
           </span>

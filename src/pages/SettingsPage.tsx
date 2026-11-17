@@ -144,6 +144,9 @@ export default function SettingsPage() {
             <input type="checkbox" checked={!!s.showTemplate} onChange={(e) => set({ showTemplate: e.target.checked })} /> {t('Show “Quick template (no AI)” when setting up the itinerary')}
           </label>
           <label className="inline full">
+            <input type="checkbox" checked={!!s.trackSpend} onChange={(e) => set({ trackSpend: e.target.checked })} /> {t('Track actual spend (expenses, spent and left in Budget)')}
+          </label>
+          <label className="inline full">
             <input type="checkbox" checked={!!s.showReplan} onChange={(e) => set({ showReplan: e.target.checked })} /> {t('Show the “Replan” button in Day by day')}
           </label>
         </div>

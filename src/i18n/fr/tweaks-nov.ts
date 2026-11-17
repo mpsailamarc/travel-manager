@@ -17,4 +17,5 @@ export default {
   'Show the “Replan” button in Day by day': 'Afficher le bouton « Replanifier » dans Jour par jour',
   '⚠️ This trip already has a detailed plan ({n} item). Using one of the itineraries below wipes it out and replaces it (you can choose “Add to it” instead when you pick one).': '⚠️ Ce voyage a déjà un plan détaillé ({n} élément). Utiliser l\'un des itinéraires ci-dessous l\'efface et le remplace (vous pouvez choisir « L\'ajouter au programme » à la place au moment de choisir).',
   '⚠️ This trip already has a detailed plan ({n} items). Using one of the itineraries below wipes it out and replaces it (you can choose “Add to it” instead when you pick one).': '⚠️ Ce voyage a déjà un plan détaillé ({n} éléments). Utiliser l\'un des itinéraires ci-dessous l\'efface et le remplace (vous pouvez choisir « L\'ajouter au programme » à la place au moment de choisir).',
+  'Track actual spend (expenses, spent and left in Budget)': 'Suivre les dépenses réelles (dépenses, dépensé et reste dans Budget)',
 } as Record<string, string>
