@@ -20,6 +20,7 @@ import SharePage from './pages/SharePage'
 import MorePage from './pages/MorePage'
 import FavoritesPage from './pages/FavoritesPage'
 import EssentialsPage from './pages/EssentialsPage'
+import HelpPage from './pages/HelpPage'
 
 function Shell() {
   const online = useOnline()
@@ -50,6 +51,9 @@ function Shell() {
               {sync.state === 'syncing' ? '☁️ …' : sync.state === 'error' ? '☁️ ⚠️' : sync.state === 'offline' ? '☁️ ⏸' : '☁️ ✓'}
             </Link>
           )}
+          <Link to="/help" className="btn btn-ghost btn-sm" aria-label={t('How it works')}>
+            ❓ <span className="hide-mobile">{t('How it works')}</span>
+          </Link>
           <Link to="/settings" className="btn btn-ghost btn-sm" aria-label={t('Settings')}>
             ⚙️ <span className="hide-mobile">{t('Settings')}</span>
           </Link>
@@ -69,6 +73,7 @@ const router = createHashRouter([
       { path: '/', element: <HomePage /> },
       { path: '/new', element: <NewTripPage /> },
       { path: '/settings', element: <SettingsPage /> },
+      { path: '/help', element: <HelpPage /> },
       {
         path: '/trip/:tripId',
         element: <TripLayout />,

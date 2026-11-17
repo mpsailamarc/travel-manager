@@ -60,6 +60,12 @@ export default defineConfig({
             },
           },
           {
+            // The tutorial's screenshots: kept once seen, so the tour works offline too (not part of the install).
+            urlPattern: ({ url }) => url.pathname.includes('/tutorial/'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'tutorial', expiration: { maxEntries: 40 }, cacheableResponse: { statuses: [0, 200] } },
+          },
+          {
             urlPattern: ({ url }) =>
               url.hostname.endsWith('wikipedia.org') || url.hostname.endsWith('wikimedia.org'),
             handler: 'StaleWhileRevalidate',
