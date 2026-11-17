@@ -45,7 +45,8 @@ export function getAiConfig(): AiConfig {
     } catch {
       cached = DEFAULT
     }
-    setAiName(PROVIDERS[cached.provider]?.name ?? 'ChatGPT')
+    // The texts say "ChatGPT" for any chatbot you paste into; they only name the other assistant when its key is in use.
+    setAiName(cached.mode === 'api' ? (PROVIDERS[cached.provider]?.name ?? 'ChatGPT') : 'ChatGPT')
   }
   return cached
 }

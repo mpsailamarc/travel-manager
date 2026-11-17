@@ -11,6 +11,7 @@ describe('the itinerary knows what it was made for', () => {
     expect(planChanges(made)).toEqual([])
     expect(planChanges({ ...made, endDate: '2027-03-14', style: 'packed' })).toEqual(['dates', 'pace'])
     expect(planChanges({ ...made, countryCodes: ['FR'] })).toEqual(['destination'])
+    expect(planChanges({ ...made, getThere: 'own', sleep: 'friends', willDrive: false })).toEqual(['where you sleep', 'how you get there', 'driving yourself'])
     expect(planChanges({ ...made, travellers: [...trip.travellers, { id: 'b', name: 'b', type: 'adult' }] })).toEqual([])
     expect(planChanges({ ...trip })).toEqual([]) // no itinerary yet: nothing to say
     expect(planChanges({ ...made, focus: 'outdoors', innerFlights: 'none' })).toEqual(['cities or outdoors', 'flights between places'])

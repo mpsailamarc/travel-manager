@@ -55,7 +55,10 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   // Where the trip starts decides whether flights are needed (the place's country when known, else your nationality).
   const startCountry = trip.startPlace?.country ?? homeCountry
   const startCont = CONTINENT[startCountry]
-  const domestic = !!startCountry && trip.countryCodes.length > 0 && trip.countryCodes.every((c) => c === startCountry)
+  // Not by plane (own car, a rental, train, bus or ferry): no flights, whichever country you start in.
+  const byPlane = (trip.getThere ?? 'plane') === 'plane'
+  const driveThere = trip.getThere === 'own' || trip.getThere === 'rental'
+  const domestic = !byPlane || (!!startCountry && trip.countryCodes.length > 0 && trip.countryCodes.every((c) => c === startCountry))
   const longHaul = trip.countryCodes.some((c) => CONTINENT[c] && startCont && CONTINENT[c] !== startCont)
   const flightPP = longHaul ? 850 : 180
   const hops = Math.max(0, trip.cities.length - 1)
@@ -63,10 +66,10 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   // A car in the plan: the days you have it run from its first to its last item.
   const carItems = items.filter((i) => (i.kind === 'car' || i.kind === 'drive') && i.status !== 'skipped')
   const carDates = carItems.map((i) => i.date).sort()
-  const hasCar = carDates.length > 0
-  const rented = carItems.some((i) => i.kind === 'car') // driving your own car has fuel but no rental
+  const hasCar = carDates.length > 0 || driveThere // driving there: the car is with you the whole trip
+  const rented = carItems.some((i) => i.kind === 'car') || (!carDates.length && trip.getThere === 'rental') // driving your own car has fuel but no rental
   // Only a pickup in the plan (no return noted)? Assume you keep the car for the whole trip: you can edit the quantity.
-  const carSpan = hasCar ? daysBetween(carDates[0], carDates[carDates.length - 1]) + 1 : 0
+  const carSpan = carDates.length ? daysBetween(carDates[0], carDates[carDates.length - 1]) + 1 : 0
   const carDays0 = hasCar ? (carSpan > 1 ? carSpan : days) : 0
   // In a camper van, the van is both the car and the bed: its rental replaces the car's, campsites replace hotels.
   const inVan = camperNights(trip, items)
@@ -95,7 +98,8 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
   }
   add('transport', t('Local transport'), days, 'days', PER_PERSON_DAY.transport * idx * lvl * avg(0.6), 'person', travellers)
   if (hops) add('transport', t('Moving between places'), hops, hops === 1 ? 'move' : 'moves', 40 * idx * lvl * avg(0.6), 'person', travellers)
-  const hotelNights = nights - vanNights
+  const friends = trip.sleep === 'friends' // nothing to pay for the beds
+  const hotelNights = friends ? 0 : nights - vanNights
   if (hotelNights > 0) add('stays', t('Accommodation'), hotelNights, hotelNights === 1 ? 'night' : 'nights', ROOM_NIGHT * idx * lvl * (roomFactor / rooms), 'room', rooms)
   if (vanNights > 0) add('stays', t('Campsites'), vanNights, vanNights === 1 ? 'night' : 'nights', CAMPSITE_NIGHT * idx * Math.sqrt(lvl))
   add('food', t('Food & drink'), days, 'days', PER_PERSON_DAY.food * idx * lvl * avg(0.6), 'person', travellers)
@@ -114,13 +118,16 @@ export async function estimateBudgetLines(trip: Trip, homeCountry: string, homeC
     t('Budget level “{level}” scales them by ×{factor}.', { level: levelName(trip.budgetLevel), factor: lvl }),
     groupBasis(trip),
     ...(kids ? [t('Prices per person are averages for the group: children count as about 60% of an adult for food and activities, 90% for flights.')] : []),
-    domestic
+    !byPlane
+      ? t('No flights: you get there by {way}.', { way: trip.getThere === 'own' ? t('your own car') : trip.getThere === 'rental' ? t('a rental car') : t('train, bus or ferry') })
+      : domestic
       ? trip.startPlace?.name
         ? t('No flights: you start in the same country as the destination ({place}).', { place: trip.startPlace.name })
         : t('No flights: you start in the same country as the destination.')
       : trip.startPlace?.name
         ? t('Flights: a return fare of about {fare} per adult ({haul}), children at 90%. Remove the line if you already have your tickets.', { fare: flightFare, haul })
         : t('Flights: a return fare of about {fare} per adult ({haul}), children at 90%. Remove the line if you already have your tickets, or set where you start in Trip details if you start close to the destination.', { fare: flightFare, haul }),
+    ...(friends ? [t('Staying with friends or family: no accommodation cost.')] : []),
     ...(camper
       ? [
           t('Camper van: rental of about {rental} a day, and campsites at about {camp} a night for {nights}, instead of hotels.', {

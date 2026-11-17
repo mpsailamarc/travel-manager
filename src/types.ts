@@ -28,6 +28,7 @@ export type TripStyle = 'relaxed' | 'balanced' | 'packed' | 'intense'
 export type BudgetLevel = 'shoestring' | 'mid' | 'comfort' | 'luxury'
 export type TripFocus = 'cities' | 'mix' | 'outdoors'
 export type InnerFlights = 'auto' | 'fly' | 'few' | 'none'
+export type GetThere = 'plane' | 'rental' | 'own' | 'other'
 
 export const BUDGET_CATEGORIES = ['flights', 'transport', 'stays', 'food', 'activities', 'other'] as const
 export type BudgetCategory = (typeof BUDGET_CATEGORIES)[number]
@@ -57,7 +58,9 @@ export interface Trip {
   interests: string[]
   focus?: TripFocus // cities and sights, a mix, or a road trip with hikes (unset = a mix)
   innerFlights?: InnerFlights // flights between places inside the trip (unset = 'auto': the planner decides, by group size)
-  sleep?: 'hotels' | 'camper' // where you sleep (unset = hotels, or a camper van when the plan has a camper rental)
+  sleep?: 'hotels' | 'camper' | 'friends' | 'single' // where you sleep (unset = hotels, or a camper van when the plan has a camper rental); friends = staying with friends or family; single = one base for the whole trip
+  getThere?: GetThere // how you get to the destination: plane (unset), a rental car, your own car, or a train, bus or ferry
+  willDrive?: boolean // happy to drive yourself once there (unset = yes)
   notes?: string
   budget: Partial<Record<BudgetCategory, number>> // in home currency
   budgetLines?: BudgetLine[] // the estimate's breakdown; per-category totals in `budget` follow these
@@ -236,6 +239,7 @@ export interface Settings {
   nationality: string // ISO alpha-2
   homeAirport?: string
   walkSpeedKmh: number
+  interests?: string[] // what you enjoy: new trips start with these, and each trip can change them
   family?: Traveller[] // the people you usually travel with (partner, children…): new trips start with you and them, and each trip can change who comes
   getAround?: GetAround // City planner default between places (default: walk short hops, public transport for longer ones)
   walkMaxMin?: number // what counts as a short hop, in minutes of walking (default 15)

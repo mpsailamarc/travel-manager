@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, deleteTrip } from '../db'
@@ -10,6 +10,8 @@ import { useSettings } from '../lib/hooks'
 import { Empty, toast } from '../components/ui'
 import { t, tn } from '../i18n'
 import { tripPhase } from './TripLayout'
+import { clearDraft, readDraft } from './NewTripPage'
+import { STEPS_LABELS } from './NewTripPage'
 import type { Trip } from '../types'
 
 export default function HomePage() {
@@ -17,6 +19,9 @@ export default function HomePage() {
   const settings = useSettings()
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
+  const [draft, setDraft] = useState(readDraft)
+  // Trips with nothing in the plan yet: work in progress, opened at the itinerary ideas.
+  const planned = useLiveQuery(async () => new Set((await db.items.orderBy('tripId').uniqueKeys()) as string[]), [])
 
   if (!trips) return <div className="page" />
 
@@ -92,13 +97,39 @@ export default function HomePage() {
         </div>
       )}
 
-      <TripGroup title={t('Coming up')} trips={upcoming} />
-      <TripGroup title={t('Past trips')} trips={past} />
+      {draft && (
+        <div className="card row wrap between" style={{ borderStyle: 'dashed' }}>
+          <div>
+            <div className="row" style={{ gap: 8 }}>
+              <span className="badge planned">{t('🚧 WIP')}</span>
+              <b>{draft.t.name.trim() || [...draft.t.countryCodes.map(countryLabel), ...draft.t.cities].join(', ') || t('New trip')}</b>
+            </div>
+            <div className="small muted">{t('Trip not created yet · step {n} of 5 · {name}', { n: draft.step + 1, name: STEPS_LABELS[draft.step] })}</div>
+          </div>
+          <div className="row">
+            <Link to="/new?resume=1" className="btn btn-primary btn-sm">
+              {t('Continue')}
+            </Link>
+            <button
+              className="btn-sm btn-ghost"
+              onClick={() => {
+                if (!confirm(t('Discard this unfinished trip?'))) return
+                clearDraft()
+                setDraft(undefined)
+              }}
+            >
+              {t('Discard')}
+            </button>
+          </div>
+        </div>
+      )}
+      <TripGroup title={t('Coming up')} trips={upcoming} planned={planned} />
+      <TripGroup title={t('Past trips')} trips={past} planned={planned} />
     </div>
   )
 }
 
-function TripGroup({ title, trips }: { title: string; trips: Trip[] }) {
+function TripGroup({ title, trips, planned }: { title: string; trips: Trip[]; planned?: Set<string> }) {
   const navigate = useNavigate()
   // A copy to try things on (other dates, cities, pace), the original untouched — the same as in Trip details.
   async function duplicate(tp: Trip) {
@@ -122,11 +153,15 @@ function TripGroup({ title, trips }: { title: string; trips: Trip[] }) {
       <div className="grid-3">
         {trips.map((tp) => {
           const ph = tripPhase(tp)
+          const wip = !!planned && !planned.has(tp.id) // nothing planned yet: opens at the itinerary ideas
           return (
-            <Link key={tp.id} to={`/trip/${tp.id}`} className="card trip-card stack" style={{ gap: 6 }}>
+            <Link key={tp.id} to={`/trip/${tp.id}${wip ? '/ideas' : ''}`} className="card trip-card stack" style={{ gap: 6 }}>
               <div className="row between">
                 <span className="trip-emoji">{tp.coverEmoji}</span>
-                {ph.phase === 'before' && <span className="badge planned">{tn(ph.daysToGo, 'in {n} day', 'in {n} days')}</span>}
+                <span className="row" style={{ gap: 6 }}>
+                  {wip && <span className="badge planned" title={t('The itinerary is not set up yet: open it to carry on')}>{t('🚧 WIP')}</span>}
+                  {ph.phase === 'before' && <span className="badge planned">{tn(ph.daysToGo, 'in {n} day', 'in {n} days')}</span>}
+                </span>
               </div>
               <h3>{tp.name}</h3>
               <div className="small muted">{formatRange(tp.startDate, tp.endDate)}</div>

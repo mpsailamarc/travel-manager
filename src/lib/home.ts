@@ -54,6 +54,7 @@ export interface HomeLeg {
  * (the first day; the day after the last night away) and the places at both ends.
  */
 export function missingHomeLegs(trip: Trip, days: Day[], items: Item[]): { out?: HomeLeg; back?: HomeLeg } {
+  if ((trip.getThere ?? 'plane') !== 'plane') return {} // by car, train, bus or ferry: no flight to add
   const start = trip.startPlace
   const end = trip.endPlace?.name ? trip.endPlace : trip.startPlace
   const away = days

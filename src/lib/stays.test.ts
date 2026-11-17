@@ -71,4 +71,9 @@ describe('nights on the road', () => {
     expect(nights).not.toContain('2027-09-21')
     expect(nights).toContain('2027-09-20')
   })
+
+  it('with friends or family, the nights are filled with a stay at their place, not a hotel', () => {
+    const { put } = tidyStaysPlan({ ...trip, sleep: 'friends' } as Trip, days, [])
+    expect(put.map((p) => p.title)).toEqual(['Staying with friends in Florence (to choose)', 'Staying with friends in Amsterdam (to choose)', 'Staying with friends in Rome (to choose)'])
+  })
 })

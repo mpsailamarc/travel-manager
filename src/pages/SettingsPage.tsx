@@ -9,7 +9,7 @@ import { bytes } from '../lib/format'
 import { toast } from '../components/ui'
 import { SyncCard } from '../components/SyncCard'
 import { AiCard } from '../components/AiCard'
-import { TravellersEditor } from './TripFields'
+import { ChipToggle, INTERESTS, TravellersEditor } from './TripFields'
 import { getConfig } from '../lib/sync'
 import { lang, LANGS, setLang, t, tn } from '../i18n'
 
@@ -60,6 +60,11 @@ export default function SettingsPage() {
         <h3>{t('Family')}</h3>
         <p className="small muted">{t('The people you usually travel with: your partner, your children and their ages. Every new trip starts with you and them; you can change who comes on each trip.')}</p>
         <TravellersEditor value={s.family ?? []} onChange={(family) => set({ family })} firstAdult={t('Partner')} />
+      </div>
+      <div className="card stack">
+        <h3>{t('What you enjoy')}</h3>
+        <p className="small muted">{t('New trips start with these interests; you can change them for each trip.')}</p>
+        <ChipToggle options={INTERESTS} value={s.interests ?? []} onChange={(interests) => set({ interests })} />
       </div>
       <div className="card stack">
         <h3>{t('About you')}</h3>

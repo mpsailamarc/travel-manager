@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { BudgetLevel, InnerFlights, Traveller, Trip, TripFocus, TripStyle } from '../types'
+import type { BudgetLevel, GetThere, InnerFlights, Traveller, Trip, TripFocus, TripStyle } from '../types'
 import { COUNTRIES, countryLabel, countryName, flag } from '../lib/countries'
 import { searchPlaces } from '../lib/apis'
 import { uid } from '../lib/ids'
@@ -41,19 +41,49 @@ export const INNER_FLIGHTS: Record<InnerFlights, { label: string; desc: string }
 /** Why the planner leans away from flights for a group, in a line (nothing for one person or when you chose). */
 export function groupTravelHint(t: Trip) {
   const n = t.travellers.length
-  return n >= 2 && (t.innerFlights ?? 'auto') === 'auto'
+  return n >= 2 && (t.innerFlights ?? 'auto') === 'auto' && t.willDrive !== false
     ? tr("With {n} travellers every flight is paid {n} times, while a rental car costs the same for everyone, so the plan will drive or take the train when that's reasonable.", { n })
     : undefined
 }
 
-/** Cities or the outdoors, and flights between places: the two questions that shape the route. */
-export const SLEEP: Record<'hotels' | 'camper', { label: string; desc: string }> = {
-  hotels: { label: tr('🏨 Hotels'), desc: tr('Hotels, B&Bs or apartments') },
-  camper: { label: tr('🚐 Camper van'), desc: tr('Sleep in the van, at campsites') },
+export const GET_THERE: Record<GetThere, { label: string; desc: string }> = {
+  plane: { label: tr('✈️ Plane'), desc: tr('Fly there and back') },
+  rental: { label: tr('🚙 Rental car'), desc: tr('Drive there in a rental car: no flights') },
+  own: { label: tr('🚗 My own car'), desc: tr('Drive there in your own car: no flights, no rental') },
+  other: { label: tr('🚆 Train, bus or ferry'), desc: tr('No flights, no car needed to get there') },
 }
 
-export function RouteFields({ value: t, onChange }: { value: Trip; onChange: (v: Partial<Pick<Trip, 'focus' | 'innerFlights' | 'sleep'>>) => void }) {
+/** How you get to the destination: it decides whether the plan has flights, a rental car or a long drive. */
+export function GetThereFields({ value: t, onChange }: { value: Trip; onChange: (v: Pick<Trip, 'getThere'>) => void }) {
+  return (
+    <>
+      <label>{tr('How do you get there?')}</label>
+      <ChoiceGrid options={GET_THERE} value={t.getThere ?? 'plane'} onChange={(v) => onChange({ getThere: v === 'plane' ? undefined : v })} />
+      {(t.getThere ?? 'plane') !== 'plane' && <p className="tiny muted" style={{ margin: 0 }}>{tr('The plan and the budget then have no flights from and to home: the journey there is by the way you chose.')}</p>}
+    </>
+  )
+}
+
+/** Where you sleep. One single place for the whole trip only makes sense when the destination is one place (one city or area typed). */
+export const SLEEP: Record<'hotels' | 'camper' | 'friends' | 'single', { label: string; desc: string }> = {
+  hotels: { label: tr('🏨 Hotels'), desc: tr('Hotels, B&Bs or apartments') },
+  camper: { label: tr('🚐 Camper van'), desc: tr('Sleep in the van, at campsites') },
+  friends: { label: tr('🏡 With friends or family'), desc: tr('Staying with people you know: nothing to book or pay') },
+  single: { label: tr('📍 One single place'), desc: tr('The same bed every night, day trips from it') },
+}
+export const couldBeOnePlace = (t: Pick<Trip, 'cities'>) => t.cities.length === 1
+
+const DRIVE: Record<'yes' | 'no', { label: string; desc: string }> = {
+  yes: { label: tr('🚗 Happy to drive'), desc: tr('A rental car is fine where it helps') },
+  no: { label: tr('🚫 I would rather not drive'), desc: tr('Trains, buses, taxis and tours instead') },
+}
+
+/** Cities or the outdoors, flights between places, driving yourself and where you sleep: the questions that shape the route. */
+export function RouteFields({ value: t, onChange }: { value: Trip; onChange: (v: Partial<Pick<Trip, 'focus' | 'innerFlights' | 'sleep' | 'willDrive'>>) => void }) {
   const hint = groupTravelHint(t)
+  const one = couldBeOnePlace(t)
+  const sleepOptions = Object.fromEntries(Object.entries(SLEEP).filter(([k]) => k !== 'single' || one)) as Partial<typeof SLEEP> as typeof SLEEP
+  const sleep = t.sleep === 'single' && !one ? 'hotels' : (t.sleep ?? 'hotels')
   return (
     <>
       <label>{tr('Cities or the outdoors?')}</label>
@@ -61,8 +91,10 @@ export function RouteFields({ value: t, onChange }: { value: Trip; onChange: (v:
       <label>{tr('Flights between places')}</label>
       <ChoiceGrid options={INNER_FLIGHTS} value={t.innerFlights ?? 'auto'} onChange={(v) => onChange({ innerFlights: v })} />
       {hint && <p className="tiny muted" style={{ margin: 0 }}>👥 {hint}</p>}
+      <label>{tr('Driving yourself')}</label>
+      <ChoiceGrid options={DRIVE} value={t.willDrive === false ? 'no' : 'yes'} onChange={(v) => onChange({ willDrive: v === 'no' ? false : undefined })} />
       <label>{tr('Where you sleep')}</label>
-      <ChoiceGrid options={SLEEP} value={t.sleep ?? 'hotels'} onChange={(v) => onChange({ sleep: v })} />
+      <ChoiceGrid options={sleepOptions} value={sleep} onChange={(v) => onChange({ sleep: v })} />
     </>
   )
 }
@@ -323,6 +355,7 @@ export function TripFields({ value: t, onChange }: { value: Trip; onChange: (t: 
       <label>{tr('Where to')}</label>
       <DestinationInput cities={t.cities} countryCodes={t.countryCodes} onChange={(v) => onChange({ ...t, ...v })} />
       <StartEndFields value={t} onChange={(v) => onChange({ ...t, ...v })} />
+      <GetThereFields value={t} onChange={(v) => onChange({ ...t, ...v })} />
       <label>{tr('Travellers')}</label>
       <p className="small" style={{ margin: 0 }}>
         👥 {travellersText(t.travellers)} · <span className="muted">{tr('change who is travelling in the Budget tab, where the costs follow.')}</span>

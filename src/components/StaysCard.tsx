@@ -8,7 +8,7 @@ import { uid } from '../lib/ids'
 import { bookingSearch, campsiteSearch } from '../lib/checklist'
 import { findPlace } from '../lib/apis'
 import { haversineM } from '../lib/geo'
-import { isCampsite, isPlaceholderStay, nightsOf } from '../lib/stays'
+import { isCampsite, isFriendsStay, isPlaceholderStay, nightsOf } from '../lib/stays'
 import { Modal, StatusBadge, toast } from './ui'
 import { PlaceSearch } from './PlaceSearch'
 
@@ -88,13 +88,13 @@ export function StaysCard({ trip, items, days, currency }: { trip: Trip; items: 
                 {city} · {short(s.date)} → {short(addDays(s.date, n))} · {tn(n, '{n} night', '{n} nights')}
               </div>
               <div className="tiny muted">
-                {isPlaceholderStay(s) ? (isCampsite(s) ? t('✏️ Campsite to choose — tap to enter it') : t('✏️ Hotel to choose — tap to enter it')) : s.title}
+                {isPlaceholderStay(s) ? (isCampsite(s) ? t('✏️ Campsite to choose — tap to enter it') : isFriendsStay(s) ? t('✏️ Staying with friends — tap to add their address') : t('✏️ Hotel to choose — tap to enter it')) : s.title}
                 {!isPlaceholderStay(s) && s.location?.name && s.location.name !== s.title && ` · ${s.location.name}`}
                 {s.location?.lat == null && ` · ${t('📍 no address yet')}`}
               </div>
             </button>
             <StatusBadge status={s.status} />
-            {s.status !== 'booked' && city && (
+            {s.status !== 'booked' && city && !isFriendsStay(s) && trip.sleep !== 'friends' && (
               <a
                 className="btn btn-sm btn-ghost"
                 href={s.url ?? (isCampsite(s) ? campsiteSearch(city) : bookingSearch(city, s.date, addDays(s.date, n), adults, kids))}

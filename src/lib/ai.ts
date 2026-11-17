@@ -101,6 +101,20 @@ export function languageLine(): string {
     : ''
 }
 
+/** How we get to the destination, when it isn't by plane: the plan has no flights from or to home, and says what replaces them. */
+function thereLine(trip: Trip) {
+  switch (trip.getThere) {
+    case 'own':
+      return 'Getting there: by our own car, from home and back. No flights from or to home and no rental car to get there: plan the drive (distance, driving time, an overnight stop if it is long) as the first and last journeys, kind "drive".'
+    case 'rental':
+      return 'Getting there: by rental car, picked up near home. No flights from or to home: include the rental pick-up and return (kind "car") and the drive there and back (kind "drive").'
+    case 'other':
+      return 'Getting there: by train, bus or ferry, from home and back. No flights from or to home: plan those journeys as the first and last ones.'
+    default:
+      return ''
+  }
+}
+
 /** "Starting and ending in X": the AI should plan from there, and skip flights if X is next to the destination. */
 function startLine(trip: Trip) {
   const start = trip.startPlace?.name
@@ -127,6 +141,13 @@ function tripBrief(trip: Trip, settings: Settings) {
     trip.interests.length ? `Interests: ${trip.interests.join(', ')}` : '',
     `Focus: ${FOCUS_LINE[trip.focus ?? 'mix']}`,
     `Getting between places: ${movesLine(trip)}`,
+    thereLine(trip),
+    trip.willDrive === false ? 'Driving: we do not want to drive ourselves: no rental car and no self-drive. Use trains, buses, ferries, taxis and guided tours (flights for long hops only if the inner-flights wish allows).' : '',
+    trip.sleep === 'friends'
+      ? 'Sleeping: staying with friends or family, so nothing to book or pay: one "stay" item per place, titled "Staying with friends in <place>", with its nights, estCost 0 and the area\'s coordinates. No hotels.'
+      : trip.sleep === 'single' && trip.cities.length === 1
+        ? `Sleeping: one single base for the whole trip (${trip.cities[0]}): one "stay" item for all the nights, the same accommodation every night. No moving between places: every other place is a day trip from the base.`
+        : '',
     trip.sleep === 'camper'
       ? 'Sleeping: in a camper van, every night. Each night is at a campsite or aire: a "stay" item titled "Campsite …" with its real coordinates, one per stop with its nights. Drives of at most about 4 hours a day, to arrive before dark. Include the camper pick-up and return as "car" items; no hotels.'
       : '',
@@ -167,6 +188,7 @@ export function movesLine(trip: Trip) {
     case 'none':
       return 'no flights inside the trip (only to get there and back): drive, train or ferry between places'
     default:
+      if (trip.willDrive === false) return 'we do not drive ourselves: use trains, buses or ferries between places, and fly or take a taxi only for long hops'
       return n >= 2
         ? `we are ${n}, so every flight is paid ${n} times while a rental car costs the same for all of us: prefer driving (or a train or ferry) between places when it takes under about 6 hours, and fly only for long hops`
         : 'fly between places only when it saves a lot of time over the train, bus or ferry'
@@ -326,7 +348,7 @@ Guidelines:
 - Visits last a realistic time (a big museum 2–3 hours, a viewpoint 30–60 minutes, a meal 1 hour or more).
 - Give real coordinates for each day's town and for places. Every journey needs both ends: "fromLat"/"fromLon" where it leaves and "lat"/"lon" where it arrives — the actual airport, station, port or car-rental office, not the city centre.
 - On a travel day, list each step as its own item, in order: getting to the airport or station (drive, taxi…), returning the rental car, the flight or train, then getting from where it arrives to the next place.
-- Keep "notes" under 15 words.${continuing ? '' : `
+${trip.getThere && trip.getThere !== 'plane' ? `- We do not fly to or from home (see "Getting there"): wherever these rules speak of the flight from or to home, use that journey by ${trip.getThere === 'other' ? 'train, bus or ferry' : 'car'} instead.\n` : ''}- Keep "notes" under 15 words.${continuing ? '' : `
 - Checklist: things to do before leaving that are specific to this plan (visas, vaccinations, bookings to make early…).`}
 - If the reply would be too long, stop after a complete day and close the JSON properly — I will ask for the rest.
 

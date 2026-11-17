@@ -202,7 +202,8 @@ export default function TripLayout() {
 }
 
 export function TripIndex() {
-  const { trip } = useTripCtx()
+  const { trip, items } = useTripCtx()
   const ph = tripPhase(trip)
-  return <Navigate to={ph.phase === 'during' ? 'today' : 'plan'} replace />
+  // A trip with nothing planned yet (work in progress) opens where the itinerary gets set up.
+  return <Navigate to={ph.phase === 'during' ? 'today' : items.length === 0 ? 'ideas' : 'plan'} replace />
 }

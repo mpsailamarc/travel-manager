@@ -64,6 +64,21 @@ describe('the budget follows the group and the dates', () => {
     expect(after.find((l) => l.id === 'own')).toEqual(typed)
   })
 
+  it('by car there are no flights (and a rental car is counted), with friends the beds cost nothing', async () => {
+    const { estimateBudgetLines } = await import('./budget')
+    const base = await makeTrip({ travellers: [{ id: 'a', name: 'a', type: 'adult' }], countryCodes: ['GR'] })
+    const plane = (await estimateBudgetLines(base, 'FR', 'EUR')).lines
+    expect(plane.some((l) => /^Flights/.test(l.label))).toBe(true)
+    const rental = (await estimateBudgetLines({ ...base, getThere: 'rental' }, 'FR', 'EUR')).lines
+    expect(rental.some((l) => /^Flights/.test(l.label))).toBe(false)
+    expect(rental.some((l) => /^Car rental/.test(l.label))).toBe(true)
+    const own = (await estimateBudgetLines({ ...base, getThere: 'own' }, 'FR', 'EUR')).lines
+    expect(own.some((l) => /^Flights|^Car rental/.test(l.label))).toBe(false)
+    expect(own.some((l) => /^Fuel/.test(l.label))).toBe(true)
+    const friends = (await estimateBudgetLines({ ...base, sleep: 'friends' }, 'FR', 'EUR')).lines
+    expect(friends.some((l) => /^Accommodation/.test(l.label))).toBe(false)
+  })
+
   it('a longer trip: more nights and more days of food', async () => {
     const { adjustLinesToTrip, estimateBudgetLines } = await import('./budget')
     const trip = await makeTrip({ travellers: [{ id: 'a', name: 'a', type: 'adult' }], countryCodes: ['GR'] })

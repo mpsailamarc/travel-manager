@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { db } from '../db'
 import type { Trip } from '../types'
 import { addDays, dateRange, formatDate, today } from '../lib/dates'
@@ -8,17 +8,39 @@ import { uid } from '../lib/ids'
 import { locatePlace } from '../lib/apis'
 import { t as tr, tn } from '../i18n'
 import { useSettings } from '../lib/hooks'
-import { BUDGET_LEVELS, ChipToggle, ChoiceGrid, DestinationInput, FOCUS, INNER_FLIGHTS, INTERESTS, RouteFields, StartEndFields, STYLES, TravellersEditor } from './TripFields'
+import { saveLocal } from '../lib/storage'
+import { BUDGET_LEVELS, ChipToggle, ChoiceGrid, DestinationInput, FOCUS, GET_THERE, GetThereFields, INNER_FLIGHTS, INTERESTS, RouteFields, SLEEP, StartEndFields, STYLES, TravellersEditor } from './TripFields'
 
 const STEPS = [tr('Where'), tr('When'), tr('Who'), tr('What'), tr('Review')]
+export const STEPS_LABELS = STEPS
+
+/** A trip you started to set up and left: kept on this device, shown on the home screen as work in progress, and picked up where you stopped. */
+export const DRAFT_KEY = 'tm-draft-trip'
+export interface Draft {
+  t: Trip
+  days: number
+  step: number
+  at: number
+}
+export function readDraft(): Draft | undefined {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? 'null') as Draft | null
+    return d?.t ? d : undefined
+  } catch {
+    return undefined
+  }
+}
+export const clearDraft = () => localStorage.removeItem(DRAFT_KEY)
 
 export default function NewTripPage() {
   const settings = useSettings()
   const navigate = useNavigate()
-  const [step, setStep] = useState(0)
-  const [days, setDays] = useState(7)
+  const [params] = useSearchParams()
+  const draft = useRef(params.get('resume') ? readDraft() : undefined).current
+  const [step, setStep] = useState(draft?.step ?? 0)
+  const [days, setDays] = useState(draft?.days ?? 7)
   const [creating, setCreating] = useState(false)
-  const [t, setT] = useState<Trip>(() => ({
+  const [t, setT] = useState<Trip>(() => draft?.t ?? ({
     id: uid(),
     name: '',
     countryCodes: [],
@@ -33,11 +55,12 @@ export default function NewTripPage() {
     coverEmoji: '🧳',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-  }))
+  } as Trip))
   const set = <K extends keyof Trip>(k: K, v: Trip[K]) => setT((s) => ({ ...s, [k]: v }))
 
   // Who comes: you (named in Settings) and your family from Settings, until you change the list for this trip.
-  const travellersTouched = useRef(false)
+  const travellersTouched = useRef(!!draft)
+  const interestsTouched = useRef(!!draft)
   const familyKey = JSON.stringify([settings.name, settings.family ?? []])
   useEffect(() => {
     if (travellersTouched.current) return
@@ -46,8 +69,16 @@ export default function NewTripPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [familyKey])
 
+  // What you enjoy: from Settings, until you change it for this trip.
+  const interestsKey = JSON.stringify(settings.interests ?? [])
+  useEffect(() => {
+    if (interestsTouched.current) return
+    setT((s) => ({ ...s, interests: settings.interests ?? [] }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [interestsKey])
+
   // Where you start: home from Settings (city or usual airport), filled in once Settings have loaded — change it for this trip.
-  const startTouched = useRef(false)
+  const startTouched = useRef(!!draft)
   useEffect(() => {
     if (!startTouched.current && settings.homeAirport && !t.startPlace?.name) setT((s) => ({ ...s, startPlace: { name: settings.homeAirport! } }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -89,8 +120,15 @@ export default function NewTripPage() {
         })),
       )
     })
+    clearDraft()
     navigate(`/trip/${trip.id}/ideas`)
   }
+
+  // Leave half-way and the trip is kept as work in progress (home screen → Continue).
+  useEffect(() => {
+    if (creating || !(t.countryCodes.length || t.cities.length || t.notes || t.name.trim())) return
+    saveLocal(DRAFT_KEY, JSON.stringify({ t, days, step, at: Date.now() } satisfies Draft))
+  }, [t, days, step, creating])
 
   const canNext = step !== 0 || t.countryCodes.length > 0 || t.cities.length > 0 || !!t.notes
 
@@ -164,6 +202,7 @@ export default function NewTripPage() {
               <p className="small muted">
                 {tr('Last day there (you fly out):')} <b>{formatDate(addDays(t.startDate, days - 1))}</b>. {tr('You can change dates later — the plan follows.')}
               </p>
+              <GetThereFields value={t} onChange={(v) => setT((s) => ({ ...s, ...v }))} />
             </>
           )}
 
@@ -190,7 +229,14 @@ export default function NewTripPage() {
               <ChoiceGrid options={BUDGET_LEVELS} value={t.budgetLevel} onChange={(v) => set('budgetLevel', v)} />
               <RouteFields value={t} onChange={(v) => setT((s) => ({ ...s, ...v }))} />
               <label>{tr('What do you enjoy?')}</label>
-              <ChipToggle options={INTERESTS} value={t.interests} onChange={(v) => set('interests', v)} />
+              <ChipToggle
+                options={INTERESTS}
+                value={t.interests}
+                onChange={(v) => {
+                  interestsTouched.current = true
+                  set('interests', v)
+                }}
+              />
             </>
           )}
 
@@ -203,7 +249,9 @@ export default function NewTripPage() {
                 <Tile k={tr('When')} v={tr('{from} → {to} · {n} days there', { from: formatDate(t.startDate), to: formatDate(addDays(t.startDate, days - 1)), n: days })} />
                 <Tile k={tr('Who')} v={`${tn(t.travellers.filter((x) => x.type === 'adult').length, '{n} adult', '{n} adults')}, ${tn(t.travellers.filter((x) => x.type === 'child').length, '{n} child', '{n} children')}`} />
                 <Tile k={tr('Style')} v={`${STYLES[t.style].label} · ${BUDGET_LEVELS[t.budgetLevel].label}`} />
+                <Tile k={tr('Getting there')} v={GET_THERE[t.getThere ?? 'plane'].label} />
                 <Tile k={tr('Route')} v={`${FOCUS[t.focus ?? 'mix'].label} · ${INNER_FLIGHTS[t.innerFlights ?? 'auto'].label}`} />
+                <Tile k={tr('Where you sleep')} v={SLEEP[t.sleep === 'single' && t.cities.length !== 1 ? 'hotels' : (t.sleep ?? 'hotels')].label} />
               </div>
               {t.interests.length > 0 && <p className="small">{tr('Interests: {list}', { list: t.interests.map((i) => tr(i)).join(', ') })}</p>}
               <p className="small muted">
@@ -215,7 +263,26 @@ export default function NewTripPage() {
         </div>
 
         <div className="row between">
-          <button onClick={() => (step ? setStep(step - 1) : navigate('/'))}>{step ? tr('← Back') : tr('Cancel')}</button>
+          <div className="row">
+            <button
+              onClick={() => {
+                if (step) return setStep(step - 1)
+                clearDraft()
+                navigate('/')
+              }}
+            >
+              {step ? tr('← Back') : tr('Cancel')}
+            </button>
+            {step > 0 && (
+              <button
+                className="btn-ghost"
+                title={tr('Your answers are kept: pick the trip up again from the home screen')}
+                onClick={() => navigate('/')}
+              >
+                {tr('Finish later')}
+              </button>
+            )}
+          </div>
           {step < STEPS.length - 1 ? (
             <button className="btn-primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
               {tr('Next →')}

@@ -20,7 +20,7 @@ export const isCamperRental = (i: Item) => i.kind === 'car' && CAMPER.test(i.tit
  */
 export function camperNights(trip: Trip, items: Item[]): (night: string) => boolean {
   if (trip.sleep === 'camper') return () => true
-  if (trip.sleep === 'hotels') return () => false
+  if (trip.sleep === 'hotels' || trip.sleep === 'friends' || trip.sleep === 'single') return () => false
   const dates = items.filter((i) => isCamperRental(i) && i.status !== 'skipped').map((i) => i.date).sort()
   if (!dates.length) return () => false
   const [from, to] = [dates[0], dates.length > 1 ? dates[dates.length - 1] : trip.endDate]
@@ -28,6 +28,7 @@ export function camperNights(trip: Trip, items: Item[]): (night: string) => bool
 }
 
 /** A stay that's a campsite (or an aire, a campground…) rather than a hotel. */
+export const isFriendsStay = (s: Item) => /^staying with friends/i.test(s.title)
 export const isCampsite = (s: Item) => /campsite|camping|campground|caravan park|\baire\b|holiday park|RV park/i.test(s.title)
 
 export const nightsOf = (s: Item) => Array.from({ length: Math.max(1, s.nights ?? 1) }, (_, k) => addDays(s.date, k))
@@ -105,7 +106,7 @@ export function tidyStaysPlan(trip: Trip, days: Day[], items: Item[]): { put: It
       const centre = st.lat != null && st.lon != null ? { lat: st.lat, lon: st.lon } : undefined
       const base: Item = pick
         ? { ...pick }
-        : { id: uid(), tripId: trip.id, date: run[0], kind: 'stay', title: inVan(run[0]) ? `Campsite near ${st.city} (to choose)` : `Hotel in ${st.city} (to choose)`, status: 'idea', order: -1 }
+        : { id: uid(), tripId: trip.id, date: run[0], kind: 'stay', title: inVan(run[0]) ? `Campsite near ${st.city} (to choose)` : trip.sleep === 'friends' ? `Staying with friends in ${st.city} (to choose)` : `Hotel in ${st.city} (to choose)`, status: 'idea', order: -1 }
       if (pick) free.splice(free.indexOf(pick), 1)
       const location = base.location?.lat != null ? base.location : centre ? { name: base.location?.name || `${st.city} centre`, ...centre } : base.location
       const cost = perNight != null && base.cost ? { ...base.cost, amount: Math.round(perNight * run.length) } : base.cost
