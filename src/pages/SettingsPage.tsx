@@ -57,16 +57,6 @@ export default function SettingsPage() {
         </p>
       </div>
       <div className="card stack">
-        <h3>{t('Family')}</h3>
-        <p className="small muted">{t('The people you usually travel with: your partner, your children and their ages. Every new trip starts with you and them; you can change who comes on each trip.')}</p>
-        <TravellersEditor value={s.family ?? []} onChange={(family) => set({ family })} firstAdult={t('Partner')} />
-      </div>
-      <div className="card stack">
-        <h3>{t('What you enjoy')}</h3>
-        <p className="small muted">{t('New trips start with these interests; you can change them for each trip.')}</p>
-        <ChipToggle options={INTERESTS} value={s.interests ?? []} onChange={(interests) => set({ interests })} />
-      </div>
-      <div className="card stack">
         <h3>{t('About you')}</h3>
         <div className="form-grid">
           <label>
@@ -116,14 +106,6 @@ export default function SettingsPage() {
               ))}
             </select>
           </label>
-          <label>
-            {t('Maps (Plan, Day by day, City planner)')}
-            <select value={s.mapSize ?? 'small'} onChange={(e) => set({ mapSize: e.target.value as 'small' | 'large' | 'hidden' })}>
-              <option value="small">{t('Small')}</option>
-              <option value="large">{t('Large')}</option>
-              <option value="hidden">{t('Hidden (tap to show)')}</option>
-            </select>
-          </label>
           <label className="full">
             {t('Between places in the City planner')}
             <select value={s.getAround ?? 'transit'} onChange={(e) => set({ getAround: e.target.value as GetAround })}>
@@ -136,6 +118,29 @@ export default function SettingsPage() {
           </label>
         </div>
         <p className="tiny muted">{t('Used for visa links, plug adapters, roaming advice, budget estimates and walking times. Synced between your devices if sync is on.')}</p>
+      </div>
+      <div className="card stack">
+        <h3>{t('What you enjoy')}</h3>
+        <p className="small muted">{t('New trips start with these interests; you can change them for each trip.')}</p>
+        <ChipToggle options={INTERESTS} value={s.interests ?? []} onChange={(interests) => set({ interests })} />
+      </div>
+      <div className="card stack">
+        <h3>{t('Family')}</h3>
+        <p className="small muted">{t('The people you usually travel with: your partner, your children and their ages. Every new trip starts with you and them; you can change who comes on each trip.')}</p>
+        <TravellersEditor value={s.family ?? []} onChange={(family) => set({ family })} firstAdult={t('Partner')} />
+      </div>
+      <div className="card stack">
+        <h3>{t('Other preferences')}</h3>
+        <div className="form-grid">
+          <label>
+            {t('Maps (Plan, Day by day, City planner)')}
+            <select value={s.mapSize ?? 'small'} onChange={(e) => set({ mapSize: e.target.value as 'small' | 'large' | 'hidden' })}>
+              <option value="small">{t('Small')}</option>
+              <option value="large">{t('Large')}</option>
+              <option value="hidden">{t('Hidden (tap to show)')}</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <SyncCard />
