@@ -344,14 +344,16 @@ export function TripFields({ value: t, onChange }: { value: Trip; onChange: (t: 
           {tr('The days at the destination, not counting the flights from and to home (the flight out may leave the day before).')}
         </p>
       </div>
-      <label>{tr('Icon')}</label>
-      <div className="chips">
-        {EMOJIS.concat(t.countryCodes.map(flag)).map((e) => (
-          <button key={e} type="button" className={`chip ${t.coverEmoji === e ? 'on' : ''}`} onClick={() => set('coverEmoji', e)}>
-            {e}
-          </button>
-        ))}
-      </div>
+      <label>
+        {tr('Icon')}
+        <select value={t.coverEmoji} onChange={(e) => set('coverEmoji', e.target.value)} style={{ maxWidth: 120, fontSize: '1.3rem' }}>
+          {[...new Set([t.coverEmoji, ...EMOJIS, ...t.countryCodes.map(flag)])].map((e) => (
+            <option key={e} value={e}>
+              {e}
+            </option>
+          ))}
+        </select>
+      </label>
       <label>{tr('Where to')}</label>
       <DestinationInput cities={t.cities} countryCodes={t.countryCodes} onChange={(v) => onChange({ ...t, ...v })} />
       <StartEndFields value={t} onChange={(v) => onChange({ ...t, ...v })} />

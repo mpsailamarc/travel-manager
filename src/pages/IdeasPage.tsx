@@ -24,8 +24,21 @@ export default function IdeasPage() {
   // A link can open a part directly: "Import a booking email" from Where you sleep or Docs.
   const [params] = useSearchParams()
   const [tab, setTab] = useState<Tab>(() => (['ideas', 'bookings', 'template'].includes(params.get('tab') ?? '') ? (params.get('tab') as Tab) : 'ideas'))
+  const { items, settings } = useTripCtx()
+  const showTemplate = !!settings.showTemplate
   return (
     <div className="stack-lg">
+      <div className="stack" style={{ gap: 6 }}>
+        <h1 style={{ fontSize: '1.3rem' }}>{t('✨ Set up the itinerary')}</h1>
+        <p className="small muted" style={{ margin: 0 }}>
+          {t('Get 3 itinerary options from an AI (cities, nights, a rough budget), pick one, then ask for its detailed day-by-day plan, which becomes your Plan.')}
+        </p>
+        {items.length > 0 && tab === 'ideas' && (
+          <div className="notice">
+            {tn(items.length, '⚠️ This trip already has a detailed plan ({n} item). Using one of the itineraries below wipes it out and replaces it (you can choose “Add to it” instead when you pick one).', '⚠️ This trip already has a detailed plan ({n} items). Using one of the itineraries below wipes it out and replaces it (you can choose “Add to it” instead when you pick one).')}
+          </div>
+        )}
+      </div>
       <div className="chips">
         <button className={`chip ${tab === 'ideas' ? 'on' : ''}`} onClick={() => setTab('ideas')}>
           {t('✨ Itinerary ideas')}
@@ -33,13 +46,15 @@ export default function IdeasPage() {
         <button className={`chip ${tab === 'bookings' ? 'on' : ''}`} onClick={() => setTab('bookings')}>
           {t('📧 Import booking emails')}
         </button>
-        <button className={`chip ${tab === 'template' ? 'on' : ''}`} onClick={() => setTab('template')}>
-          {t('🧱 Quick template (no AI)')}
-        </button>
+        {showTemplate && (
+          <button className={`chip ${tab === 'template' ? 'on' : ''}`} onClick={() => setTab('template')}>
+            {t('🧱 Quick template (no AI)')}
+          </button>
+        )}
       </div>
       {tab === 'ideas' && <ItineraryIdeas />}
       {tab === 'bookings' && <BookingImport />}
-      {tab === 'template' && <Template />}
+      {tab === 'template' && showTemplate && <Template />}
     </div>
   )
 }

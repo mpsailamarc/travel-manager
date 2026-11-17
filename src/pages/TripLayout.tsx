@@ -32,7 +32,6 @@ export function tripPhase(trip: Trip, on = today()) {
 const TABS = [
   { to: 'plan', label: t('Plan'), emoji: '🗓️', mobile: 1 },
   { to: 'today', label: t('Day by day'), emoji: '📍', mobile: 2 },
-  { to: 'ideas', label: t('Ideas (AI)'), emoji: '✨', mobile: 6 },
   { to: 'favorites', label: t('City planner'), emoji: '🗺️', mobile: 3 },
   { to: 'checklist', label: t('Checklist'), emoji: '✅', mobile: 4 },
   { to: 'budget', label: t('Budget'), emoji: '💶', mobile: 5 },
@@ -43,12 +42,10 @@ const TABS = [
 const MORE_TAB = { to: 'more', label: t('More'), emoji: '⋯', mobile: 10 }
 
 /**
- * The trip's sections. Once there's an itinerary, Ideas (AI) — mostly used to get it — moves into More (it stays a tab
- * while you're on it), so the tabs are what you use while planning and travelling.
+ * The trip's sections. Setting up the itinerary (AI) is reached from Trip details, not from the tabs.
  */
-function tabsFor(hasPlan: boolean, pathname: string) {
-  if (!hasPlan || /\/ideas$/.test(pathname)) return TABS
-  return [...TABS.filter((x) => x.to !== 'ideas'), MORE_TAB]
+function tabsFor(hasPlan: boolean) {
+  return hasPlan ? [...TABS, MORE_TAB] : TABS
 }
 
 /** The phone's bottom bar: all sections, scrolling sideways. The next tab peeks in and an arrow fades in while there is more. */
@@ -116,7 +113,6 @@ export default function TripLayout() {
   useMemo(() => setTripArea(trip && days ? tripArea(trip, days) : []), [trip, days])
   const [editing, setEditing] = useState(false)
   const navigate = useNavigate()
-  const { pathname } = useLocation()
 
   // Whatever changed (a day's city, the trip's dates, an item moved or deleted, a replan, a sync from another device),
   // the wishlist and the plan are brought back in line a moment later. Nothing happens when they already agree.
@@ -161,7 +157,7 @@ export default function TripLayout() {
   }
 
   const ph = tripPhase(trip)
-  const tabs = tabsFor(items.length > 0, pathname)
+  const tabs = tabsFor(items.length > 0)
   const nights = daysBetween(trip.startDate, trip.endDate)
 
   return (

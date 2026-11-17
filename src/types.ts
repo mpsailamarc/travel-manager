@@ -243,5 +243,7 @@ export interface Settings {
   family?: Traveller[] // the people you usually travel with (partner, children…): new trips start with you and them, and each trip can change who comes
   getAround?: GetAround // City planner default between places (default: walk short hops, public transport for longer ones)
   walkMaxMin?: number // what counts as a short hop, in minutes of walking (default 15)
+  showTemplate?: boolean // the Quick template (no AI) in the itinerary page; hidden by default
+  showReplan?: boolean // the Replan button in Day by day; hidden by default
   mapSize?: 'small' | 'large' | 'hidden' // how the maps on Plan, Day by day and the City planner show (default small); each screen's chips still change it there
 }

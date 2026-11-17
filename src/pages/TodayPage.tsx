@@ -204,11 +204,10 @@ export default function TodayPage() {
               <p className="muted">{dayItems.length ? t('All done for today 🎉') : t('Nothing planned — a free day.')}</p>
             )}
             <div className="row wrap">
-              <button onClick={() => setEditing({ date })}>{t('+ Add')}</button>
               <Link className="btn" to={`../favorites${day?.city ? `?city=${encodeURIComponent(day.city)}` : ''}`}>
                 {t('🗺️ City planner')}
               </Link>
-              <button onClick={() => setReplan(true)}>{t('✨ Replan')}</button>
+              {settings.showReplan && <button onClick={() => setReplan(true)}>{t('✨ Replan')}</button>}
             </div>
           </div>
 
@@ -247,22 +246,25 @@ export default function TodayPage() {
           <div className="card">
             <div className="card-title">
               <h3>{t('Plan for the day')}</h3>
-              <div className="row wrap" style={{ gap: 8 }}>
-                <span className="small muted nowrap">
-                  {t('{done}/{total} done', { done: dayItems.filter((i) => i.status === 'done').length, total: dayItems.length })}
-                </span>
-                {dayItems.length > 1 && <OptimiseDayButton tripId={trip.id} date={date} settings={settings} />}
-                {dayItems.length > 0 && (
-                  <div className="chips" style={{ flexWrap: 'nowrap' }}>
-                    <button className={`chip ${mode === 'timeline' ? 'on' : ''}`} onClick={() => setMode('timeline')}>
-                      {t('🕒 Timeline')}
-                    </button>
-                    <button className={`chip ${mode === 'list' ? 'on' : ''}`} onClick={() => setMode('list')}>
-                      {t('☰ List')}
-                    </button>
-                  </div>
-                )}
-              </div>
+              {dayItems.length > 0 && (
+                <div className="chips" style={{ flexWrap: 'nowrap' }}>
+                  <button className={`chip ${mode === 'timeline' ? 'on' : ''}`} onClick={() => setMode('timeline')}>
+                    {t('🕒 Timeline')}
+                  </button>
+                  <button className={`chip ${mode === 'list' ? 'on' : ''}`} onClick={() => setMode('list')}>
+                    {t('☰ List')}
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="row wrap" style={{ gap: 8, marginBottom: 10 }}>
+              <span className="small muted nowrap">
+                {t('{done}/{total} done', { done: dayItems.filter((i) => i.status === 'done').length, total: dayItems.length })}
+              </span>
+              <button className="btn-sm" onClick={() => setEditing({ date })}>
+                {t('+ Add')}
+              </button>
+              {dayItems.length > 1 && <OptimiseDayButton tripId={trip.id} date={date} settings={settings} />}
             </div>
             {dayItems.length === 0 && <Empty emoji="☕" title={t('Free day')}>{t('Add something, build a walk, or just wander.')}</Empty>}
             {untimed.length > 0 && (

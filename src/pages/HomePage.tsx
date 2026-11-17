@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, deleteTrip } from '../db'
 import { createDemoTrip } from '../lib/sample'
-import { duplicateTrip, importAny } from '../lib/share'
+import { duplicateTrip, exportTrip, importAny, shareOrDownload } from '../lib/share'
 import { formatRange } from '../lib/dates'
 import { countryLabel } from '../lib/countries'
 import { useSettings } from '../lib/hooks'
@@ -47,19 +47,6 @@ export default function HomePage() {
 
   return (
     <div className="page stack-lg">
-      {current.map((c) => (
-        <Link key={c.id} to={`/trip/${c.id}/today`} className="card hero trip-card">
-          <div className="row">
-            <span className="trip-emoji">{c.coverEmoji}</span>
-            <div className="grow">
-              <div className="small muted">{t("You're travelling · day {n}", { n: tripPhase(c).dayNo ?? '' })}</div>
-              <h2>{c.name}</h2>
-            </div>
-            <span className="btn">{t('Open day by day →')}</span>
-          </div>
-        </Link>
-      ))}
-
       {!settings.nationality && (
         <div className="notice info row wrap between">
           <span>{t('Set your nationality and home currency so checklists (visas, plugs, roaming) and budgets fit you.')}</span>
@@ -69,26 +56,29 @@ export default function HomePage() {
         </div>
       )}
 
-      <div className="row wrap between">
-        <h1>{t('Your trips')}</h1>
-        <div className="row wrap">
-          <button onClick={() => fileRef.current?.click()}>{t('📥 Import')}</button>
-          <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && onImport(e.target.files[0])} />
-          <button onClick={demo}>{t('🇵🇹 Demo trip')}</button>
-          <Link to="/new" className="btn btn-primary">
-            {t('+ Plan a new trip')}
-          </Link>
+      <div className="stack" style={{ gap: 6 }}>
+        <div className="row wrap between">
+          <h1>{t('Your trips')}</h1>
+          <div className="row wrap">
+            <Link to="/new" className="btn btn-primary">
+              {t('+ Plan a new trip')}
+            </Link>
+            <button onClick={() => fileRef.current?.click()} title={t('Add a trip from a file: one sent to you, or one you exported')}>
+              {t('📥 Import a trip file')}
+            </button>
+            <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && onImport(e.target.files[0])} />
+          </div>
         </div>
+        <p className="small muted" style={{ margin: 0 }}>
+          {t('“Import a trip file” adds a trip from a .trip.json file (one a friend sent you with Share, or one you saved with Export on a trip below) or from a full backup. It becomes a new trip; nothing you have is replaced.')}
+        </p>
       </div>
 
       {trips.length === 0 && (
         <div className="card">
           <Empty emoji="🧭" title={t('No trips yet')}>
-            <p style={{ maxWidth: 460, margin: '0 auto 14px' }}>
-              {t('Answer a few questions to get itinerary ideas, a budget and a checklist — or load the demo trip to see what the app does while you travel.')}
-            </p>
+            <p style={{ maxWidth: 460, margin: '0 auto 14px' }}>{t('Answer a few questions to get itinerary ideas, a budget and a checklist.')}</p>
             <div className="row" style={{ justifyContent: 'center' }}>
-              <button onClick={demo}>{t('Load the demo trip')}</button>
               <Link to="/new" className="btn btn-primary">
                 {t('Plan a trip')}
               </Link>
@@ -123,8 +113,22 @@ export default function HomePage() {
           </div>
         </div>
       )}
+      <TripGroup title={t('Travelling now')} trips={current} planned={planned} />
       <TripGroup title={t('Coming up')} trips={upcoming} planned={planned} />
       <TripGroup title={t('Past trips')} trips={past} planned={planned} />
+
+      <section className="stack">
+        <h2 className="muted" style={{ fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          {t('Demo')}
+        </h2>
+        <div className="card row wrap between">
+          <div style={{ maxWidth: 520 }}>
+            <b>{t('🇵🇹 Demo trip')}</b>
+            <div className="small muted">{t('A made-up trip to Portugal, to see what the app does. It is a trip like any other: remove it when you are done.')}</div>
+          </div>
+          <button onClick={demo}>{t('Load the demo trip')}</button>
+        </div>
+      </section>
     </div>
   )
 }
@@ -138,6 +142,11 @@ function TripGroup({ title, trips, planned }: { title: string; trips: Trip[]; pl
     const id = await duplicateTrip(tp.id, name.trim())
     toast(t('📄 “{name}” created: a copy to try things on, the original is unchanged', { name: name.trim() }))
     navigate(`/trip/${id}/plan`)
+  }
+  async function exportIt(tp: Trip) {
+    const file = await exportTrip(tp.id, { documents: false, expenses: true })
+    const how = await shareOrDownload(file)
+    if (how === 'downloaded') toast(t('Saved {name}', { name: file.name }))
   }
   async function remove(tp: Trip) {
     if (!confirm(t('Remove "{name}" and everything in it (plan, checklist, expenses, documents)? This can\'t be undone.', { name: tp.name }))) return
@@ -178,6 +187,18 @@ function TripGroup({ title, trips, planned }: { title: string; trips: Trip[]; pl
                   }}
                 >
                   {t('📄 Duplicate')}
+                </button>{' '}
+                <button
+                  type="button"
+                  className="btn-sm btn-ghost"
+                  title={t('Save this trip as a file (.trip.json), to back it up or send it')}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    void exportIt(tp)
+                  }}
+                >
+                  {t('📤 Export')}
                 </button>{' '}
                 <button
                   type="button"

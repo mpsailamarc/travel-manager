@@ -117,6 +117,23 @@ p {
   text-decoration: none;
 }
 
+.brand-col {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.brand-sub {
+  font-size: 0.72rem;
+  color: var(--muted, #6b7280);
+  text-decoration: none;
+  padding-left: 36px;
+}
+
+.brand-sub:hover {
+  text-decoration: underline;
+}
+
 .brand img {
   width: 28px;
   height: 28px;

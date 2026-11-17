@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom'
 import { t } from '../i18n'
 
 const LINKS = [
-  { to: '../ideas', emoji: '✨', label: t('Ideas (AI)'), desc: t('New itinerary ideas from ChatGPT, or a quick template') },
   { to: '../ideas?tab=bookings', emoji: '📧', label: t('Import booking emails'), desc: t('Paste confirmations: flights, hotels, tickets go into the plan') },
   { to: '../favorites', emoji: '🗺️', label: t('City planner'), desc: t('Every activity per city and day, sights and ChatGPT ideas, and your backup ideas') },
   { to: '../essentials', emoji: '🧭', label: t('Essentials'), desc: t('Emergency numbers, plugs, currency converter, tipping') },

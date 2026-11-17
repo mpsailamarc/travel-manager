@@ -479,7 +479,7 @@ export default function FavoritesPage() {
   const [cityOpen, setCityOpen] = useState(false)
   const [mapSize, setMapSize] = useMapSize('tm-fav-map', settings.mapSize)
   const shown = detail && (detail.fav ? cityFavs.find((f) => f.id === detail.fav!.id) : findFav(detail.subject.name, detail.subject.wikidata))
-  const findIsOpen = findOpen ?? (favs !== undefined && cityFavs.length === 0)
+  const findIsOpen = findOpen ?? true
 
   /** Everything planned on a city's days, as its day sections count it: plan items, and wishlist places not planned yet. */
   const activityCount = (name: string) => {
@@ -575,9 +575,6 @@ export default function FavoritesPage() {
                     <button className="btn-primary" disabled={busy || !plannable.length} onClick={planMyDays}>
                       {busy ? t('Planning…') : t('✨ Plan my days')}
                     </button>
-                    <Link className="btn btn-ghost" to="../plan">
-                      {t('See the plan →')}
-                    </Link>
                   </div>
                 </>
               ) : (

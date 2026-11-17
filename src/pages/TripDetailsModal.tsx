@@ -51,6 +51,18 @@ export function TripDetailsModal({ trip, onClose }: { trip: Trip; onClose: () =>
   return (
     <Modal title={t('Trip details')} onClose={onClose} wide>
       <div className="stack">
+        <div className="notice info row wrap between">
+          <span>{t('Itinerary: get 3 itinerary options from an AI and turn one into the detailed plan.')}</span>
+          <button
+            className="btn-sm"
+            onClick={() => {
+              onClose()
+              navigate(`/trip/${trip.id}/ideas`)
+            }}
+          >
+            {t('✨ Set up the itinerary (AI)')}
+          </button>
+        </div>
         <TripFields value={draft} onChange={setDraft} />
         <div className="row between">
           <div className="row">

@@ -40,10 +40,15 @@ function Shell() {
     <>
       <header className="app-header" ref={headerRef}>
         <div className="app-header-inner">
-          <Link to="/" className="brand">
-            <img src="./icon-192.png" alt="" />
-            Travel Manager
-          </Link>
+          <div className="brand-col">
+            <Link to="/" className="brand">
+              <img src="./icon-192.png" alt="" />
+              Travel Manager
+            </Link>
+            <Link to="/" className="brand-sub">
+              {t('🧳 Your trips')}
+            </Link>
+          </div>
           <span className="spacer" />
           {!online && <span className="offline-pill">{t('Offline')}</span>}
           {sync.state !== 'off' && (
